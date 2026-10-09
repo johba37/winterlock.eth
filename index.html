@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Winterlock: hash-based owners for Safe</title>
+<meta name="description" content="Winterlock is a community initiative to give Safe smart accounts owners secured by hash functions alone, upgradeable in place without moving funds.">
+<meta property="og:title" content="Winterlock: hash-based owners for Safe">
+<meta property="og:description" content="Owners for Safe whose signatures rest on hash functions alone. Same Safe, same address, no transfers.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23102030'/%3E%3Cpath d='M16 7v18' stroke='%236BB8CE' stroke-width='2'/%3E%3Ccircle cx='16' cy='7' r='3.5' fill='%236BB8CE'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23E3AA4C'/%3E%3Crect x='12.5' y='21.5' width='7' height='7' rx='1' fill='%23E3EBEF'/%3E%3C/svg%3E">
+<style>
+@font-face {
+  font-family: "Atkinson Next";
+  src: url("fonts/atkinson-next.woff2") format("woff2-variations"), url("fonts/atkinson-next.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Atkinson Mono";
+  src: url("fonts/atkinson-mono.woff2") format("woff2-variations"), url("fonts/atkinson-mono.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #EDF2F4;
+  --surface: #F8FAFB;
+  --ink: #102030;
+  --slate: #4A5E6C;
+  --frost: #C3D0D8;
+  --glacier: #146A82;
+  --lamp: #C08214;
+  --lamp-ink: #7A4D04;
+  --band: rgba(192, 130, 20, 0.14);
+  --breach: #A3392A;
+  --on-ink: #EDF2F4;
+
+  --sans: "Atkinson Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Atkinson Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0D1820;
+    --surface: #12212B;
+    --ink: #E3EBEF;
+    --slate: #94A7B4;
+    --frost: #2B3D4A;
+    --glacier: #6BB8CE;
+    --lamp: #E3AA4C;
+    --lamp-ink: #EDBE6C;
+    --band: rgba(227, 170, 76, 0.13);
+    --breach: #EC8774;
+    --on-ink: #0D1820;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 1.125rem;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+}
+a { color: var(--glacier); text-decoration-thickness: 1px; text-underline-offset: 0.18em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 3px solid var(--lamp); outline-offset: 3px; border-radius: 4px; }
+code { font-family: var(--mono); font-size: 0.92em; }
+h1, h2, h3 { margin: 0; }
+p { margin: 0; }
+
+.wrap { max-width: 72rem; margin: 0 auto; padding-inline: 1.5rem; }
+
+/* Masthead */
+.masthead { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding-top: 1.5rem; }
+.wordmark { font-weight: 700; font-size: 1.125rem; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
+.wordmark span { color: var(--slate); font-weight: 400; }
+.masthead nav { display: flex; gap: 1.5rem; font-size: 1rem; }
+.masthead nav a { color: var(--ink); text-decoration: none; }
+.masthead nav a:hover { text-decoration: underline; }
+
+/* Hero */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 30rem);
+  gap: 4rem;
+  align-items: start;
+  padding-block: 4.5rem 5.5rem;
+}
+.hero h1 {
+  font-size: clamp(2.75rem, 6vw, 4.5rem);
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.035em;
+  max-width: 11ch;
+}
+.lede { margin-top: 1.75rem; font-size: 1.3125rem; line-height: 1.5; max-width: 34rem; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2.25rem; }
+.button {
+  display: inline-block;
+  padding: 0.7rem 1.15rem;
+  border-radius: 8px;
+  border: 1.5px solid var(--ink);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.button:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.button.primary { background: var(--ink); color: var(--on-ink); }
+.button.primary:hover { background: color-mix(in srgb, var(--ink) 86%, var(--glacier)); }
+
+/* The live chain */
+.core {
+  margin: 0;
+  background: var(--surface);
+  border: 1px solid var(--frost);
+  border-radius: 14px;
+  padding: 1.5rem 1.5rem 1.25rem;
+}
+.core h2 { font-size: 1.3125rem; font-weight: 700; letter-spacing: -0.005em; }
+.core-intro { margin-top: 0.4rem; font-size: 1rem; line-height: 1.5; color: var(--slate); }
+
+.sign-form { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 0.5rem; align-items: end; margin-top: 1.25rem; }
+.sign-form label, .sign-form input { grid-column: 1 / -1; }
+.sign-form label { font-size: 0.9375rem; font-weight: 600; }
+.sign-form input {
+  min-width: 0;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--frost);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+}
+.sign-form input:focus-visible { outline-offset: 1px; }
+.sign-form button {
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  padding: 0.62rem 0.95rem;
+  border-radius: 8px;
+  border: 1.5px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sign-form button[type="submit"] { background: var(--ink); color: var(--on-ink); }
+.sign-form button:disabled { opacity: 0.45; cursor: progress; }
+
+.msg-hash { margin: 0.9rem 0 0.6rem; min-height: 3em; font-size: 0.9375rem; line-height: 1.5; color: var(--slate); }
+.msg-hash code { color: var(--ink); }
+.msg-hash mark { background: var(--band); color: var(--lamp-ink); font-weight: 700; border-radius: 3px; padding: 0 0.1em; }
+
+.chain { --row: 1.8rem; --idx: 2.6rem; --dot: 1.25rem; list-style: none; margin: 0; padding: 0; }
+.chain li {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--idx) var(--dot) minmax(0, 1fr) 5.25rem;
+  column-gap: 0.7rem;
+  align-items: center;
+  height: var(--row);
+  border-radius: 6px;
+}
+.chain li::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--idx) + 0.7rem + var(--dot) / 2 - 1px);
+  top: 50%;
+  width: 2px;
+  height: var(--row);
+  background: var(--frost);
+}
+.chain li:last-child::before { display: none; }
+.chain li.lit::before { background: var(--glacier); }
+.chain li.leaked.lit::before { background: var(--breach); }
+.chain .idx { font-family: var(--mono); font-size: 0.875rem; color: var(--slate); text-align: right; }
+.chain .node {
+  position: relative;
+  z-index: 1;
+  justify-self: center;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  border: 2px solid var(--frost);
+  background: var(--surface);
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.3s;
+}
+.chain .val { font-family: var(--mono); font-size: 0.9375rem; white-space: nowrap; overflow: hidden; color: var(--ink); }
+.chain .val span + span { margin-left: 0.6ch; }
+.chain .mask { color: var(--frost); letter-spacing: 0.08em; }
+.chain .note { font-size: 0.875rem; color: var(--slate); }
+
+.chain .secret .node { border-radius: 2px; border-color: var(--ink); background: var(--ink); }
+.chain .secret .note { color: var(--ink); font-weight: 600; }
+.chain .public .node { background: var(--glacier); border-color: var(--glacier); }
+.chain .public .note { color: var(--glacier); font-weight: 700; }
+.chain .derived .node { border-color: var(--glacier); }
+.chain .revealed { background: var(--band); }
+.chain .revealed .node { background: var(--lamp); border-color: var(--lamp); }
+.chain .revealed .note { color: var(--lamp-ink); font-weight: 700; }
+.chain .leaked .node { background: var(--breach); border-color: var(--breach); }
+.chain .leaked .val, .chain .leaked .note { color: var(--breach); }
+.chain .leaked .note { font-weight: 700; }
+.chain .match .node { box-shadow: 0 0 0 5px color-mix(in srgb, var(--glacier) 28%, transparent); }
+
+.status { margin-top: 0.9rem; min-height: 4.6em; font-size: 0.9375rem; line-height: 1.5; }
+.status.warn { color: var(--breach); }
+.fineprint { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--frost); font-size: 0.875rem; line-height: 1.5; color: var(--slate); }
+
+/* Sections */
+.block { border-top: 1px solid var(--frost); padding: 4.5rem 0; }
+.block h2 { font-size: clamp(1.75rem, 3.4vw, 2.25rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; max-width: 32ch; }
+.block .sub { margin-top: 0.9rem; max-width: 40rem; color: var(--slate); }
+.block h3 { font-size: 1.3125rem; font-weight: 700; line-height: 1.3; letter-spacing: -0.005em; }
+.block h3 + p { margin-top: 0.5rem; }
+
+.points { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2.75rem 4rem; margin-top: 2.75rem; max-width: 62rem; }
+.points p, .parts p { font-size: 1.0625rem; max-width: 34rem; }
+
+.parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3rem; margin-top: 2.75rem; }
+.parts > div { border-top: 2px solid var(--ink); padding-top: 1.1rem; }
+
+.steps { list-style: none; counter-reset: step; margin: 2.75rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3rem; }
+.steps li { counter-increment: step; font-size: 1.0625rem; max-width: 22rem; }
+.steps li::before {
+  content: counter(step);
+  display: block;
+  font-size: 3rem;
+  font-weight: 300;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--glacier);
+  margin-bottom: 0.75rem;
+}
+.steps-note { margin-top: 2.25rem; font-weight: 600; }
+
+.roadmap { --dot: 0.9rem; list-style: none; margin: 2.75rem 0 0; padding: 0; max-width: 40rem; }
+.roadmap li { position: relative; padding: 0 0 1.6rem 2.25rem; font-size: 1.0625rem; }
+.roadmap li:last-child { padding-bottom: 0; }
+.roadmap li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.38em;
+  width: var(--dot);
+  height: var(--dot);
+  border-radius: 50%;
+  border: 2px solid var(--frost);
+  background: var(--bg);
+  z-index: 1;
+}
+.roadmap li::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--dot) / 2 - 1px);
+  top: 0.38em;
+  bottom: -0.38em;
+  width: 2px;
+  background: var(--frost);
+}
+.roadmap li:last-child::after { display: none; }
+.roadmap li.now::before { background: var(--lamp); border-color: var(--lamp); box-shadow: 0 0 0 5px var(--band); }
+.roadmap .when { display: block; font-size: 0.9375rem; color: var(--slate); }
+.roadmap li.now .when { color: var(--lamp-ink); font-weight: 700; }
+
+.join p { margin-top: 0.9rem; max-width: 40rem; }
+.join .actions { margin-top: 2rem; }
+
+footer { border-top: 1px solid var(--frost); padding: 2.25rem 0 3rem; font-size: 0.9375rem; color: var(--slate); }
+footer .wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.6rem 2rem; }
+footer p { max-width: 44rem; }
+footer .links { display: flex; gap: 1.25rem; align-items: start; }
+footer a { color: var(--slate); }
+
+/* Load: the chain builds upward from the secret, once. */
+@media (prefers-reduced-motion: no-preference) {
+  .chain li { animation: rise 0.45s both; animation-delay: calc(var(--i) * 40ms + 150ms); }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}
+
+@media (max-width: 960px) {
+  .hero { grid-template-columns: 1fr; gap: 3.5rem; padding-top: 3rem; }
+  .core { max-width: 34rem; }
+  .parts, .steps { grid-template-columns: 1fr; gap: 2.25rem; }
+  .points { grid-template-columns: 1fr; gap: 2.25rem; }
+}
+@media (max-width: 520px) {
+  body { font-size: 1.0625rem; }
+  .wrap { padding-inline: 1rem; }
+  .masthead nav { gap: 1rem; }
+  .lede { font-size: 1.1875rem; }
+  .core { padding: 1.15rem 1rem 1rem; border-radius: 12px; }
+  .sign-form { grid-template-columns: 1fr 1fr; }
+  .chain { --idx: 2.1rem; --dot: 1rem; }
+  .chain li { grid-template-columns: var(--idx) var(--dot) minmax(0, 1fr) 4.4rem; column-gap: 0.55rem; }
+  .chain li::before { left: calc(var(--idx) + 0.55rem + var(--dot) / 2 - 1px); }
+  .chain .val span:nth-child(4) { display: none; }
+  .block { padding: 3.5rem 0; }
+  footer .wrap { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header class="wrap masthead">
+  <a class="wordmark" href="./">winterlock<span>.eth</span></a>
+  <nav aria-label="Project links">
+    <a href="https://forum.safefoundation.org/c/safe-ecosystem/initiatives/13" rel="noopener noreferrer">Forum</a>
+    <a href="https://github.com/johba37/winterlock.eth" rel="noopener noreferrer">GitHub</a>
+  </nav>
+</header>
+
+<main>
+  <section class="wrap hero">
+    <div>
+      <h1>Hash-based owners for Safe</h1>
+      <p class="lede">Every Safe is controlled by ECDSA owner keys. Winterlock adds owners whose signatures rest on hash functions alone, which neither quantum computers nor AI-accelerated math are expected to break. Your Safe keeps its address, and your funds never move.</p>
+      <p class="actions">
+        <a class="button primary" href="https://forum.safefoundation.org/c/safe-ecosystem/initiatives/13" rel="noopener noreferrer">Discuss on the Safe forum</a>
+        <a class="button" href="#building">See what we're building</a>
+      </p>
+    </div>
+
+    <figure class="core" aria-labelledby="core-title">
+      <h2 id="core-title">Sign with a hash chain</h2>
+      <p class="core-intro">This is one Winternitz chain, built in your browser: a random secret hashed 15 times. Only the top is public. Signing reveals one point, and anyone can hash upward from it to check that it reaches the public key.</p>
+
+      <form class="sign-form" id="sign-form">
+        <label for="message">Message</label>
+        <input id="message" name="message" type="text" autocomplete="off" spellcheck="false" value="Pay 5 ETH to the grants Safe">
+        <button type="submit" id="sign">Sign</button>
+        <button type="button" id="new-key">New key</button>
+      </form>
+
+      <p class="msg-hash" id="msg-hash">The first hex digit of your message's hash decides which point on the chain gets revealed.</p>
+
+      <ol class="chain" id="chain" aria-label="Hash chain, from public key x15 down to secret x0"></ol>
+
+      <p class="status" id="status" role="status" aria-live="polite">Only the top of the chain, x15, is public. Sign a message to see how a verifier checks it.</p>
+
+      <p class="fineprint">A full WOTS signature uses 67 chains like this one: 64 for the message hash and 3 for a checksum that stops anyone from pushing a digit higher. This demo uses plain SHA-256 and sends nothing anywhere.</p>
+    </figure>
+  </section>
+
+  <section class="block" aria-labelledby="why-title">
+    <div class="wrap">
+      <h2 id="why-title">Why now</h2>
+      <div class="points">
+        <div>
+          <h3>Owner keys are exposed by design</h3>
+          <p>Executing a Safe transaction publishes the owners' signatures, and each signature reveals the signer's public key. If ECDSA weakens, those keys are the first targets.</p>
+        </div>
+        <div>
+          <h3>Elliptic curves may fall sooner than planned</h3>
+          <p>In October 2026 Vitalik Buterin <a href="https://x.com/VitalikButerin/status/2107976296320106851" rel="noopener noreferrer">warned</a> that AI-accelerated math could weaken elliptic-curve and lattice cryptography faster than expected, and recommended hash-based constructions wherever they are possible.</p>
+        </div>
+        <div>
+          <h3>Lattices carry the same risk</h3>
+          <p>The standard post-quantum signatures, ML-DSA and Falcon, are built on lattices, which have algebraic structure an attacker can try to exploit. Hash functions are designed to have none. Ethereum's lean roadmap signs with hashes for the same reason.</p>
+        </div>
+        <div>
+          <h3>Moving funds is the everyday risk</h3>
+          <p>Botched migrations lose real money. Safe can swap owners in place, so upgrading never touches your assets.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="building" aria-labelledby="build-title">
+    <div class="wrap">
+      <h2 id="build-title">What we're building</h2>
+      <div class="parts">
+        <div>
+          <h3>A hash-based owner</h3>
+          <p>An EIP-1271 owner contract for Safe. Daily approvals use Winternitz one-time signatures from a Merkle tree of keys, each bound to a single Safe nonce so it can never authorize anything else. A stateless SPHINCS+ key handles backup and recovery.</p>
+        </div>
+        <div>
+          <h3>Shared verification</h3>
+          <p>A hash-based signature is about 2 KB and costs far more gas to check than ECDSA. An off-chain prover batches many signatures into one STARK proof, which is hash-based too, so the cost is split across everyone in the batch. Anyone can skip the batch and verify directly at full price, so it can never block a transaction.</p>
+        </div>
+        <div>
+          <h3>Signing on hardware you own</h3>
+          <p>A signing app for existing hardware wallets that keeps track of used one-time keys, so restoring from a seed phrase never reuses one. Dedicated hardware comes later, if demand calls for it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="upgrade-title">
+    <div class="wrap">
+      <h2 id="upgrade-title">Upgrade a Safe without moving funds</h2>
+      <ol class="steps">
+        <li>Add a Winterlock owner next to your current owners.</li>
+        <li>Raise the threshold so your ECDSA owners can no longer approve anything on their own.</li>
+        <li>Remove the ECDSA owners, and check modules, guards and fallback handlers for any other path to your funds.</li>
+      </ol>
+      <p class="steps-note">Same Safe, same address, no transfers.</p>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="roadmap-title">
+    <div class="wrap">
+      <h2 id="roadmap-title">Roadmap</h2>
+      <ol class="roadmap">
+        <li class="now"><span class="when">Now</span>Proposal open for feedback on the Safe forum</li>
+        <li><span class="when">Milestone 1</span>Specification, reference contracts and test suite</li>
+        <li><span class="when">Milestone 2</span>Audited owner contract and migration tool on testnet</li>
+        <li><span class="when">Milestone 3</span>Batched verification beta, with direct verification as fallback</li>
+        <li><span class="when">Milestone 4</span>Signing app for hardware wallets</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="block join" aria-labelledby="join-title">
+    <div class="wrap">
+      <h2 id="join-title">Get involved</h2>
+      <p>We're looking for DAOs and treasuries to join as design partners, cryptographers to review the design, and Safe developers with opinions on owners, modules and guards.</p>
+      <p class="actions">
+        <a class="button primary" href="https://forum.safefoundation.org/c/safe-ecosystem/initiatives/13" rel="noopener noreferrer">Discuss on the Safe forum</a>
+        <a class="button" href="https://github.com/johba37/winterlock.eth/issues" rel="noopener noreferrer">Open an issue on GitHub</a>
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Winterlock is an independent community initiative and is not affiliated with Safe or the Safe Ecosystem Foundation. This page loads nothing from other servers: no trackers, no external fonts or scripts.</p>
+    <div class="links">
+      <a href="https://github.com/johba37/winterlock.eth" rel="noopener noreferrer">Source</a>
+      <a href="https://pq.ethereum.org" rel="noopener noreferrer">Ethereum PQ roadmap</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+/* SHA-256, small and synchronous so the demo works on any gateway or file:// */
+var SHA_K = new Uint32Array([
+  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
+  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
+  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
+  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
+  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
+  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
+  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
+  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
+]);
+function sha256(bytes) {
+  var ror = function (x, n) { return (x >>> n) | (x << (32 - n)); };
+  var len = bytes.length, padded = ((len + 9 + 63) >> 6) << 6;
+  var m = new Uint8Array(padded); m.set(bytes); m[len] = 0x80;
+  var dv = new DataView(m.buffer);
+  dv.setUint32(padded - 8, Math.floor(len / 0x20000000));
+  dv.setUint32(padded - 4, (len << 3) >>> 0);
+  var h = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
+  var w = new Uint32Array(64);
+  for (var o = 0; o < padded; o += 64) {
+    for (var i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+    for (i = 16; i < 64; i++) {
+      var x = w[i - 15], y = w[i - 2];
+      w[i] = w[i - 16] + (ror(x, 7) ^ ror(x, 18) ^ (x >>> 3)) + w[i - 7] + (ror(y, 17) ^ ror(y, 19) ^ (y >>> 10));
+    }
+    var a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], k = h[7];
+    for (i = 0; i < 64; i++) {
+      var t1 = (k + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + SHA_K[i] + w[i]) | 0;
+      var t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+      k = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
+    }
+    h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e; h[5] += f; h[6] += g; h[7] += k;
+  }
+  var out = new Uint8Array(32), ov = new DataView(out.buffer);
+  for (i = 0; i < 8; i++) ov.setUint32(i * 4, h[i]);
+  return out;
+}
+function toHex(bytes) {
+  var s = "";
+  for (var i = 0; i < bytes.length; i++) s += (bytes[i] < 16 ? "0" : "") + bytes[i].toString(16);
+  return s;
+}
+function utf8(str) { return new TextEncoder().encode(str); }
+
+(function () {
+  var N = 16;
+  var chainEl = document.getElementById("chain");
+  var form = document.getElementById("sign-form");
+  var input = document.getElementById("message");
+  var signBtn = document.getElementById("sign");
+  var newBtn = document.getElementById("new-key");
+  var statusEl = document.getElementById("status");
+  var hashEl = document.getElementById("msg-hash");
+  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var NOTES = { hidden: "", secret: "secret", public: "public key", revealed: "signature", derived: "derived", leaked: "leaked" };
+  var FIRST_MESSAGE = "Pay 5 ETH to the grants Safe";
+  var SECOND_MESSAGE = "Send 500 ETH to a stranger";
+
+  var rows = [], chain = [], state = [], signs = [], busy = false;
+
+  for (var i = N - 1; i >= 0; i--) {
+    var li = document.createElement("li");
+    li.style.setProperty("--i", i);
+    li.innerHTML = '<span class="idx">x' + i + '</span><span class="node" aria-hidden="true"></span><span class="val"></span><span class="note"></span>';
+    rows[i] = li;
+    chainEl.appendChild(li);
+  }
+
+  function grouped(bytes) {
+    var hex = toHex(bytes).slice(0, 16);
+    return hex.match(/.{4}/g).map(function (g) { return "<span>" + g + "</span>"; }).join("");
+  }
+
+  function paint(i) {
+    var s = state[i], li = rows[i];
+    li.classList.remove("hidden", "secret", "public", "revealed", "derived", "leaked");
+    li.classList.add(s);
+    var hidden = s === "hidden" || s === "secret";
+    li.querySelector(".val").innerHTML = hidden ? '<span class="mask" aria-label="unknown">················</span>' : grouped(chain[i]);
+    li.querySelector(".note").textContent = NOTES[s];
+  }
+
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function stepMs() { return reduceMotion.matches ? 0 : 85; }
+
+  function newKey(announce) {
+    chain[0] = crypto.getRandomValues(new Uint8Array(32));
+    for (var i = 1; i < N; i++) chain[i] = sha256(chain[i - 1]);
+    signs = [];
+    for (i = 0; i < N; i++) {
+      state[i] = i === N - 1 ? "public" : i === 0 ? "secret" : "hidden";
+      rows[i].classList.remove("lit", "match");
+      paint(i);
+    }
+    input.value = FIRST_MESSAGE;
+    signBtn.textContent = "Sign";
+    statusEl.classList.remove("warn");
+    hashEl.textContent = "The first hex digit of your message's hash decides which point on the chain gets revealed.";
+    if (announce) statusEl.textContent = "New key. Only x15 is public again.";
+  }
+
+  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
+
+  async function sign() {
+    if (busy) return;
+    busy = true;
+    signBtn.disabled = newBtn.disabled = true;
+    rows[N - 1].classList.remove("match");
+
+    var msgHash = toHex(sha256(utf8(input.value)));
+    var d = parseInt(msgHash[0], 16);
+    hashEl.innerHTML = "Message hash <code><mark>" + msgHash[0] + "</mark>" + msgHash.slice(1, 12) + "…</code><br>Its first hex digit is " +
+      (d > 9 ? msgHash[0] + " (" + d + ")" : d) + ", so this chain reveals x" + d + ".";
+
+    var prior = signs.length;
+    var prevMin = prior ? Math.min.apply(null, signs) : N;
+    signs.push(d);
+
+    state[d] = "revealed";
+    paint(d);
+    await wait(stepMs() * 3);
+
+    var cur = chain[d];
+    for (var i = d + 1; i < N; i++) {
+      cur = sha256(cur);
+      if (state[i] === "hidden") state[i] = prior > 0 && i < prevMin ? "leaked" : "derived";
+      rows[i].classList.add("lit");
+      paint(i);
+      await wait(stepMs());
+    }
+    var valid = toHex(cur) === toHex(chain[N - 1]);
+    rows[N - 1].classList.add("match");
+
+    var msg;
+    if (!valid) {
+      msg = "Something went wrong: the chain did not reach the public key.";
+    } else if (prior === 0) {
+      if (d === N - 1) msg = "Valid. Digit 15 is signed by revealing x15, the public key itself. In a full signature the checksum chains make sure that can't be abused.";
+      else if (d === 0) msg = "Valid. The verifier hashed x0 15 times and reached the public key. Digit 0 means revealing the chain's secret itself, which is fine exactly once: this key is never used again.";
+      else msg = "Valid. The verifier hashed your signature x" + d + " " + plural(N - 1 - d, "time") + " and reached the public key. Everything below x" + d + " is still secret.";
+    } else if (d < prevMin) {
+      var range = d === prevMin - 1 ? "x" + d + " is" : "x" + d + " through x" + (prevMin - 1) + " are";
+      msg = "Valid, but this key has now signed " + plural(signs.length, "message") + ". " + range + " now public too, so anyone can sign any digit from " + d + " up on this chain. Across all 67 chains, two signatures are often enough to forge a third. That's why each Winterlock key signs exactly once.";
+    } else {
+      msg = "Valid, and by luck this chain leaked nothing new: digit " + d + " was already reachable from x" + prevMin + ". Across all 67 chains, signing twice almost always leaks somewhere, so each Winterlock key signs exactly once.";
+    }
+    statusEl.classList.toggle("warn", prior > 0 && d < prevMin);
+    statusEl.textContent = msg;
+
+    if (prior === 0) {
+      input.value = SECOND_MESSAGE;
+      signBtn.textContent = "Sign again with this key";
+    }
+    busy = false;
+    signBtn.disabled = newBtn.disabled = false;
+  }
+
+  form.addEventListener("submit", function (e) { e.preventDefault(); sign(); });
+  newBtn.addEventListener("click", function () { newKey(true); });
+  newKey(false);
+})();
+</script>
+</body>
+</html>

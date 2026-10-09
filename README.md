@@ -1,0 +1,39 @@
+# winterlock.eth
+
+The landing page for **Winterlock**, a community initiative to give [Safe](https://safe.global) smart accounts owners whose signatures rest on hash functions alone (WOTS for daily signing, SPHINCS+ for recovery), adoptable in place without moving funds.
+
+The page is a single static `index.html` with two self-hosted fonts. It makes no requests to other servers, so it works from any IPFS gateway, from `ipfs://` in Brave, or straight from disk. The hero includes a live Winternitz hash-chain demo that runs entirely in the browser.
+
+## Files
+
+| Path | What it is |
+|---|---|
+| `index.html` | The whole page: markup, styles and the demo script |
+| `fonts/` | Atkinson Hyperlegible Next and Mono (variable, Latin subset) with their SIL Open Font License texts |
+
+## Preview locally
+
+```sh
+python3 -m http.server 8000
+# then open http://localhost:8000
+```
+
+## Publish to winterlock.eth
+
+1. **Pin the folder to IPFS.** Upload this folder (with `index.html` and `fonts/`) to a pinning service such as Fleek, Pinata, Filebase or 4EVERLAND, or with a local node:
+   ```sh
+   ipfs add -r --cid-version 1 --ignore .git --ignore README.md .
+   ```
+   Note the CID of the folder (it starts with `bafy…`). Pinning with two services keeps the page up if one of them drops it.
+2. **Point the name at it.** On [app.ens.domains](https://app.ens.domains), open `winterlock.eth` → Profile → Edit profile → Other → Content Hash, enter `ipfs://<CID>` and sign with the Manager wallet. This needs a little mainnet ETH for gas.
+3. **Check it** at <https://winterlock.eth.limo> (or `winterlock.eth.link`). Brave and Opera also open `winterlock.eth` directly.
+
+Every change produces a new CID, so repeat steps 1 and 2 for each update.
+
+## After posting the forum proposal
+
+The forum links currently point to the Safe forum's Initiatives category. Once the proposal thread is live, replace `https://forum.safefoundation.org/c/safe-ecosystem/initiatives/13` in `index.html` (three places) with the thread URL.
+
+## Licenses
+
+Fonts: Atkinson Hyperlegible Next and Atkinson Hyperlegible Mono, © The Atkinson Hyperlegible Next Project Authors, licensed under the SIL Open Font License 1.1 (see `fonts/OFL-*.txt`).
