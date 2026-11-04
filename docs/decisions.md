@@ -23,6 +23,9 @@ Slot 0 signs the operation. Slot 1 is kept for a genuine replacement or cancella
 **D5. A rescue bundler** (2026-11-04)
 Winterlock runs a bundler that includes Winterlock operations even when the base fee rises above the signed `maxFeePerGas`, and covers the shortfall itself. The EntryPoint charges `min(maxFeePerGas, maxPriorityFeePerGas + basefee)` and doesn't require the cap to cover the base fee (checked in EntryPoint v0.7.0 and v0.8.0). Operations stay ordinary and portable: any bundler can include them while fees are within the caps, and users can always submit `handleOps` themselves. The relayer never holds user funds.
 
+**D6. Default parameter set: 24-byte hashes with target sum 431** (2026-11-04)
+`WinterlockValidator(24, 431)`: keccak truncated to 24 bytes (category 3, by analogy to SLH-DSA-192), 48 message chains whose digits must add up to 431, no checksum chains. That is 1.85× an ECDSA transfer, a 1,176-byte signature, and the same gas for every signature. The signer needs about 945 digest tries per signature. It's chosen over 16-byte hashes (1.53×, category 1) for security margin, since this audience picks hash-based signatures for safety. The other parameter sets stay in the code and the benchmark for comparison.
+
 ## Constraints that every design must respect
 
 - **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages.
@@ -49,12 +52,34 @@ Real `handleOps` transactions on anvil (Prague rules), EntryPoint v0.7, one ETH 
 - The EIP-7623 calldata floor doesn't apply: execution gas is high enough.
 - Caveats: the minimal account isn't a production 7579 account. Kernel, Nexus and Safe7579 add the same dispatch overhead to both the ECDSA and the Winterlock rows. The verifier has had one round of tuning.
 
-Ways to cut the cost that haven't been measured yet: 16- or 24-byte hashes (halving calldata), a different `w`, target-sum encoding (no checksum chains, fewer steps), further assembly tuning, and the L2 versus L1 trade-off between calldata and execution.
+**2026-11-04: hash size × encoding** (same setup, tree height 20, average of 5 steady-state operations)
+
+The verifier now takes the hash size `n` and the encoding as parameters (`WinterlockValidator(n, targetSum)`). Every set uses a randomizer R of n bytes, chosen by the signer and mixed into the digest. The target sum T is the highest sum at which the signer needs at most about 1,000 tries on average, computed from the exact digit-sum distribution.
+
+| Parameter set | Security (by analogy to SLH-DSA) | Signature | tx gas | vs ECDSA | Verifier alone |
+|---|---|---|---|---|---|
+| ECDSA baseline | — | 65 B | 95.5k | 1.00× | — |
+| n=32, checksum | category 5 | 2,176 B | 224.2k | 2.35× | 82.9k (78–90k) |
+| n=32, target sum 560 | category 5 | 2,080 B | 211.6k | 2.22× | 71.4k (fixed) |
+| n=24, checksum | category 3 | 1,248 B | 187.0k | 1.96× | 67.3k (65–72k) |
+| n=24, target sum 431 | category 3 | 1,176 B | 176.7k | 1.85× | 54.0k (fixed) |
+| n=16, checksum | category 1 | 576 B | 156.3k | 1.64× | 48.0k (43–55k) |
+| n=16, target sum 300 | category 1 | 528 B | 146.3k | 1.53× | 36.9k (fixed) |
+
+The signature column excludes the 1-byte slot and the Merkle path (20 × n bytes).
+
+- **Hash size matters most.** Going from 32 to 16 bytes halves the number of chains (67 → 35) and halves each value, which saves about 78k gas.
+- **The target sum saves another 10–13k** and makes gas the same for every signature: the target-sum rows vary by about 50 gas, against about ±8k for checksum. That helps with wallet and bundler gas estimates. The cost is signing time: about 1,000 digest hashes per signature, off-chain.
+- **Target sums don't cost forgery resistance in this construction.** Every other digit pattern with the same sum has some digit lower than the revealed one, so a forger has to hit the exact same digest, just as with checksum chains. Security would only drop if digests were mapped directly onto the smaller set of valid patterns instead of retrying.
+- **The general code costs a little.** n=32 checksum is about 3k more than the first benchmark, because of R and the generic masking.
+- **Calldata is now a small share at n=16:** about 12k of the 51k premium. Execution, mostly the hash chains, dominates on L1. On rollups, where calldata is the expensive part, smaller hashes help even more.
+
+Not yet tried: a different `w`, further assembly tuning, and measuring on an L2.
 
 ## Open questions
 
 **Cryptography**
-- Parameters: Winternitz `w` (16 for now), hash size `n` (32 bytes now; 16 or 24 bytes packed would cut calldata), hash function (keccak now; SHA-256 is faster on hardware wallets), encoding (checksum chains now; target-sum or WOTS+C would remove them).
+- Within D6: Winternitz `w` (16 now), and the hash function (keccak now; SHA-256 is faster on hardware wallets, which matters for target-sum retries on the device).
 - An independent reference implementation and test vectors, in Python or Rust. So far the tests only cross-check against a Solidity signer.
 
 **Accounts and chains**

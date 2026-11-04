@@ -9,14 +9,14 @@ import {SimpleAccountFactory} from "account-abstraction/samples/SimpleAccountFac
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
 import {MiniAccount, EcdsaValidator} from "../test/utils/Harness.sol";
-import {WotsKey, WotsTree, Ops} from "../test/utils/WotsSigner.sol";
+import {WotsParams, WotsKey, WotsTree, Ops} from "../test/utils/WotsSigner.sol";
 
 /// @notice Sends real handleOps transactions so receipts include intrinsic and calldata gas.
 ///         Each account sends ROUNDS ops (an ETH transfer to an existing address). Nonce 0 warms
 ///         storage up and is reported separately; later nonces are the steady state.
 ///         Run through bench.sh against a local anvil.
 contract GasBench is Script {
-    uint256 internal constant ROUNDS = 9;
+    uint256 internal constant ROUNDS = 6;
     uint256 internal constant OWNER_PK = 0xA11CE;
 
     EntryPoint internal ep;
@@ -45,15 +45,27 @@ contract GasBench is Script {
         MiniAccount ma = new MiniAccount{value: 1 ether}(ep, ev, abi.encode(vm.addr(OWNER_PK)));
         for (uint256 n; n < ROUNDS; ++n) _ecdsaOp(address(ma), n, "MiniAccount + ECDSA validator");
 
-        // Winterlock validator at three tree heights (2^(h-1) nonces each)
-        WinterlockValidator wv = new WinterlockValidator();
-        uint256[3] memory heights = [uint256(10), 16, 20];
-        for (uint256 t; t < 3; ++t) {
-            uint256 h = heights[t];
-            WotsKey memory key =
-                WotsTree.create(uint128(uint256(keccak256(abi.encode("seed", h)))), keccak256(abi.encode("sk", h)), h, 5);
-            MiniAccount wa = new MiniAccount{value: 1 ether}(ep, wv, abi.encode(key.root, key.seed, uint8(h), uint192(0)));
-            string memory name = string.concat("MiniAccount + Winterlock h=", vm.toString(h));
+        // Winterlock validator: hash size x encoding, all at tree height 20 (2^19 nonces)
+        WotsParams[6] memory sets = [
+            WotsParams(32, 0),
+            WotsParams(32, 560),
+            WotsParams(24, 0),
+            WotsParams(24, 431),
+            WotsParams(16, 0),
+            WotsParams(16, 300)
+        ];
+        for (uint256 t; t < sets.length; ++t) {
+            WotsParams memory p = sets[t];
+            WinterlockValidator wv = new WinterlockValidator(p.n, p.targetSum);
+            WotsKey memory key = WotsTree.create(
+                p, uint128(uint256(keccak256(abi.encode("seed", t)))), keccak256(abi.encode("sk", t)), 20, 4
+            );
+            MiniAccount wa = new MiniAccount{value: 1 ether}(ep, wv, abi.encode(key.root, key.seed, uint8(20), uint192(0)));
+            string memory name = string.concat(
+                "Winterlock n=",
+                vm.toString(p.n),
+                p.targetSum == 0 ? " checksum" : string.concat(" target ", vm.toString(p.targetSum))
+            );
             for (uint256 n; n < ROUNDS; ++n) _wotsOp(address(wa), key, n, name);
         }
         vm.stopBroadcast();

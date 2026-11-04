@@ -48,14 +48,14 @@ def main(run_path, labels_path):
     n = len(next(iter(steady.values())))
 
     print(f"Steady state: one ETH transfer per handleOps tx, average of {n} ops (nonce 1..{n}), EntryPoint v0.7\n")
-    hdr = (f"{'account':32} {'tx gas':>8} {'min':>7} {'max':>7} {'vs ECDSA':>9} {'x':>5} "
+    hdr = (f"{'account':32} {'tx gas':>8} {'min':>7} {'max':>7} {'vs ECDSA':>9} {'x':>5} {'sig B':>6} "
            f"{'calldata B':>10} {'calldata gas':>12} {'execution':>9} {'7623 floor':>10}")
     print(hdr)
     print("-" * len(hdr))
     for name, rows in steady.items():
         used = avg(rows, "used")
         print(f"{name:32} {used:>8.0f} {min(r['used'] for r in rows):>7} {max(r['used'] for r in rows):>7} "
-              f"{used - base:>+9.0f} {used / base:>5.2f} {rows[0]['calldata']:>10} {avg(rows, 'calldata_gas'):>12.0f} "
+              f"{used - base:>+9.0f} {used / base:>5.2f} {rows[0]['sig']:>6} {rows[0]['calldata']:>10} {avg(rows, 'calldata_gas'):>12.0f} "
               f"{avg(rows, 'execution'):>9.0f} {rows[0]['floor']:>10}")
 
     print("\nFirst op on a fresh account (nonce 0: cold nonce slot and deposit), tx gas:")
