@@ -39,6 +39,7 @@ def main(run_path, labels_path):
         )
 
     baseline = "MiniAccount + ECDSA validator"
+    kernel_baseline = "Kernel + ECDSA validator"
 
     def avg(rows, key):
         return sum(r[key] for r in rows) / len(rows)
@@ -57,6 +58,14 @@ def main(run_path, labels_path):
         print(f"{name:32} {used:>8.0f} {min(r['used'] for r in rows):>7} {max(r['used'] for r in rows):>7} "
               f"{used - base:>+9.0f} {used / base:>5.2f} {rows[0]['sig']:>6} {rows[0]['calldata']:>10} {avg(rows, 'calldata_gas'):>12.0f} "
               f"{avg(rows, 'execution'):>9.0f} {rows[0]['floor']:>10}")
+
+    if kernel_baseline in steady:
+        kb = avg(steady[kernel_baseline], "used")
+        print(f"\nKernel v3.3 rows against Kernel + ECDSA ({kb:.0f} gas):")
+        for name, rows in steady.items():
+            if name.startswith("Kernel"):
+                used = avg(rows, "used")
+                print(f"  {name:40} {used:>8.0f} {used - kb:>+9.0f} {used / kb:>5.2f}x")
 
     print("\nFirst op on a fresh account (nonce 0: cold nonce slot and deposit), tx gas:")
     for name, rows in groups.items():

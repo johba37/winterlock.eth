@@ -7,6 +7,12 @@ import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOper
 import {SimpleAccount} from "account-abstraction/samples/SimpleAccount.sol";
 import {SimpleAccountFactory} from "account-abstraction/samples/SimpleAccountFactory.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {Kernel} from "kernel/Kernel.sol";
+import {KernelFactory} from "kernel/factory/KernelFactory.sol";
+import {IHook, IValidator as KernelValidator} from "kernel/interfaces/IERC7579Modules.sol";
+import {ValidatorLib} from "kernel/utils/ValidationTypeLib.sol";
+import {ExecLib} from "kernel/utils/ExecLib.sol";
+import {ExecMode} from "kernel/types/Types.sol";
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
 import {MiniAccount, EcdsaValidator} from "../test/utils/Harness.sol";
 import {WotsParams, WotsKey, WotsTree, Ops} from "../test/utils/WotsSigner.sol";
@@ -68,6 +74,32 @@ contract GasBench is Script {
             );
             for (uint256 n; n < ROUNDS; ++n) _wotsOp(address(wa), key, n, name);
         }
+        // A production 7579 account: ZeroDev Kernel v3.3, ECDSA versus Winterlock as root validator
+        // Deployed from Kernel's production build (./setup.sh): via-IR, 200 runs
+        address kImpl = vm.deployCode("lib/kernel/out/Kernel.sol/Kernel.json", abi.encode(address(ep)));
+        KernelFactory kf = KernelFactory(vm.deployCode("lib/kernel/out/KernelFactory.sol/KernelFactory.json", abi.encode(kImpl)));
+        address kEcdsaValidator = vm.deployCode("lib/kernel/out/ECDSAValidator.sol/ECDSAValidator.json");
+        address kEcdsa = _kernel(kf, kEcdsaValidator, abi.encodePacked(vm.addr(OWNER_PK)));
+        for (uint256 n; n < ROUNDS; ++n) _kernelEcdsaOp(kEcdsa, n);
+
+        WotsParams[2] memory kSets = [WotsParams(24, 431), WotsParams(16, 300)];
+        for (uint256 t; t < kSets.length; ++t) {
+            WotsParams memory p = kSets[t];
+            WotsKey memory key = WotsTree.create(
+                p, uint128(uint256(keccak256(abi.encode("kseed", t)))), keccak256(abi.encode("ksk", t)), 20, 4
+            );
+            address kw = _kernel(
+                kf, address(new WinterlockValidator(p.n, p.targetSum)), abi.encode(key.root, key.seed, uint8(20), uint192(0))
+            );
+            string memory name = string.concat(
+                "Kernel + Winterlock n=", vm.toString(p.n), " target ", vm.toString(p.targetSum)
+            );
+            for (uint256 n; n < ROUNDS; ++n) {
+                PackedUserOperation memory op = Ops.build(kw, n, _kernelCallData(), 500_000);
+                op.signature = Ops.wotsSignature(key, 0, n * 2, ep.getUserOpHash(op));
+                _submit(op, name, n);
+            }
+        }
         vm.stopBroadcast();
 
         require(recipient.balance == 1 ether + sent * 0.001 ether, "not every op executed");
@@ -76,6 +108,33 @@ contract GasBench is Script {
 
     function _callData() internal view returns (bytes memory) {
         return abi.encodeWithSignature("execute(address,uint256,bytes)", recipient, 0.001 ether, "");
+    }
+
+    function _kernel(KernelFactory kf, address validator, bytes memory validatorData) internal returns (address account) {
+        bytes memory init = abi.encodeCall(
+            Kernel.initialize,
+            (
+                ValidatorLib.validatorToIdentifier(KernelValidator(validator)),
+                IHook(address(0)),
+                validatorData,
+                hex"",
+                new bytes[](0)
+            )
+        );
+        account = kf.createAccount(init, bytes32(0));
+        _pay(account, 1 ether);
+    }
+
+    function _kernelCallData() internal view returns (bytes memory) {
+        return abi.encodeCall(Kernel.execute, (ExecMode.wrap(bytes32(0)), ExecLib.encodeSingle(recipient, 0.001 ether, "")));
+    }
+
+    /// Kernel's ECDSAValidator, signed the way the ZeroDev SDK signs (personal_sign of the userOpHash)
+    function _kernelEcdsaOp(address account, uint256 n) internal {
+        PackedUserOperation memory op = Ops.build(account, n, _kernelCallData(), 300_000);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_PK, MessageHashUtils.toEthSignedMessageHash(ep.getUserOpHash(op)));
+        op.signature = abi.encodePacked(r, s, v);
+        _submit(op, "Kernel + ECDSA validator", n);
     }
 
     function _ecdsaOp(address account, uint256 n, string memory name) internal {

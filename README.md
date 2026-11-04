@@ -16,9 +16,9 @@ The page is a single static `index.html` with two self-hosted fonts. It makes no
 ## Contracts
 
 ```sh
-git submodule update --init --recursive
 cd contracts
-forge test          # correctness tests, plus verifier-only gas
+./setup.sh          # submodules, plus ZeroDev Kernel built with its production profile
+forge test          # unit tests per parameter set, Kernel integration tests, verifier-only gas
 ./bench.sh          # local anvil, real handleOps txs, gas table from receipts
 ```
 

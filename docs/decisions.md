@@ -76,6 +76,29 @@ The signature column excludes the 1-byte slot and the Merkle path (20 × n bytes
 
 Not yet tried: a different `w`, further assembly tuning, and measuring on an L2.
 
+**2026-11-04: on a production 7579 account (ZeroDev Kernel v3.3)**
+
+Kernel is deployed from its own production build (profile `deploy`: via-IR, 200 runs). It needs via-IR to fit under the 24 KB size limit. The ECDSA baseline is Kernel's ECDSA validator, signed the way the ZeroDev SDK signs (personal_sign of the userOpHash).
+
+| Account | tx gas | vs Kernel + ECDSA |
+|---|---|---|
+| Kernel + ECDSA validator | 135.3k | 1.00× |
+| Kernel + Winterlock, 24-byte target sum 431 (D6) | 213.9k | +78.6k, **1.58×** |
+| Kernel + Winterlock, 16-byte target sum 300 | 183.2k | +47.9k, 1.35× |
+
+Kernel itself costs about 40k more per operation than the minimal test account; for one thing, it writes an execution-hook slot on every operation. The absolute premium is about the same on both accounts, so the relative premium for smart-account users is smaller than the minimal-account figures suggest.
+
+## Integration notes: Kernel v3.3
+
+These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7 tests.
+
+- **Root validator, including counterfactual deployment.** The first operation deploys the account through the factory and is signed with WOTS. There's no ECDSA step anywhere.
+- **Nonce lanes.** Kernel's nonce key is mode (1 byte), type (1), validator (20) and a parallel key (2). Kernel accepts any parallel key for the root validator. Winterlock accepts only its configured lane, so sequence numbers can't repeat across lanes (tested).
+- **Replayable signatures.** If a signature starts with Kernel's magic value, Kernel hands the validator a hash without the chain ID, so one signature is valid on every chain. That conflicts with keeping key trees separate per chain (open question).
+- **ERC-1271 is refused.** That also disables Kernel's "enable mode", where a validator is installed inside a UserOperation on the strength of a root ERC-1271 signature. New modules can only arrive through an ordinary Winterlock-signed operation calling `installModule`.
+- **Each installed module is a second way in.** A Winterlock-signed operation can install an ECDSA validator, and from then on that ECDSA key can move funds on its own nonce lane (tested). The signer and the wallet have to show module installs clearly and require explicit confirmation.
+- **Kernel's EIP-7702 mode.** Validation type 0x00 falls back to ECDSA over the account's own address. That is only reachable for EIP-7702-delegated EOAs, not for accounts deployed as contracts.
+
 ## Open questions
 
 **Cryptography**
@@ -87,7 +110,7 @@ Not yet tried: a different `w`, further assembly tuning, and measuring on an L2.
 - What happens when a tree runs out of keys: how to rotate to a new root, and what signs the rotation.
 - A recovery key: SPHINCS+, a cold WOTS tree, or none.
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): support them with dedicated key slots, or refuse them.
-- 7579 details: how Kernel, Nexus and Safe7579 lay out the nonce key, which account to target first, and a checklist for locking down the other ways into an account.
+- 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579; whether to refuse or support Kernel's replayable signatures; and the signer's confirmation flow for installing modules.
 
 **Infrastructure**
 - Whether Rundler, Alto and the shared mempool accept 2.5–3 KB signatures and the verification gas measured below.

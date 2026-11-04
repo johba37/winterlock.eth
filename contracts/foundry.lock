@@ -11,6 +11,12 @@
       "rev": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
     }
   },
+  "lib/kernel": {
+    "tag": {
+      "name": "v3.3",
+      "rev": "cd697c7e21715d015e0643af22310a99aa17433b"
+    }
+  },
   "lib/openzeppelin-contracts": {
     "tag": {
       "name": "v5.0.2",

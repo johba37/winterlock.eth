@@ -15,7 +15,8 @@ ANVIL_PID=$!
 trap 'kill $ANVIL_PID 2>/dev/null' EXIT
 timeout 15 bash -c "until cast chain-id --rpc-url $RPC >/dev/null 2>&1; do :; done"
 
+[ -f lib/kernel/out/Kernel.sol/Kernel.json ] || ./setup.sh
 mkdir -p bench
-forge script script/GasBench.s.sol --rpc-url "$RPC" --broadcast --slow --quiet --gas-estimate-multiplier 400 >/dev/null
+forge script script/GasBench.s.sol --rpc-url "$RPC" --broadcast --slow --quiet --gas-estimate-multiplier 400 --disable-block-gas-limit >/dev/null
 echo "hardfork: $HARDFORK"
 python3 bench/report.py broadcast/GasBench.s.sol/31337/run-latest.json bench/labels.json
