@@ -20,3 +20,7 @@ mkdir -p bench
 forge script script/GasBench.s.sol --rpc-url "$RPC" --broadcast --slow --quiet --gas-estimate-multiplier 400 --disable-block-gas-limit >/dev/null
 echo "hardfork: $HARDFORK"
 python3 bench/report.py broadcast/GasBench.s.sol/31337/run-latest.json bench/labels.json
+# Optional: price the same transactions on an OP Stack L2, e.g. L2_RPC=https://mainnet.base.org ./bench.sh
+if [ -n "${L2_RPC:-}" ]; then
+  python3 bench/l2.py broadcast/GasBench.s.sol/31337/run-latest.json bench/labels.json "$RPC" "$L2_RPC"
+fi

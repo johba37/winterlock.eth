@@ -20,6 +20,7 @@ cd contracts
 ./setup.sh          # submodules, plus ZeroDev Kernel built with its production profile
 forge test          # unit tests per parameter set, Kernel integration tests, verifier-only gas
 ./bench.sh          # local anvil, real handleOps txs, gas table from receipts
+L2_RPC=https://mainnet.base.org ./bench.sh   # also price them on Base (read-only RPC calls)
 ```
 
 ## Preview locally

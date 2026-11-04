@@ -11,7 +11,7 @@ import {WotsVerifier} from "./WotsVerifier.sol";
 ///         private wallet is the 1-of-1 case.
 ///         Every key is bound to one nonce: keyIndex = sequence * SLOTS + slot (decisions D2, D4). Members
 ///         use their own trees, so they pick their slots independently.
-///         Each deployment fixes one parameter set (hash size and encoding, see WotsVerifier).
+///         Each deployment fixes one parameter set (hash size, w, hash function, encoding; see WotsVerifier).
 ///
 /// Signature: one entry per signing member, in strictly increasing member index order (proves the
 ///            signers are distinct):
@@ -31,6 +31,8 @@ contract WinterlockValidator is IValidator {
     uint256 internal constant VALIDATION_SUCCESS = 0;
     uint256 internal constant VALIDATION_FAILED = 1;
 
+    /// Packed parameter set (WotsVerifier.encodeParams): hash size, w, hash function, encoding.
+    uint256 public immutable PARAMS;
     /// Hash size in bytes (16, 24 or 32).
     uint256 public immutable N;
     /// 0 for checksum encoding, otherwise the required digit sum.
@@ -56,11 +58,12 @@ contract WinterlockValidator is IValidator {
     error AlreadyInitialized();
     error InvalidConfig();
 
-    constructor(uint256 n, uint256 targetSum) {
-        if ((n != 16 && n != 24 && n != 32) || targetSum > 30 * n) revert InvalidConfig();
-        N = n;
-        TARGET_SUM = targetSum;
-        SIG_LEN = WotsVerifier.sigBytes(n, targetSum);
+    constructor(uint256 params) {
+        WotsVerifier.checkParams(params);
+        PARAMS = params;
+        N = params & 0xff;
+        TARGET_SUM = (params >> 32) & 0xffffffff;
+        SIG_LEN = WotsVerifier.sigBytes(params);
     }
 
     // --- ERC-7579 module ---
@@ -166,9 +169,8 @@ contract WinterlockValidator is IValidator {
         view
         returns (bool)
     {
-        bytes32 root = WotsVerifier.computeRoot(
-            N, TARGET_SUM, m.seed, keyIndex, userOpHash, sigAndPath[:SIG_LEN], sigAndPath[SIG_LEN:]
-        );
+        bytes32 root =
+            WotsVerifier.computeRoot(PARAMS, m.seed, keyIndex, userOpHash, sigAndPath[:SIG_LEN], sigAndPath[SIG_LEN:]);
         return root != bytes32(0) && root == m.root;
     }
 

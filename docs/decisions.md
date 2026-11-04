@@ -33,6 +33,22 @@ Each account configures 1 to 16 members and a threshold. Every member has their 
 - **Storage.** Members are stored in a fixed-size array inside the account's mapping entry, so validation only reads storage associated with the account (ERC-7562). A dynamic array would fall outside it, and bundlers would reject the operations.
 - **No duplicate trees.** Installing the same tree twice is refused, so one tree can't vote twice.
 
+**D8. Signature collection: an optional service, with peer-to-peer always possible** (2026-11-04)
+Threshold accounts collect members' signature entries through a collection service, as Safe does with its transaction service.
+- **What it does.** It stores proposed UserOperations and members' entries. It checks each entry off-chain against the member's root before accepting it, shows status, and passes complete operations to any bundler.
+- **What it can't do.** It only holds public data, so it can withhold or delay an operation, but not forge one.
+- **Slot warnings.** It warns a member who already signed a different proposal at the same nonce. The signer's own record of used slots still has the final say (D4).
+- **Optional by design.** The signature format is the same without the service, so members can always exchange operations and entries peer to peer.
+- **Hosting.** Winterlock may run the service next to the rescue bundler (D5).
+- **Not planned:** on-chain approvals like Safe's `approveHash`, unless teams ask for zero off-chain infrastructure.
+
+**D9. Keep `w` = 16 and keccak within D6** (2026-11-04)
+The measurements under "`w`, hash function, EIP-7976, and Base" settle it:
+- `w` = 16 beats 4 and 256 on L1 today, under EIP-7976, and on Base, even if L1 data fees rose a hundredfold.
+- keccak saves about 50k gas per signature compared with SHA-256.
+
+SHA-256 support stays in the verifier, so the question can be reopened if hardware signers turn out to need it.
+
 ## Constraints that every design must respect
 
 - **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all.
@@ -109,6 +125,28 @@ Two members sign every operation. The ECDSA baseline is a k-of-n validator of th
 - **Each extra WOTS signature costs about 87k gas:** about 26k for its 1.66 KB of calldata, about 54k to verify it, and about 4k to read the member's settings. An extra ECDSA signature costs 8–11k, so the multisig premium grows faster than the single-signer one.
 - **Threshold support costs a 1-of-1 account about 1.3k** compared with the earlier single-key validator: one more byte and the member loop.
 
+**2026-11-04: `w`, hash function, EIP-7976, and Base** (minimal account, single signer, 24-byte target sum unless noted)
+
+The verifier now takes `w` (4, 16, 256) and the hash function (keccak, SHA-256) as parameters too. That generality costs about 2.5k gas per signature compared with the specialised code; D6 is now 180.5k on the minimal account and 217.7k on Kernel. EIP-7976 (Last Call, deadline 2026-11-01) raises the calldata floor to 64 gas per byte. Its column below is max(gas used, 21,000 + 64 × calldata bytes). The Base columns price the same transactions with Base's `GasPriceOracle.getL1Fee` and its gas price on 2026-11-04 (0.006 gwei).
+
+| Parameter set | Signature | L1 today | L1 with EIP-7976 | Base today | Base, L1 fees ×100 |
+|---|---|---|---|---|---|
+| w=16, target 431 (D6) | 1,176 B | 1.89× | 1.89× | 1.90× | 2.77× |
+| w=4, target 173 | 2,328 B | 2.04× | 2.58× | 2.06× | 3.70× |
+| w=256, target 3216 | 600 B | 4.83× | 4.83× | 4.83× | 4.45× |
+| w=16, target 431, SHA-256 | 1,176 B | 2.42× | 2.42× | 2.43× | 3.14× |
+| 16-byte, w=16, target 300 | 528 B | 1.57× | 1.57× | 1.58× | 1.97× |
+| 32-byte, w=16, target 560 | 2,080 B | 2.26× | 2.54× | 2.28× | 3.79× |
+| Kernel + D6 (against Kernel + ECDSA) | 1,176 B | 1.61× | 1.61× | 1.62× | 2.38× |
+| 2-of-3, D6 (against ECDSA 2-of-3) | 2 × 1,176 B | 2.54× | 2.62× | 2.56× | 4.12× |
+
+- **`w` = 16 wins in every scenario.**
+  - `w` = 4 executes slightly less but doubles the signature, so it loses on L1 and loses badly once calldata gets dearer.
+  - `w` = 256 halves the signature but needs about 2,900 hash steps, so it is the worst choice even when L1 data costs 100 times today's price.
+- **SHA-256 costs about 50k more gas per signature than keccak** on L1, and proportionally on L2. It's only worth it if hardware signers need it.
+- **EIP-7976 leaves D6 unaffected,** because enough execution gas sits on top of the calldata. It hits the calldata-heavy sets: 32-byte hashes, `w` = 4, and threshold accounts with more signatures on lean accounts.
+- **On Base, L1 data is about 1% of the cost today,** so the ratios match L1. Kernel + D6 costs about 1,300 gwei (0.0000013 ETH) per transfer, against about 800 for Kernel + ECDSA. If L1 data fees rose a hundredfold, smaller signatures would start to matter, which favours 16-byte hashes.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7 tests.
@@ -124,19 +162,26 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 ## Open questions
 
 **Cryptography**
-- Within D6: Winternitz `w` (16 now), and the hash function (keccak now; SHA-256 is faster on hardware wallets, which matters for target-sum retries on the device).
+- Hash function on hardware signers: D9 keeps keccak. If a hardware signer can't hash keccak fast enough for key generation and target-sum retries, weigh SHA-256 (+50k gas per signature) against it.
+- Key generation on a device: tree height is nearly free on-chain, but whoever computes the root must generate every key. 2^20 keys with D6 is roughly 750 million hashes, which is minutes on a laptop and likely too slow for a hardware wallet. Options: a smaller tree with rotation, or a hypertree whose top tree signs subtree roots.
 - An independent reference implementation and test vectors, in Python or Rust. So far the tests only cross-check against a Solidity signer.
 
 **Accounts and chains**
 - How to keep one address on every chain while using different keys on each. One option: a single root over per-chain subtrees, with the validator checking that the subtree matches `block.chainid`.
 - What happens when a tree runs out of keys: how to rotate to a new root, and what signs the rotation.
 - A recovery key: SPHINCS+, a cold WOTS tree, or none.
-- Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum, and how members exchange UserOperations and their signature entries (a collection service, like Safe's transaction service).
+- Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum.
+- Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): support them with dedicated key slots, or refuse them.
-- 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579; whether to refuse or support Kernel's replayable signatures; and the signer's confirmation flow for installing modules.
+- 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579; whether to refuse or support Kernel's replayable signatures; and the signer's confirmation flow for installing modules. On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
+- Classic Safes: whether to build the Safe-owner (EIP-1271) adapter from D1, for teams that don't use 4337.
 
 **Infrastructure**
-- Whether Rundler, Alto and the shared mempool accept 2.5–3 KB signatures and the verification gas measured below.
+- Whether Rundler, Alto and the shared mempool accept these signatures (1.7 KB per signer with D6) and the verification gas measured above.
+- The collection service (D8): its API, who may post proposals (spam), how private pending proposals are, and whether to reuse code from Safe's transaction service.
 - Limits and abuse policy for the rescue bundler, how to fund it, and a legal check on sanctions screening (EU/Germany).
 - The signer: software first, key derivation from a seed, tracking used slots. Hardware comes later.
-- How future repricing of calldata gas would change the numbers above.
+- Calldata repricing: EIP-7976 is analysed above. Re-run `bench.sh` if the final Glamsterdam pricing differs.
+
+**Before real funds**
+- An independent cryptographic review of the construction (tweaks, randomizer, target sum, nonce binding) and a security audit of the validator.

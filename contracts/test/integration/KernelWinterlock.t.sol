@@ -44,14 +44,14 @@ contract KernelWinterlockTest is Test {
     string internal constant ECDSA_ARTIFACT = "lib/kernel/out/ECDSAValidator.sol/ECDSAValidator.json";
 
     function _p() internal pure returns (WotsParams memory) {
-        return WotsParams(24, 431);
+        return WotsParams(24, 431, 4, 0);
     }
 
     function setUp() public {
         ep = new EntryPoint();
         impl = Kernel(payable(vm.deployCode(KERNEL_ARTIFACT, abi.encode(address(ep)))));
         factory = KernelFactory(vm.deployCode(FACTORY_ARTIFACT, abi.encode(address(impl))));
-        val = new WinterlockValidator(24, 431);
+        val = new WinterlockValidator(Ops.params(_p()));
         ecdsa = ECDSAValidator(vm.deployCode(ECDSA_ARTIFACT));
     }
 

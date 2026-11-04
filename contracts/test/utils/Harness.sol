@@ -81,21 +81,19 @@ contract EcdsaValidator is IValidator {
 /// @notice Exposes the library with real calldata, for unit tests and isolated gas measurement.
 contract VerifierHarness {
     function computeRoot(
-        uint256 n,
-        uint256 targetSum,
+        uint256 params,
         uint128 seed,
         uint256 keyIndex,
         bytes32 message,
         bytes calldata sig,
         bytes calldata path
-    ) external pure returns (bytes32) {
-        return WotsVerifier.computeRoot(n, targetSum, seed, keyIndex, message, sig, path);
+    ) external view returns (bytes32) {
+        return WotsVerifier.computeRoot(params, seed, keyIndex, message, sig, path);
     }
 
     /// Gas of the library call alone, measured inside the callee where memory is fresh.
     function computeRootGas(
-        uint256 n,
-        uint256 targetSum,
+        uint256 params,
         uint128 seed,
         uint256 keyIndex,
         bytes32 message,
@@ -103,7 +101,7 @@ contract VerifierHarness {
         bytes calldata path
     ) external view returns (bytes32 root, uint256 gasUsed) {
         gasUsed = gasleft();
-        root = WotsVerifier.computeRoot(n, targetSum, seed, keyIndex, message, sig, path);
+        root = WotsVerifier.computeRoot(params, seed, keyIndex, message, sig, path);
         gasUsed -= gasleft();
     }
 }

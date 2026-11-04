@@ -3,11 +3,15 @@ pragma solidity ^0.8.24;
 
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {WinterlockValidator} from "../../src/WinterlockValidator.sol";
+import {WotsVerifier} from "../../src/WotsVerifier.sol";
 
-/// @notice A parameter set: hash size n (bytes) and targetSum (0 = checksum encoding).
+/// @notice A parameter set: hash size n (bytes), targetSum (0 = checksum encoding), log2(w), and the
+///         hash function (0 = keccak256, 1 = SHA-256).
 struct WotsParams {
     uint256 n;
     uint256 targetSum;
+    uint256 logW;
+    uint256 hashFn;
 }
 
 /// @notice Reference signer in plain Solidity, written separately from the assembly verifier so the
@@ -16,8 +20,27 @@ struct WotsParams {
 library WotsSigner {
     uint256 internal constant MAX_TRIES = 1_000_000;
 
+    function wm1(WotsParams memory p) internal pure returns (uint256) {
+        return (1 << p.logW) - 1;
+    }
+
+    function messageDigits(WotsParams memory p) internal pure returns (uint256) {
+        return 8 * p.n / p.logW;
+    }
+
+    function checksumDigits(WotsParams memory p) internal pure returns (uint256 count) {
+        uint256 max = messageDigits(p) * wm1(p);
+        count = 1;
+        while ((1 << (p.logW * count)) <= max) ++count;
+    }
+
     function chains(WotsParams memory p) internal pure returns (uint256) {
-        return 2 * p.n + (p.targetSum == 0 ? 3 : 0);
+        return messageDigits(p) + (p.targetSum == 0 ? checksumDigits(p) : 0);
+    }
+
+    /// The tweakable hash: keccak256 or SHA-256, truncated to n bytes
+    function H(WotsParams memory p, bytes memory data) internal pure returns (bytes32) {
+        return trunc(p, p.hashFn == 0 ? keccak256(data) : sha256(data));
     }
 
     function trunc(WotsParams memory p, bytes32 x) internal pure returns (bytes32) {
@@ -50,7 +73,7 @@ library WotsSigner {
         returns (bytes32)
     {
         for (uint256 j = from; j < to; ++j) {
-            x = trunc(p, keccak256(abi.encodePacked(tweak(seed, 0, keyIndex, i, j), x)));
+            x = H(p, abi.encodePacked(tweak(seed, 0, keyIndex, i, j), x));
         }
         return x;
     }
@@ -70,22 +93,23 @@ library WotsSigner {
         pure
         returns (bytes32)
     {
-        return trunc(p, keccak256(abi.encodePacked(tweak(seed, 3, keyIndex, 0, 0), r, message)));
+        return H(p, abi.encodePacked(tweak(seed, 3, keyIndex, 0, 0), r, message));
     }
 
-    /// Digits for a digest: 2n message nibbles, then 3 checksum nibbles unless the target-sum encoding is used.
+    /// Digits for a digest: 8n/log2(w) message digits, then checksum digits unless a target sum is used.
     function digits(WotsParams memory p, bytes32 d) internal pure returns (uint256[] memory a, uint256 sum) {
-        uint256 len1 = 2 * p.n;
+        uint256 len1 = messageDigits(p);
         a = new uint256[](chains(p));
         for (uint256 i; i < len1; ++i) {
-            a[i] = (uint256(d) >> (252 - 4 * i)) & 0xf;
+            a[i] = (uint256(d) >> (256 - (i + 1) * p.logW)) & wm1(p);
             sum += a[i];
         }
         if (p.targetSum == 0) {
-            uint256 csum = 15 * len1 - sum;
-            a[len1] = (csum >> 8) & 0xf;
-            a[len1 + 1] = (csum >> 4) & 0xf;
-            a[len1 + 2] = csum & 0xf;
+            uint256 csum = wm1(p) * len1 - sum;
+            uint256 len2 = checksumDigits(p);
+            for (uint256 j; j < len2; ++j) {
+                a[len1 + j] = (csum >> (p.logW * (len2 - 1 - j))) & wm1(p);
+            }
         }
     }
 
@@ -97,10 +121,11 @@ library WotsSigner {
         return trunc(p, keccak256(abi.encode("winterlock.test.R", skSeed, keyIndex, message, counter)));
     }
 
-    /// Sum of the first `count` nibbles of d, without allocating.
-    function nibbleSum(bytes32 d, uint256 count) internal pure returns (uint256 sum) {
-        for (uint256 i; i < count; ++i) {
-            sum += (uint256(d) >> (252 - 4 * i)) & 0xf;
+    /// Sum of the message digits of d, without allocating.
+    function digitSum(WotsParams memory p, bytes32 d) internal pure returns (uint256 sum) {
+        uint256 len1 = messageDigits(p);
+        for (uint256 i; i < len1; ++i) {
+            sum += (uint256(d) >> (256 - (i + 1) * p.logW)) & wm1(p);
         }
     }
 
@@ -114,7 +139,7 @@ library WotsSigner {
         for (uint256 c; c < MAX_TRIES; ++c) {
             r = randomizer(p, skSeed, keyIndex, message, c);
             bytes32 d = digest(p, seed, keyIndex, r, message);
-            if (p.targetSum == 0 || nibbleSum(d, 2 * p.n) == p.targetSum) {
+            if (p.targetSum == 0 || digitSum(p, d) == p.targetSum) {
                 (a,) = digits(p, d);
                 return (a, r);
             }
@@ -126,9 +151,9 @@ library WotsSigner {
         uint256 len = chains(p);
         bytes32[] memory ends = new bytes32[](len);
         for (uint256 i; i < len; ++i) {
-            ends[i] = chainValue(p, seed, skSeed, keyIndex, i, 15);
+            ends[i] = chainValue(p, seed, skSeed, keyIndex, i, wm1(p));
         }
-        return trunc(p, keccak256(abi.encodePacked(tweak(seed, 1, keyIndex, 0, 0), ends)));
+        return H(p, abi.encodePacked(tweak(seed, 1, keyIndex, 0, 0), ends));
     }
 
     /// Chain values for given digits: [R][x_0]...[x_len-1], n bytes each.
@@ -161,7 +186,7 @@ library WotsSigner {
         pure
         returns (bytes32)
     {
-        return trunc(p, keccak256(abi.encodePacked(tweak(seed, 2, index, 0, level), left, right)));
+        return H(p, abi.encodePacked(tweak(seed, 2, index, 0, level), left, right));
     }
 }
 
@@ -229,6 +254,11 @@ library WotsTree {
 library Ops {
     uint256 internal constant MAX_PRIORITY_FEE = 1 gwei;
     uint256 internal constant MAX_FEE = 10 gwei;
+
+    /// Packed parameter word for WotsVerifier and WinterlockValidator
+    function params(WotsParams memory p) internal pure returns (uint256) {
+        return WotsVerifier.encodeParams(p.n, p.logW, p.hashFn, p.targetSum);
+    }
 
     function build(address sender, uint256 nonce, bytes memory callData, uint256 verificationGasLimit)
         internal

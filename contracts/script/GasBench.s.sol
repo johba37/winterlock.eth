@@ -78,21 +78,25 @@ contract GasBench is Script {
 
     /// Hash size x encoding on the minimal account, all at tree height 20 (2^19 nonces)
     function _benchParameterSets() internal {
-        WotsParams[6] memory sets = [
-            WotsParams(32, 0),
-            WotsParams(32, 560),
-            WotsParams(24, 0),
-            WotsParams(24, 431),
-            WotsParams(16, 0),
-            WotsParams(16, 300)
+        WotsParams[9] memory sets = [
+            WotsParams(32, 0, 4, 0),
+            WotsParams(32, 560, 4, 0),
+            WotsParams(24, 0, 4, 0),
+            WotsParams(24, 431, 4, 0),
+            WotsParams(16, 0, 4, 0),
+            WotsParams(16, 300, 4, 0),
+            // Winternitz parameter and hash function around D6
+            WotsParams(24, 173, 2, 0),
+            WotsParams(24, 3216, 8, 0),
+            WotsParams(24, 431, 4, 1)
         ];
         for (uint256 t; t < sets.length; ++t) {
             WotsParams memory p = sets[t];
             WotsKey memory key = _key(p, "single", t, 4);
-            MiniAccount wa = new MiniAccount{value: 1 ether}(ep, new WinterlockValidator(p.n, p.targetSum), Ops.installData(key));
+            MiniAccount wa = new MiniAccount{value: 1 ether}(ep, new WinterlockValidator(Ops.params(p)), Ops.installData(key));
             string memory name = string.concat("Winterlock ", _setName(p));
             for (uint256 n; n < ROUNDS; ++n) {
-                PackedUserOperation memory op = Ops.build(address(wa), n, _callData(), 300_000);
+                PackedUserOperation memory op = Ops.build(address(wa), n, _callData(), 700_000);
                 op.signature = Ops.wotsSignature(key, 0, n * 2, ep.getUserOpHash(op));
                 _submit(op, name, MINI_ECDSA, n);
             }
@@ -109,11 +113,11 @@ contract GasBench is Script {
         // Kernel's ECDSAValidator, signed the way the ZeroDev SDK signs (personal_sign of the userOpHash)
         for (uint256 n; n < ROUNDS; ++n) _ecdsaOp(kEcdsa, _kernelCallData(), owner, n, KERNEL_ECDSA, "");
 
-        WotsParams[2] memory kSets = [WotsParams(24, 431), WotsParams(16, 300)];
+        WotsParams[2] memory kSets = [WotsParams(24, 431, 4, 0), WotsParams(16, 300, 4, 0)];
         for (uint256 t; t < kSets.length; ++t) {
             WotsParams memory p = kSets[t];
             WotsKey memory key = _key(p, "kernel", t, 4);
-            address kw = _kernel(address(new WinterlockValidator(p.n, p.targetSum)), Ops.installData(key));
+            address kw = _kernel(address(new WinterlockValidator(Ops.params(p))), Ops.installData(key));
             string memory name = string.concat("Kernel + Winterlock ", _setName(p));
             for (uint256 n; n < ROUNDS; ++n) {
                 PackedUserOperation memory op = Ops.build(kw, n, _kernelCallData(), 500_000);
@@ -134,8 +138,8 @@ contract GasBench is Script {
         address k2 = _kernel(address(tv), ecdsaInit);
         for (uint256 n; n < ROUNDS; ++n) _ecdsaOp(k2, _kernelCallData(), signers, n, KERNEL_ECDSA_2OF3, "");
 
-        WotsParams memory p = WotsParams(24, 431);
-        WinterlockValidator wv = new WinterlockValidator(p.n, p.targetSum);
+        WotsParams memory p = WotsParams(24, 431, 4, 0);
+        WinterlockValidator wv = new WinterlockValidator(Ops.params(p));
 
         // each account gets its own member trees (one tree per member, account and chain)
         WotsKey[] memory miniKeys = _team(p, "team mini");
@@ -151,7 +155,11 @@ contract GasBench is Script {
 
     function _setName(WotsParams memory p) internal view returns (string memory) {
         return string.concat(
-            vm.toString(p.n), "-byte ", p.targetSum == 0 ? "checksum" : string.concat("target ", vm.toString(p.targetSum))
+            vm.toString(p.n),
+            "-byte ",
+            p.targetSum == 0 ? "checksum" : string.concat("target ", vm.toString(p.targetSum)),
+            p.logW == 4 ? "" : string.concat(" w=", vm.toString(1 << p.logW)),
+            p.hashFn == 0 ? "" : " sha256"
         );
     }
 

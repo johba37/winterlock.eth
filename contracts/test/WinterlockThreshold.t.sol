@@ -24,7 +24,7 @@ contract WinterlockThresholdTest is Test {
     bytes internal constant AA24 = "AA24 signature error";
 
     function _p() internal pure returns (WotsParams memory) {
-        return WotsParams(24, 431);
+        return WotsParams(24, 431, 4, 0);
     }
 
     /// Member i's key tree for the team account (A = 0, B = 1, C = 2, ...)
@@ -43,7 +43,7 @@ contract WinterlockThresholdTest is Test {
 
     function setUp() public {
         ep = new EntryPoint();
-        val = new WinterlockValidator(24, 431);
+        val = new WinterlockValidator(Ops.params(_p()));
         team = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_members(3), 2));
     }
 

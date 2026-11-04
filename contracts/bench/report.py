@@ -38,6 +38,7 @@ def main(run_path, labels_path):
         groups.setdefault(label["name"], []).append(
             dict(nonce=label["nonce"], used=used, calldata=len(data), calldata_gas=calldata_gas,
                  execution=used - 21000 - calldata_gas, floor=21000 + 10 * (zeros + 4 * nonzeros),
+                 eip7976=max(used, 21000 + 64 * len(data)),
                  sig=label["sigBytes"])
         )
         bases[label["name"]] = label.get("base", "")
@@ -46,21 +47,25 @@ def main(run_path, labels_path):
     n = len(next(iter(steady.values())))
     print(f"Steady state: one ETH transfer per handleOps tx, average of {n} ops (nonce 1..{n}), EntryPoint v0.7\n")
     hdr = (f"{'account':46} {'tx gas':>8} {'min':>7} {'max':>7} {'sig B':>6} {'calldata B':>10} "
-           f"{'calldata gas':>12} {'execution':>9} {'7623 floor':>10}")
+           f"{'calldata gas':>12} {'execution':>9} {'7623 floor':>10} {'EIP-7976':>9}")
     print(hdr)
     print("-" * len(hdr))
     for name, rows in steady.items():
         print(f"{name:46} {avg(rows, 'used'):>8.0f} {min(r['used'] for r in rows):>7} "
               f"{max(r['used'] for r in rows):>7} {rows[0]['sig']:>6} {rows[0]['calldata']:>10} "
-              f"{avg(rows, 'calldata_gas'):>12.0f} {avg(rows, 'execution'):>9.0f} {rows[0]['floor']:>10}")
+              f"{avg(rows, 'calldata_gas'):>12.0f} {avg(rows, 'execution'):>9.0f} {rows[0]['floor']:>10} "
+              f"{avg(rows, 'eip7976'):>9.0f}")
 
     for base in dict.fromkeys(b for b in bases.values() if b):
         b = avg(steady[base], "used")
-        print(f"\nAgainst {base} ({b:.0f} gas):")
+        b76 = avg(steady[base], "eip7976")
+        print(f"\nAgainst {base} ({b:.0f} gas; with EIP-7976 {b76:.0f}):")
+        print(f"  {'':46} {'tx gas':>8} {'delta':>9} {'ratio':>6}   {'EIP-7976':>8} {'ratio':>6}")
         for name, rows in steady.items():
             if bases[name] == base:
                 used = avg(rows, "used")
-                print(f"  {name:46} {used:>8.0f} {used - b:>+9.0f} {used / b:>5.2f}x")
+                u76 = avg(rows, "eip7976")
+                print(f"  {name:46} {used:>8.0f} {used - b:>+9.0f} {used / b:>5.2f}x   {u76:>8.0f} {u76 / b76:>5.2f}x")
 
     print("\nFirst op on a fresh account (nonce 0: cold nonce slot and deposit), tx gas:")
     for name, rows in groups.items():

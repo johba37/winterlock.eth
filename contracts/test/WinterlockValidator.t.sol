@@ -29,7 +29,7 @@ abstract contract WinterlockValidatorTestBase is Test {
     function setUp() public {
         WotsParams memory p = _p();
         ep = new EntryPoint();
-        val = new WinterlockValidator(p.n, p.targetSum);
+        val = new WinterlockValidator(Ops.params(p));
         acct = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_key()));
     }
 
@@ -145,7 +145,7 @@ abstract contract WinterlockValidatorTestBase is Test {
 
         op = Ops.build(address(tiny), 1, abi.encodeCall(MiniAccount.execute, (recipient, 1, "")), 400_000);
         op.signature =
-            abi.encodePacked(uint8(0), uint8(0), new bytes(WotsVerifier.sigBytes(p.n, p.targetSum)), new bytes(p.n));
+            abi.encodePacked(uint8(0), uint8(0), new bytes(WotsVerifier.sigBytes(Ops.params(p))), new bytes(p.n));
         _expectFail(AA24);
         _send(op);
     }
@@ -153,36 +153,48 @@ abstract contract WinterlockValidatorTestBase is Test {
 
 contract WinterlockValidator_n32_checksum is WinterlockValidatorTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(32, 0);
+        return WotsParams(32, 0, 4, 0);
     }
 }
 
 contract WinterlockValidator_n32_target is WinterlockValidatorTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(32, 560);
+        return WotsParams(32, 560, 4, 0);
     }
 }
 
 contract WinterlockValidator_n24_checksum is WinterlockValidatorTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(24, 0);
+        return WotsParams(24, 0, 4, 0);
     }
 }
 
 contract WinterlockValidator_n24_target is WinterlockValidatorTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(24, 431);
+        return WotsParams(24, 431, 4, 0);
     }
 }
 
 contract WinterlockValidator_n16_checksum is WinterlockValidatorTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(16, 0);
+        return WotsParams(16, 0, 4, 0);
     }
 }
 
 contract WinterlockValidator_n16_target is WinterlockValidatorTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(16, 300);
+        return WotsParams(16, 300, 4, 0);
+    }
+}
+
+contract WinterlockValidator_n24_w4_target is WinterlockValidatorTestBase {
+    function _p() internal pure override returns (WotsParams memory) {
+        return WotsParams(24, 173, 2, 0);
+    }
+}
+
+contract WinterlockValidator_n24_sha256_target is WinterlockValidatorTestBase {
+    function _p() internal pure override returns (WotsParams memory) {
+        return WotsParams(24, 431, 4, 1);
     }
 }

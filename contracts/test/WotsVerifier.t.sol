@@ -3,7 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test, console} from "forge-std/Test.sol";
 import {VerifierHarness} from "./utils/Harness.sol";
-import {WotsParams, WotsSigner, WotsTree, WotsKey} from "./utils/WotsSigner.sol";
+import {WotsParams, WotsSigner, WotsTree, WotsKey, Ops} from "./utils/WotsSigner.sol";
 import {WotsVerifier} from "../src/WotsVerifier.sol";
 
 /// Runs once per parameter set (see the subclasses at the bottom).
@@ -23,13 +23,18 @@ abstract contract WotsVerifierTestBase is Test {
     function _name() internal pure returns (string memory) {
         WotsParams memory p = _p();
         return string.concat(
-            "n=", vm.toString(p.n), p.targetSum == 0 ? " checksum" : string.concat(" T=", vm.toString(p.targetSum))
+            "n=",
+            vm.toString(p.n),
+            " w=",
+            vm.toString(1 << p.logW),
+            p.hashFn == 0 ? " keccak" : " sha256",
+            p.targetSum == 0 ? " checksum" : string.concat(" T=", vm.toString(p.targetSum))
         );
     }
 
     function _root(uint256 keyIndex, bytes32 m, bytes memory sig, bytes memory path) internal view returns (bytes32) {
         WotsParams memory p = _p();
-        return v.computeRoot(p.n, p.targetSum, SEED, keyIndex, m, sig, path);
+        return v.computeRoot(Ops.params(p), SEED, keyIndex, m, sig, path);
     }
 
     function _fullTree() internal pure returns (WotsKey memory) {
@@ -68,7 +73,7 @@ abstract contract WotsVerifierTestBase is Test {
 
     function test_signatureLength() public pure {
         WotsParams memory p = _p();
-        assertEq(_sign(0, keccak256("m")).length, WotsVerifier.sigBytes(p.n, p.targetSum));
+        assertEq(_sign(0, keccak256("m")).length, WotsVerifier.sigBytes(Ops.params(p)));
     }
 
     function test_everyKeyInTreeVerifies() public view {
@@ -113,7 +118,7 @@ abstract contract WotsVerifierTestBase is Test {
         WotsKey memory key = _fullTree();
         bytes32 m = keccak256("m");
         bytes memory sig = _sign(5, m);
-        assertTrue(v.computeRoot(p.n, p.targetSum, SEED + 1, 5, m, sig, WotsTree.path(key, 5)) != key.root);
+        assertTrue(v.computeRoot(Ops.params(p), SEED + 1, 5, m, sig, WotsTree.path(key, 5)) != key.root);
     }
 
     /// forge-config: default.fuzz.runs = 64
@@ -145,10 +150,9 @@ abstract contract WotsVerifierTestBase is Test {
         (uint256[] memory a, bytes32 r) = WotsSigner.encode(p, SEED, SK, 1, m);
         bytes memory sig = WotsSigner.signDigits(p, SEED, SK, 1, a, r);
         uint256 i;
-        while (a[i] == 15) ++i;
+        while (a[i] == WotsSigner.wm1(p)) ++i;
         uint256 off = p.n * (i + 1);
-        bytes32 x = _getElem(sig, off);
-        x = WotsSigner.trunc(p, keccak256(abi.encodePacked(WotsSigner.tweak(SEED, 0, 1, i, a[i]), x)));
+        bytes32 x = WotsSigner.chain(p, SEED, 1, i, _getElem(sig, off), a[i], a[i] + 1);
         _setElem(sig, off, x);
         assertTrue(_root(1, m, sig, WotsTree.path(key, 1)) != key.root);
     }
@@ -174,11 +178,11 @@ abstract contract WotsVerifierTestBase is Test {
 
     function test_revertsOnMalformedLengths() public {
         WotsParams memory p = _p();
-        uint256 len = WotsVerifier.sigBytes(p.n, p.targetSum);
+        uint256 len = WotsVerifier.sigBytes(Ops.params(p));
         vm.expectRevert(WotsVerifier.BadSignatureLength.selector);
-        v.computeRoot(p.n, p.targetSum, SEED, 0, bytes32(0), new bytes(len - 1), "");
+        v.computeRoot(Ops.params(p), SEED, 0, bytes32(0), new bytes(len - 1), "");
         vm.expectRevert(WotsVerifier.BadPathLength.selector);
-        v.computeRoot(p.n, p.targetSum, SEED, 0, bytes32(0), new bytes(len), new bytes(p.n + 1));
+        v.computeRoot(Ops.params(p), SEED, 0, bytes32(0), new bytes(len), new bytes(p.n + 1));
     }
 
     /// Gas of the verifier library alone (no call overhead, no calldata), height 20, 16 random messages.
@@ -191,7 +195,7 @@ abstract contract WotsVerifierTestBase is Test {
         uint256 hi;
         for (uint256 r; r < 16; ++r) {
             bytes32 m = keccak256(abi.encode("bench", r));
-            (bytes32 root, uint256 g) = v.computeRootGas(p.n, p.targetSum, SEED, 0, m, _sign(0, m), path);
+            (bytes32 root, uint256 g) = v.computeRootGas(Ops.params(p), SEED, 0, m, _sign(0, m), path);
             require(root == key.root, "bench signature invalid");
             total += g;
             if (g < lo) lo = g;
@@ -200,7 +204,7 @@ abstract contract WotsVerifierTestBase is Test {
         console.log(
             string.concat(
                 "verifier gas, h=20, ", _name(), ": avg ", vm.toString(total / 16), " (min ", vm.toString(lo),
-                ", max ", vm.toString(hi), "), sig ", vm.toString(WotsVerifier.sigBytes(p.n, p.targetSum)), " B"
+                ", max ", vm.toString(hi), "), sig ", vm.toString(WotsVerifier.sigBytes(Ops.params(p))), " B"
             )
         );
     }
@@ -208,36 +212,74 @@ abstract contract WotsVerifierTestBase is Test {
 
 contract WotsVerifier_n32_checksum is WotsVerifierTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(32, 0);
+        return WotsParams(32, 0, 4, 0);
     }
 }
 
 contract WotsVerifier_n32_target is WotsVerifierTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(32, 560);
+        return WotsParams(32, 560, 4, 0);
     }
 }
 
 contract WotsVerifier_n24_checksum is WotsVerifierTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(24, 0);
+        return WotsParams(24, 0, 4, 0);
     }
 }
 
 contract WotsVerifier_n24_target is WotsVerifierTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(24, 431);
+        return WotsParams(24, 431, 4, 0);
     }
 }
 
 contract WotsVerifier_n16_checksum is WotsVerifierTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(16, 0);
+        return WotsParams(16, 0, 4, 0);
     }
 }
 
 contract WotsVerifier_n16_target is WotsVerifierTestBase {
     function _p() internal pure override returns (WotsParams memory) {
-        return WotsParams(16, 300);
+        return WotsParams(16, 300, 4, 0);
+    }
+}
+
+// --- Winternitz parameter and hash function (n = 24) ---
+
+contract WotsVerifier_n24_w4_checksum is WotsVerifierTestBase {
+    function _p() internal pure override returns (WotsParams memory) {
+        return WotsParams(24, 0, 2, 0);
+    }
+}
+
+contract WotsVerifier_n24_w4_target is WotsVerifierTestBase {
+    function _p() internal pure override returns (WotsParams memory) {
+        return WotsParams(24, 173, 2, 0);
+    }
+}
+
+contract WotsVerifier_n24_w256_checksum is WotsVerifierTestBase {
+    function _p() internal pure override returns (WotsParams memory) {
+        return WotsParams(24, 0, 8, 0);
+    }
+}
+
+contract WotsVerifier_n24_w256_target is WotsVerifierTestBase {
+    function _p() internal pure override returns (WotsParams memory) {
+        return WotsParams(24, 3216, 8, 0);
+    }
+}
+
+contract WotsVerifier_n24_sha256_checksum is WotsVerifierTestBase {
+    function _p() internal pure override returns (WotsParams memory) {
+        return WotsParams(24, 0, 4, 1);
+    }
+}
+
+contract WotsVerifier_n24_sha256_target is WotsVerifierTestBase {
+    function _p() internal pure override returns (WotsParams memory) {
+        return WotsParams(24, 431, 4, 1);
     }
 }
