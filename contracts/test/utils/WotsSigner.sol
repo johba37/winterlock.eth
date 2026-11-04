@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
+import {WinterlockValidator} from "../../src/WinterlockValidator.sol";
 
 /// @notice A parameter set: hash size n (bytes) and targetSum (0 = checksum encoding).
 struct WotsParams {
@@ -242,16 +243,47 @@ library Ops {
         op.gasFees = bytes32((MAX_PRIORITY_FEE << 128) | MAX_FEE);
     }
 
-    /// [slot][WOTS signature][path] for the key at keyIndex
-    function wotsSignature(WotsKey memory key, uint256 slot, uint256 keyIndex, bytes32 userOpHash)
+    /// One member's entry: [member index][slot][WOTS signature][path] for the key at keyIndex
+    function memberSignature(WotsKey memory key, uint256 memberIndex, uint256 slot, uint256 keyIndex, bytes32 userOpHash)
         internal
         pure
         returns (bytes memory)
     {
         return abi.encodePacked(
+            uint8(memberIndex),
             uint8(slot),
             WotsSigner.sign(key.p, key.seed, key.skSeed, keyIndex, userOpHash),
             WotsTree.path(key, keyIndex)
         );
+    }
+
+    /// Signature of a 1-of-1 account (member 0)
+    function wotsSignature(WotsKey memory key, uint256 slot, uint256 keyIndex, bytes32 userOpHash)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return memberSignature(key, 0, slot, keyIndex, userOpHash);
+    }
+
+    function asMember(WotsKey memory key) internal pure returns (WinterlockValidator.Member memory) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return WinterlockValidator.Member(key.root, key.seed, uint8(key.height));
+    }
+
+    /// Install data for a 1-of-1 account on nonce lane 0
+    function installData(WotsKey memory key) internal pure returns (bytes memory) {
+        WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](1);
+        members[0] = asMember(key);
+        return abi.encode(uint192(0), uint8(1), members);
+    }
+
+    /// Install data for a threshold account on nonce lane 0
+    function installData(WotsKey[] memory keys, uint8 threshold) internal pure returns (bytes memory) {
+        WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](keys.length);
+        for (uint256 i; i < keys.length; ++i) {
+            members[i] = asMember(keys[i]);
+        }
+        return abi.encode(uint192(0), threshold, members);
     }
 }

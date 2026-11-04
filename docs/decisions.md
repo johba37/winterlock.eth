@@ -26,9 +26,16 @@ Winterlock runs a bundler that includes Winterlock operations even when the base
 **D6. Default parameter set: 24-byte hashes with target sum 431** (2026-11-04)
 `WinterlockValidator(24, 431)`: keccak truncated to 24 bytes (category 3, by analogy to SLH-DSA-192), 48 message chains whose digits must add up to 431, no checksum chains. That is 1.85× an ECDSA transfer, a 1,176-byte signature, and the same gas for every signature. The signer needs about 945 digest tries per signature. It's chosen over 16-byte hashes (1.53×, category 1) for security margin, since this audience picks hash-based signatures for safety. The other parameter sets stay in the code and the benchmark for comparison.
 
+**D7. Threshold mode in the validator** (2026-11-04)
+Each account configures 1 to 16 members and a threshold. Every member has their own key tree. A private wallet is simply the 1-of-1 case.
+- **Signature format.** One entry per signing member: `[member index][slot][WOTS signature][path]`. Entries come in strictly increasing member order, which proves the signers are distinct. The signature is valid when at least `threshold` entries verify and no bytes are left over.
+- **Slots per member.** Each member picks their own slot, so D4 applies per person.
+- **Storage.** Members are stored in a fixed-size array inside the account's mapping entry, so validation only reads storage associated with the account (ERC-7562). A dynamic array would fall outside it, and bundlers would reject the operations.
+- **No duplicate trees.** Installing the same tree twice is refused, so one tree can't vote twice.
+
 ## Constraints that every design must respect
 
-- **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages.
+- **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all.
 - **One nonce lane per validator.** EntryPoint nonces are a 192-bit key plus a 64-bit sequence. The validator only accepts its configured key. If it accepted more than one, sequence numbers would repeat across lanes.
 - **No ECDSA path left over.** An account is only as strong as its weakest way in: other validators, executors, fallback handlers, hooks, owners.
 
@@ -88,6 +95,20 @@ Kernel is deployed from its own production build (profile `deploy`: via-IR, 200 
 
 Kernel itself costs about 40k more per operation than the minimal test account; for one thing, it writes an execution-hook slot on every operation. The absolute premium is about the same on both accounts, so the relative premium for smart-account users is smaller than the minimal-account figures suggest.
 
+**2026-11-04: threshold mode** (parameter set D6, average of 5 steady-state transfers)
+
+Two members sign every operation. The ECDSA baseline is a k-of-n validator of the same shape: signatures sorted by signer, owners stored per account.
+
+| Account | Winterlock | ECDSA | Ratio |
+|---|---|---|---|
+| Minimal account, 1-of-1 | 178.0k | 95.5k | 1.86× |
+| Minimal account, 2-of-3 | 265.1k | 106.5k | 2.49× |
+| Kernel v3.3, 1-of-1 | 215.2k | 135.3k | 1.59× |
+| Kernel v3.3, 2-of-3 | 303.1k | 143.2k | 2.12× |
+
+- **Each extra WOTS signature costs about 87k gas:** about 26k for its 1.66 KB of calldata, about 54k to verify it, and about 4k to read the member's settings. An extra ECDSA signature costs 8–11k, so the multisig premium grows faster than the single-signer one.
+- **Threshold support costs a 1-of-1 account about 1.3k** compared with the earlier single-key validator: one more byte and the member loop.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7 tests.
@@ -97,6 +118,7 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 - **Replayable signatures.** If a signature starts with Kernel's magic value, Kernel hands the validator a hash without the chain ID, so one signature is valid on every chain. That conflicts with keeping key trees separate per chain (open question).
 - **ERC-1271 is refused.** That also disables Kernel's "enable mode", where a validator is installed inside a UserOperation on the strength of a root ERC-1271 signature. New modules can only arrive through an ordinary Winterlock-signed operation calling `installModule`.
 - **Each installed module is a second way in.** A Winterlock-signed operation can install an ECDSA validator, and from then on that ECDSA key can move funds on its own nonce lane (tested). The signer and the wallet have to show module installs clearly and require explicit confirmation.
+- **Threshold accounts work on Kernel.** A 2-of-3 team account is deployed by its first operation, signed by two members. One member alone is refused (tested).
 - **Kernel's EIP-7702 mode.** Validation type 0x00 falls back to ECDSA over the account's own address. That is only reachable for EIP-7702-delegated EOAs, not for accounts deployed as contracts.
 
 ## Open questions
@@ -109,6 +131,7 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 - How to keep one address on every chain while using different keys on each. One option: a single root over per-chain subtrees, with the validator checking that the subtree matches `block.chainid`.
 - What happens when a tree runs out of keys: how to rotate to a new root, and what signs the rotation.
 - A recovery key: SPHINCS+, a cold WOTS tree, or none.
+- Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum, and how members exchange UserOperations and their signature entries (a collection service, like Safe's transaction service).
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): support them with dedicated key slots, or refuse them.
 - 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579; whether to refuse or support Kernel's replayable signatures; and the signer's confirmation flow for installing modules.
 

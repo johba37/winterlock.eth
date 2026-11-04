@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
-"""Turn a forge broadcast of script/GasBench.s.sol into a gas table.
+"""Turn a forge broadcast of script/GasBench.s.sol into gas tables.
 
 usage: report.py <run-latest.json> <labels.json>
 """
 import json
 import sys
-from collections import defaultdict
 
 
 def as_int(v):
     return int(v, 16) if isinstance(v, str) else int(v)
+
+
+def avg(rows, key):
+    return sum(r[key] for r in rows) / len(rows)
 
 
 def main(run_path, labels_path):
@@ -19,7 +22,7 @@ def main(run_path, labels_path):
     txs = [t for t in run["transactions"] if (t.get("function") or "").startswith("handleOps")]
     assert len(txs) == len(labels), f"{len(txs)} handleOps txs but {len(labels)} labels"
 
-    groups = defaultdict(list)
+    groups, bases = {}, {}
     for tx, label in zip(txs, labels):
         r = receipts[tx["hash"]]
         assert as_int(r["status"]) == 1, f"reverted: {label}"
@@ -31,49 +34,37 @@ def main(run_path, labels_path):
         zeros = data.count(0)
         nonzeros = len(data) - zeros
         calldata_gas = 4 * zeros + 16 * nonzeros
-        floor = 21000 + 10 * (zeros + 4 * nonzeros)  # EIP-7623
         used = as_int(r["gasUsed"])
-        groups[label["name"]].append(
+        groups.setdefault(label["name"], []).append(
             dict(nonce=label["nonce"], used=used, calldata=len(data), calldata_gas=calldata_gas,
-                 execution=used - 21000 - calldata_gas, floor=floor, sig=label["sigBytes"])
+                 execution=used - 21000 - calldata_gas, floor=21000 + 10 * (zeros + 4 * nonzeros),
+                 sig=label["sigBytes"])
         )
-
-    baseline = "MiniAccount + ECDSA validator"
-    kernel_baseline = "Kernel + ECDSA validator"
-
-    def avg(rows, key):
-        return sum(r[key] for r in rows) / len(rows)
+        bases[label["name"]] = label.get("base", "")
 
     steady = {name: rows[1:] for name, rows in groups.items()}
-    base = avg(steady[baseline], "used")
     n = len(next(iter(steady.values())))
-
     print(f"Steady state: one ETH transfer per handleOps tx, average of {n} ops (nonce 1..{n}), EntryPoint v0.7\n")
-    hdr = (f"{'account':32} {'tx gas':>8} {'min':>7} {'max':>7} {'vs ECDSA':>9} {'x':>5} {'sig B':>6} "
-           f"{'calldata B':>10} {'calldata gas':>12} {'execution':>9} {'7623 floor':>10}")
+    hdr = (f"{'account':46} {'tx gas':>8} {'min':>7} {'max':>7} {'sig B':>6} {'calldata B':>10} "
+           f"{'calldata gas':>12} {'execution':>9} {'7623 floor':>10}")
     print(hdr)
     print("-" * len(hdr))
     for name, rows in steady.items():
-        used = avg(rows, "used")
-        print(f"{name:32} {used:>8.0f} {min(r['used'] for r in rows):>7} {max(r['used'] for r in rows):>7} "
-              f"{used - base:>+9.0f} {used / base:>5.2f} {rows[0]['sig']:>6} {rows[0]['calldata']:>10} {avg(rows, 'calldata_gas'):>12.0f} "
-              f"{avg(rows, 'execution'):>9.0f} {rows[0]['floor']:>10}")
+        print(f"{name:46} {avg(rows, 'used'):>8.0f} {min(r['used'] for r in rows):>7} "
+              f"{max(r['used'] for r in rows):>7} {rows[0]['sig']:>6} {rows[0]['calldata']:>10} "
+              f"{avg(rows, 'calldata_gas'):>12.0f} {avg(rows, 'execution'):>9.0f} {rows[0]['floor']:>10}")
 
-    if kernel_baseline in steady:
-        kb = avg(steady[kernel_baseline], "used")
-        print(f"\nKernel v3.3 rows against Kernel + ECDSA ({kb:.0f} gas):")
+    for base in dict.fromkeys(b for b in bases.values() if b):
+        b = avg(steady[base], "used")
+        print(f"\nAgainst {base} ({b:.0f} gas):")
         for name, rows in steady.items():
-            if name.startswith("Kernel"):
+            if bases[name] == base:
                 used = avg(rows, "used")
-                print(f"  {name:40} {used:>8.0f} {used - kb:>+9.0f} {used / kb:>5.2f}x")
+                print(f"  {name:46} {used:>8.0f} {used - b:>+9.0f} {used / b:>5.2f}x")
 
     print("\nFirst op on a fresh account (nonce 0: cold nonce slot and deposit), tx gas:")
     for name, rows in groups.items():
-        print(f"  {name:34} {rows[0]['used']:>8}")
-
-    print("\nEvery op:")
-    for name, rows in groups.items():
-        print(f"  {name:34} " + "  ".join(f"n{r['nonce']}={r['used']}" for r in rows))
+        print(f"  {name:46} {rows[0]['used']:>8}")
 
 
 if __name__ == "__main__":

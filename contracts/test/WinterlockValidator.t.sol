@@ -30,7 +30,7 @@ abstract contract WinterlockValidatorTestBase is Test {
         WotsParams memory p = _p();
         ep = new EntryPoint();
         val = new WinterlockValidator(p.n, p.targetSum);
-        acct = new MiniAccount{value: 10 ether}(ep, val, abi.encode(_key().root, SEED, uint8(H), uint192(0)));
+        acct = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_key()));
     }
 
     function _key() internal pure returns (WotsKey memory) {
@@ -62,7 +62,10 @@ abstract contract WinterlockValidatorTestBase is Test {
         WotsParams memory p = _p();
         assertTrue(val.isInitialized(address(acct)));
         assertTrue(val.isModuleType(1));
-        assertEq(val.config(address(acct)).height, H);
+        assertEq(val.member(address(acct), 0).height, H);
+        (, uint8 threshold, uint8 count) = val.settings(address(acct));
+        assertEq(threshold, 1);
+        assertEq(count, 1);
         assertEq(val.N(), p.n);
         assertEq(val.TARGET_SUM(), p.targetSum);
     }
@@ -85,14 +88,15 @@ abstract contract WinterlockValidatorTestBase is Test {
         PackedUserOperation memory op = _op(0, 1 ether);
         WotsKey memory key = _key();
         bytes32 h = ep.getUserOpHash(op);
-        op.signature = abi.encodePacked(uint8(0), WotsSigner.sign(_p(), SEED, SK, 2, h), WotsTree.path(key, 2));
+        op.signature =
+            abi.encodePacked(uint8(0), uint8(0), WotsSigner.sign(_p(), SEED, SK, 2, h), WotsTree.path(key, 2));
         _expectFail(AA24);
         _send(op);
     }
 
     function test_rejectsSlotOutOfRange() public {
         PackedUserOperation memory op = _signed(0, 1, 1 ether);
-        op.signature[0] = bytes1(uint8(2));
+        op.signature[1] = bytes1(uint8(2)); // [member][slot]...
         _expectFail(AA24);
         _send(op);
     }
@@ -133,14 +137,15 @@ abstract contract WinterlockValidatorTestBase is Test {
         WotsParams memory p = _p();
         // height 1: two keys, i.e. exactly one nonce
         WotsKey memory small = WotsTree.create(p, SEED, SK, 1, 1);
-        MiniAccount tiny = new MiniAccount{value: 1 ether}(ep, val, abi.encode(small.root, SEED, uint8(1), uint192(0)));
+        MiniAccount tiny = new MiniAccount{value: 1 ether}(ep, val, Ops.installData(small));
         PackedUserOperation memory op =
             Ops.build(address(tiny), 0, abi.encodeCall(MiniAccount.execute, (recipient, 1, "")), 400_000);
         op.signature = Ops.wotsSignature(small, 0, 0, ep.getUserOpHash(op));
         _send(op);
 
         op = Ops.build(address(tiny), 1, abi.encodeCall(MiniAccount.execute, (recipient, 1, "")), 400_000);
-        op.signature = abi.encodePacked(uint8(0), new bytes(WotsVerifier.sigBytes(p.n, p.targetSum)), new bytes(p.n));
+        op.signature =
+            abi.encodePacked(uint8(0), uint8(0), new bytes(WotsVerifier.sigBytes(p.n, p.targetSum)), new bytes(p.n));
         _expectFail(AA24);
         _send(op);
     }

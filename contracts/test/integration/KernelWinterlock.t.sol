@@ -68,7 +68,7 @@ contract KernelWinterlockTest is Test {
     function _initData() internal view returns (bytes memory) {
         return abi.encodeCall(
             Kernel.initialize,
-            (_rootId(), IHook(address(0)), abi.encode(_key().root, SEED, uint8(H), uint192(0)), hex"", new bytes[](0))
+            (_rootId(), IHook(address(0)), Ops.installData(_key()), hex"", new bytes[](0))
         );
     }
 
@@ -201,5 +201,46 @@ contract KernelWinterlockTest is Test {
         _ecdsaSign(steal);
         _send(steal);
         assertEq(recipient.balance, 6 ether);
+    }
+
+    // --- threshold mode on Kernel ---
+
+    function _teamKey(uint256 i) internal pure returns (WotsKey memory) {
+        return WotsTree.create(
+            _p(), uint128(uint256(keccak256(abi.encode("kernel team seed", i)))), keccak256(abi.encode("kernel team sk", i)), H, 2
+        );
+    }
+
+    /// A 2-of-3 team account on Kernel: deployed and used by two members, never by one alone.
+    function test_teamAccountTwoOfThree() public {
+        WotsKey[] memory keys = new WotsKey[](3);
+        for (uint256 i; i < 3; ++i) {
+            keys[i] = _teamKey(i);
+        }
+        bytes memory init = abi.encodeCall(
+            Kernel.initialize, (_rootId(), IHook(address(0)), Ops.installData(keys, 2), hex"", new bytes[](0))
+        );
+        address account = factory.getAddress(init, bytes32(0));
+        vm.deal(account, 10 ether);
+
+        // nonce 0: deploy and transfer, signed by A and C
+        PackedUserOperation memory op = Ops.build(account, 0, _transfer(1 ether), 1_500_000);
+        op.initCode = abi.encodePacked(address(factory), abi.encodeCall(KernelFactory.createAccount, (init, bytes32(0))));
+        bytes32 h = ep.getUserOpHash(op);
+        op.signature = bytes.concat(Ops.memberSignature(keys[0], 0, 0, 0, h), Ops.memberSignature(keys[2], 2, 0, 0, h));
+        _send(op);
+        assertEq(recipient.balance, 1 ether);
+
+        // nonce 1: B alone is not enough
+        op = Ops.build(account, 1, _transfer(1 ether), 1_500_000);
+        h = ep.getUserOpHash(op);
+        op.signature = Ops.memberSignature(keys[1], 1, 0, 2, h);
+        _expectFail(AA24);
+        _send(op);
+
+        // nonce 1: B and C together are
+        op.signature = bytes.concat(Ops.memberSignature(keys[1], 1, 0, 2, h), Ops.memberSignature(keys[2], 2, 0, 2, h));
+        _send(op);
+        assertEq(recipient.balance, 2 ether);
     }
 }

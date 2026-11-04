@@ -107,3 +107,66 @@ contract VerifierHarness {
         gasUsed -= gasleft();
     }
 }
+
+/// @notice Baseline for multisig: k-of-n ECDSA owners, signatures sorted by signer address
+///         (the same shape as Safe's or Rhinestone's OwnableValidator checks).
+contract EcdsaThresholdValidator is IValidator {
+    struct Config {
+        uint8 threshold;
+        uint8 count;
+        address[16] owners;
+    }
+
+    mapping(address => Config) internal _config;
+
+    /// @param data abi.encode(uint8 threshold, address[] owners)
+    function onInstall(bytes calldata data) external {
+        (uint8 threshold, address[] memory owners) = abi.decode(data, (uint8, address[]));
+        Config storage c = _config[msg.sender];
+        c.threshold = threshold;
+        c.count = uint8(owners.length);
+        for (uint256 i; i < owners.length; ++i) {
+            c.owners[i] = owners[i];
+        }
+    }
+
+    function onUninstall(bytes calldata) external {
+        delete _config[msg.sender];
+    }
+
+    function isModuleType(uint256 t) external pure returns (bool) {
+        return t == MODULE_TYPE_VALIDATOR;
+    }
+
+    function isInitialized(address a) external view returns (bool) {
+        return _config[a].count != 0;
+    }
+
+    function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash) external view returns (uint256) {
+        Config storage c = _config[msg.sender];
+        bytes calldata s = userOp.signature;
+        if (s.length % 65 != 0) return 1;
+        bytes32 h = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", userOpHash));
+        address last;
+        uint256 valid;
+        for (uint256 off; off < s.length; off += 65) {
+            address rec = ecrecover(h, uint8(s[off + 64]), bytes32(s[off:off + 32]), bytes32(s[off + 32:off + 64]));
+            if (rec <= last || !_isOwner(c, rec)) return 1; // sorted, distinct, owner
+            last = rec;
+            ++valid;
+        }
+        return valid >= c.threshold ? 0 : 1;
+    }
+
+    function _isOwner(Config storage c, address a) internal view returns (bool) {
+        uint256 count = c.count;
+        for (uint256 i; i < count; ++i) {
+            if (c.owners[i] == a) return true;
+        }
+        return false;
+    }
+
+    function isValidSignatureWithSender(address, bytes32, bytes calldata) external pure returns (bytes4) {
+        return 0xffffffff;
+    }
+}
