@@ -10,6 +10,17 @@ The page is a single static `index.html` with two self-hosted fonts. It makes no
 |---|---|
 | `index.html` | The whole page: markup, styles and the demo script |
 | `fonts/` | Atkinson Hyperlegible Next and Mono (variable, Latin subset) with their SIL Open Font License texts |
+| `docs/decisions.md` | Design decisions, gas measurements and open questions |
+| `contracts/` | Research prototype: WOTS verifier, ERC-7579 validator, tests and gas benchmark (unaudited, not for real funds) |
+
+## Contracts
+
+```sh
+git submodule update --init --recursive
+cd contracts
+forge test          # correctness tests, plus verifier-only gas
+./bench.sh          # local anvil, real handleOps txs, gas table from receipts
+```
 
 ## Preview locally
 
@@ -22,7 +33,7 @@ python3 -m http.server 8000
 
 1. **Pin the folder to IPFS.** Upload this folder (with `index.html` and `fonts/`) to a pinning service such as Fleek, Pinata, Filebase or 4EVERLAND, or with a local node:
    ```sh
-   ipfs add -r --cid-version 1 --ignore .git --ignore README.md .
+   ipfs add -r --cid-version 1 --ignore .git --ignore .gitmodules --ignore README.md --ignore contracts --ignore docs .
    ```
    Note the CID of the folder (it starts with `bafy…`). Pinning with two services keeps the page up if one of them drops it.
 2. **Point the name at it.** On [app.ens.domains](https://app.ens.domains), open `winterlock.eth` → Profile → Edit profile → Other → Content Hash, enter `ipfs://<CID>` and sign with the Manager wallet. This needs a little mainnet ETH for gas.
