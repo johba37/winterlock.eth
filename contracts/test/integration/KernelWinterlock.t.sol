@@ -16,7 +16,7 @@ import {ExecLib} from "kernel/utils/ExecLib.sol";
 import {ValidationId, ExecMode} from "kernel/types/Types.sol";
 
 import {WinterlockValidator} from "../../src/WinterlockValidator.sol";
-import {WotsParams, WotsKey, WotsTree, Ops} from "../utils/WotsSigner.sol";
+import {WotsParams, WotsKey, MemberKeys, Ops} from "../utils/WotsSigner.sol";
 
 /// Winterlock as the root validator of a ZeroDev Kernel v3.3 account, through EntryPoint v0.7.
 /// Parameter set D6: 24-byte hashes, target sum 431.
@@ -33,8 +33,6 @@ contract KernelWinterlockTest is Test {
     address internal recipient = makeAddr("recipient");
     uint256 internal constant OWNER_PK = 0xA11CE;
 
-    uint128 internal constant SEED = 0x5eed0000000000000000000000000003;
-    bytes32 internal constant SK = keccak256("winterlock.test.kernel");
     uint256 internal constant H = 4;
 
     bytes internal constant AA24 = "AA24 signature error";
@@ -57,8 +55,8 @@ contract KernelWinterlockTest is Test {
 
     // --- helpers ---
 
-    function _key() internal pure returns (WotsKey memory) {
-        return WotsTree.create(_p(), SEED, SK, H, H);
+    function _keys() internal pure returns (MemberKeys memory) {
+        return Ops.keys(_p(), "winterlock.test.kernel", H, H);
     }
 
     function _rootId() internal view returns (ValidationId) {
@@ -67,8 +65,7 @@ contract KernelWinterlockTest is Test {
 
     function _initData() internal view returns (bytes memory) {
         return abi.encodeCall(
-            Kernel.initialize,
-            (_rootId(), IHook(address(0)), Ops.installData(_key()), hex"", new bytes[](0))
+            Kernel.initialize, (_rootId(), IHook(address(0)), Ops.installData(_keys().master), hex"", new bytes[](0))
         );
     }
 
@@ -81,12 +78,12 @@ contract KernelWinterlockTest is Test {
     }
 
     function _wotsSign(PackedUserOperation memory op, uint256 slot) internal view {
-        uint256 keyIndex = uint256(uint64(op.nonce)) * 2 + slot;
-        op.signature = Ops.wotsSignature(_key(), slot, keyIndex, ep.getUserOpHash(op));
+        op.signature = Ops.wotsSignature(val, _keys(), slot, op, ep.getUserOpHash(op));
     }
 
     function _ecdsaSign(PackedUserOperation memory op) internal view {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OWNER_PK, MessageHashUtils.toEthSignedMessageHash(ep.getUserOpHash(op)));
+        (uint8 v, bytes32 r, bytes32 s) =
+            vm.sign(OWNER_PK, MessageHashUtils.toEthSignedMessageHash(ep.getUserOpHash(op)));
         op.signature = abi.encodePacked(r, s, v);
     }
 
@@ -106,7 +103,8 @@ contract KernelWinterlockTest is Test {
         account = _account();
         vm.deal(account, 10 ether);
         PackedUserOperation memory op = Ops.build(account, 0, _transfer(1 ether), 1_000_000);
-        op.initCode = abi.encodePacked(address(factory), abi.encodeCall(KernelFactory.createAccount, (_initData(), bytes32(0))));
+        op.initCode =
+            abi.encodePacked(address(factory), abi.encodeCall(KernelFactory.createAccount, (_initData(), bytes32(0))));
         _wotsSign(op, 0);
         _send(op);
     }
@@ -154,7 +152,7 @@ contract KernelWinterlockTest is Test {
         address account = _deploy();
         uint256 nonce = (uint256(1) << 64) | ep.getNonce(account, 1);
         PackedUserOperation memory op = Ops.build(account, nonce, _transfer(1 ether), 400_000);
-        op.signature = Ops.wotsSignature(_key(), 0, 0, ep.getUserOpHash(op));
+        op.signature = Ops.wotsSignature(val, _keys(), 0, op, ep.getUserOpHash(op));
         _expectFail(AA24);
         _send(op);
     }
@@ -177,7 +175,8 @@ contract KernelWinterlockTest is Test {
                 1,
                 address(ecdsa),
                 abi.encodePacked(
-                    address(0), abi.encode(abi.encodePacked(vm.addr(OWNER_PK)), hex"", abi.encodePacked(Kernel.execute.selector))
+                    address(0),
+                    abi.encode(abi.encodePacked(vm.addr(OWNER_PK)), hex"", abi.encodePacked(Kernel.execute.selector))
                 )
             )
         );
@@ -205,41 +204,47 @@ contract KernelWinterlockTest is Test {
 
     // --- threshold mode on Kernel ---
 
-    function _teamKey(uint256 i) internal pure returns (WotsKey memory) {
-        return WotsTree.create(
-            _p(), uint128(uint256(keccak256(abi.encode("kernel team seed", i)))), keccak256(abi.encode("kernel team sk", i)), H, 2
-        );
+    function _teamKey(uint256 i) internal pure returns (MemberKeys memory) {
+        return Ops.keys(_p(), string(abi.encode("kernel team", i)), H, 2);
     }
 
     /// A 2-of-3 team account on Kernel: deployed and used by two members, never by one alone.
     function test_teamAccountTwoOfThree() public {
-        WotsKey[] memory keys = new WotsKey[](3);
+        MemberKeys[] memory keys = new MemberKeys[](3);
         for (uint256 i; i < 3; ++i) {
             keys[i] = _teamKey(i);
         }
         bytes memory init = abi.encodeCall(
-            Kernel.initialize, (_rootId(), IHook(address(0)), Ops.installData(keys, 2), hex"", new bytes[](0))
+            Kernel.initialize,
+            (_rootId(), IHook(address(0)), Ops.installData(Ops.masters(keys), 2), hex"", new bytes[](0))
         );
         address account = factory.getAddress(init, bytes32(0));
         vm.deal(account, 10 ether);
 
         // nonce 0: deploy and transfer, signed by A and C
         PackedUserOperation memory op = Ops.build(account, 0, _transfer(1 ether), 1_500_000);
-        op.initCode = abi.encodePacked(address(factory), abi.encodeCall(KernelFactory.createAccount, (init, bytes32(0))));
+        op.initCode =
+            abi.encodePacked(address(factory), abi.encodeCall(KernelFactory.createAccount, (init, bytes32(0))));
         bytes32 h = ep.getUserOpHash(op);
-        op.signature = bytes.concat(Ops.memberSignature(keys[0], 0, 0, 0, h), Ops.memberSignature(keys[2], 2, 0, 0, h));
+        op.signature = bytes.concat(
+            Ops.memberSignature(val, account, keys[0], 0, 0, 0, h),
+            Ops.memberSignature(val, account, keys[2], 2, 0, 0, h)
+        );
         _send(op);
         assertEq(recipient.balance, 1 ether);
 
         // nonce 1: B alone is not enough
         op = Ops.build(account, 1, _transfer(1 ether), 1_500_000);
         h = ep.getUserOpHash(op);
-        op.signature = Ops.memberSignature(keys[1], 1, 0, 2, h);
+        op.signature = Ops.memberSignature(val, account, keys[1], 1, 0, 1, h);
         _expectFail(AA24);
         _send(op);
 
         // nonce 1: B and C together are
-        op.signature = bytes.concat(Ops.memberSignature(keys[1], 1, 0, 2, h), Ops.memberSignature(keys[2], 2, 0, 2, h));
+        op.signature = bytes.concat(
+            Ops.memberSignature(val, account, keys[1], 1, 0, 1, h),
+            Ops.memberSignature(val, account, keys[2], 2, 0, 1, h)
+        );
         _send(op);
         assertEq(recipient.balance, 2 ether);
     }

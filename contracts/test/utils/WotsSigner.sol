@@ -251,6 +251,15 @@ library WotsTree {
     }
 }
 
+/// D10 keys of one member: a master tree (in the install data, the same on every chain) and an operation tree
+/// for one chain, certified by master key `masterIndex` for sequence numbers from `start` on.
+struct MemberKeys {
+    WotsKey master;
+    WotsKey ops;
+    uint256 masterIndex;
+    uint64 start;
+}
+
 library Ops {
     uint256 internal constant MAX_PRIORITY_FEE = 1 gwei;
     uint256 internal constant MAX_FEE = 10 gwei;
@@ -273,27 +282,121 @@ library Ops {
         op.gasFees = bytes32((MAX_PRIORITY_FEE << 128) | MAX_FEE);
     }
 
-    /// One member's entry: [member index][slot][WOTS signature][path] for the key at keyIndex
-    function memberSignature(WotsKey memory key, uint256 memberIndex, uint256 slot, uint256 keyIndex, bytes32 userOpHash)
+    /// Master tree height for tests and tools (D10: 64 certificates)
+    uint256 internal constant MASTER_HEIGHT = 6;
+
+    /// Test keys for one member, derived from a public label: a master tree of height 6 with 4 real keys, and an
+    /// operation tree of height h with 2^k real keys, certified by master key 0 from sequence 0.
+    function keys(WotsParams memory p, string memory label, uint256 h, uint256 k)
         internal
         pure
-        returns (bytes memory)
+        returns (MemberKeys memory m)
     {
-        return abi.encodePacked(
-            uint8(memberIndex),
-            uint8(slot),
-            WotsSigner.sign(key.p, key.seed, key.skSeed, keyIndex, userOpHash),
-            WotsTree.path(key, keyIndex)
+        m.master = WotsTree.create(
+            p,
+            uint128(uint256(keccak256(abi.encode(label, "master seed")))),
+            keccak256(abi.encode(label, "master sk")),
+            MASTER_HEIGHT,
+            2
+        );
+        m.ops = opsTree(p, label, 0, h, k);
+    }
+
+    /// The label's operation tree number `epoch`
+    function opsTree(WotsParams memory p, string memory label, uint256 epoch, uint256 h, uint256 k)
+        internal
+        pure
+        returns (WotsKey memory)
+    {
+        return WotsTree.create(
+            p,
+            uint128(uint256(keccak256(abi.encode(label, "ops seed", epoch)))),
+            keccak256(abi.encode(label, "ops sk", epoch)),
+            h,
+            k
         );
     }
 
-    /// Signature of a 1-of-1 account (member 0)
-    function wotsSignature(WotsKey memory key, uint256 slot, uint256 keyIndex, bytes32 userOpHash)
+    /// The certificate for `k`'s operation tree on `val`'s chain
+    function certificate(WinterlockValidator val, address account, uint256 memberIndex, MemberKeys memory k)
         internal
-        pure
+        view
         returns (bytes memory)
     {
-        return memberSignature(key, 0, slot, keyIndex, userOpHash);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        bytes32 digest =
+            val.certificateDigest(account, memberIndex, k.ops.root, k.ops.seed, uint8(k.ops.height), k.start);
+        return certificateFor(k, digest);
+    }
+
+    /// [master index: 2][root: 32][seed: 16][height: 1][start: 8][master WOTS signature][master path], with the
+    /// master key signing `digest` (WinterlockValidator.certificateDigest on the target chain)
+    function certificateFor(MemberKeys memory k, bytes32 digest) internal pure returns (bytes memory) {
+        return abi.encodePacked(
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint16(k.masterIndex),
+            k.ops.root,
+            k.ops.seed,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint8(k.ops.height),
+            k.start,
+            WotsSigner.sign(k.master.p, k.master.seed, k.master.skSeed, k.masterIndex, digest),
+            WotsTree.path(k.master, k.masterIndex)
+        );
+    }
+
+    /// One member's entry: [member index][flags][certificate?][WOTS signature][path] for the operation at `sequence`
+    function entry(
+        MemberKeys memory k,
+        uint256 memberIndex,
+        uint256 slot,
+        uint256 sequence,
+        bytes memory cert,
+        bytes32 userOpHash
+    ) internal pure returns (bytes memory) {
+        uint256 keyIndex = (sequence - k.start) * 2 + slot;
+        return abi.encodePacked(
+            uint8(memberIndex),
+            uint8(slot | (cert.length == 0 ? 0 : 0x80)),
+            cert,
+            WotsSigner.sign(k.ops.p, k.ops.seed, k.ops.skSeed, keyIndex, userOpHash),
+            WotsTree.path(k.ops, keyIndex)
+        );
+    }
+
+    /// One member's entry, with a certificate if the validator doesn't have this operation tree for the member
+    /// yet (first operation on this chain, or a rotation)
+    function memberSignature(
+        WinterlockValidator val,
+        address account,
+        MemberKeys memory k,
+        uint256 memberIndex,
+        uint256 slot,
+        uint256 sequence,
+        bytes32 userOpHash
+    ) internal view returns (bytes memory) {
+        bytes memory cert;
+        if (val.tree(account, memberIndex).root != k.ops.root) cert = certificate(val, account, memberIndex, k);
+        return entry(k, memberIndex, slot, sequence, cert, userOpHash);
+    }
+
+    /// Signature of a 1-of-1 account (member 0) for `op`
+    function wotsSignature(
+        WinterlockValidator val,
+        MemberKeys memory k,
+        uint256 slot,
+        PackedUserOperation memory op,
+        bytes32 userOpHash
+    ) internal view returns (bytes memory) {
+        return memberSignature(val, op.sender, k, 0, slot, uint64(op.nonce), userOpHash);
+    }
+
+    /// Master trees of the members, for install data
+    function masters(MemberKeys[] memory ks) internal pure returns (WotsKey[] memory out) {
+        out = new WotsKey[](ks.length);
+        for (uint256 i; i < ks.length; ++i) {
+            out[i] = ks[i].master;
+        }
     }
 
     function asMember(WotsKey memory key) internal pure returns (WinterlockValidator.Member memory) {
@@ -301,18 +404,18 @@ library Ops {
         return WinterlockValidator.Member(key.root, key.seed, uint8(key.height));
     }
 
-    /// Install data for a 1-of-1 account on nonce lane 0
+    /// Install data for a 1-of-1 account on nonce lane 0 (key: the master tree)
     function installData(WotsKey memory key) internal pure returns (bytes memory) {
         WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](1);
         members[0] = asMember(key);
         return abi.encode(uint192(0), uint8(1), members);
     }
 
-    /// Install data for a threshold account on nonce lane 0
-    function installData(WotsKey[] memory keys, uint8 threshold) internal pure returns (bytes memory) {
-        WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](keys.length);
-        for (uint256 i; i < keys.length; ++i) {
-            members[i] = asMember(keys[i]);
+    /// Install data for a threshold account on nonce lane 0 (keys: the members' master trees)
+    function installData(WotsKey[] memory trees, uint8 threshold) internal pure returns (bytes memory) {
+        WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](trees.length);
+        for (uint256 i; i < trees.length; ++i) {
+            members[i] = asMember(trees[i]);
         }
         return abi.encode(uint192(0), threshold, members);
     }

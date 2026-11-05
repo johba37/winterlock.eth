@@ -15,7 +15,7 @@ import {ExecLib} from "kernel/utils/ExecLib.sol";
 import {ExecMode} from "kernel/types/Types.sol";
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
 import {MiniAccount, EcdsaValidator, EcdsaThresholdValidator} from "../test/utils/Harness.sol";
-import {WotsParams, WotsKey, WotsTree, Ops} from "../test/utils/WotsSigner.sol";
+import {WotsParams, MemberKeys, Ops} from "../test/utils/WotsSigner.sol";
 
 /// @notice Sends real handleOps transactions so receipts include intrinsic and calldata gas.
 ///         Each account sends ROUNDS ops (an ETH transfer to an existing address). Nonce 0 warms
@@ -69,11 +69,15 @@ contract GasBench is Script {
         // Reference: eth-infinitism SimpleAccount
         SimpleAccount sa = new SimpleAccountFactory(ep).createAccount(vm.addr(OWNER_PK), 0);
         _pay(address(sa), 1 ether);
-        for (uint256 n; n < ROUNDS; ++n) _ecdsaOp(address(sa), _callData(), owner, n, "SimpleAccount (ECDSA)", MINI_ECDSA);
+        for (uint256 n; n < ROUNDS; ++n) {
+            _ecdsaOp(address(sa), _callData(), owner, n, "SimpleAccount (ECDSA)", MINI_ECDSA);
+        }
 
         // Baseline: the minimal account with an ECDSA validator module
         MiniAccount ma = new MiniAccount{value: 1 ether}(ep, new EcdsaValidator(), abi.encode(vm.addr(OWNER_PK)));
-        for (uint256 n; n < ROUNDS; ++n) _ecdsaOp(address(ma), _callData(), owner, n, MINI_ECDSA, "");
+        for (uint256 n; n < ROUNDS; ++n) {
+            _ecdsaOp(address(ma), _callData(), owner, n, MINI_ECDSA, "");
+        }
     }
 
     /// Hash size x encoding on the minimal account, all at tree height 20 (2^19 nonces)
@@ -92,12 +96,13 @@ contract GasBench is Script {
         ];
         for (uint256 t; t < sets.length; ++t) {
             WotsParams memory p = sets[t];
-            WotsKey memory key = _key(p, "single", t, 4);
-            MiniAccount wa = new MiniAccount{value: 1 ether}(ep, new WinterlockValidator(Ops.params(p)), Ops.installData(key));
+            MemberKeys memory key = _key(p, "single", t, 4);
+            WinterlockValidator v = new WinterlockValidator(Ops.params(p));
+            MiniAccount wa = new MiniAccount{value: 1 ether}(ep, v, Ops.installData(key.master));
             string memory name = string.concat("Winterlock ", _setName(p));
             for (uint256 n; n < ROUNDS; ++n) {
                 PackedUserOperation memory op = Ops.build(address(wa), n, _callData(), 700_000);
-                op.signature = Ops.wotsSignature(key, 0, n * 2, ep.getUserOpHash(op));
+                op.signature = Ops.wotsSignature(v, key, 0, op, ep.getUserOpHash(op));
                 _submit(op, name, MINI_ECDSA, n);
             }
         }
@@ -111,17 +116,20 @@ contract GasBench is Script {
             vm.deployCode("lib/kernel/out/ECDSAValidator.sol/ECDSAValidator.json"), abi.encodePacked(vm.addr(OWNER_PK))
         );
         // Kernel's ECDSAValidator, signed the way the ZeroDev SDK signs (personal_sign of the userOpHash)
-        for (uint256 n; n < ROUNDS; ++n) _ecdsaOp(kEcdsa, _kernelCallData(), owner, n, KERNEL_ECDSA, "");
+        for (uint256 n; n < ROUNDS; ++n) {
+            _ecdsaOp(kEcdsa, _kernelCallData(), owner, n, KERNEL_ECDSA, "");
+        }
 
         WotsParams[2] memory kSets = [WotsParams(24, 431, 4, 0), WotsParams(16, 300, 4, 0)];
         for (uint256 t; t < kSets.length; ++t) {
             WotsParams memory p = kSets[t];
-            WotsKey memory key = _key(p, "kernel", t, 4);
-            address kw = _kernel(address(new WinterlockValidator(Ops.params(p))), Ops.installData(key));
+            MemberKeys memory key = _key(p, "kernel", t, 4);
+            WinterlockValidator v = new WinterlockValidator(Ops.params(p));
+            address kw = _kernel(address(v), Ops.installData(key.master));
             string memory name = string.concat("Kernel + Winterlock ", _setName(p));
             for (uint256 n; n < ROUNDS; ++n) {
                 PackedUserOperation memory op = Ops.build(kw, n, _kernelCallData(), 500_000);
-                op.signature = Ops.wotsSignature(key, 0, n * 2, ep.getUserOpHash(op));
+                op.signature = Ops.wotsSignature(v, key, 0, op, ep.getUserOpHash(op));
                 _submit(op, name, KERNEL_ECDSA, n);
             }
         }
@@ -134,21 +142,27 @@ contract GasBench is Script {
         bytes memory ecdsaInit = abi.encode(uint8(2), owners);
 
         MiniAccount m2 = new MiniAccount{value: 1 ether}(ep, tv, ecdsaInit);
-        for (uint256 n; n < ROUNDS; ++n) _ecdsaOp(address(m2), _callData(), signers, n, MINI_ECDSA_2OF3, "");
+        for (uint256 n; n < ROUNDS; ++n) {
+            _ecdsaOp(address(m2), _callData(), signers, n, MINI_ECDSA_2OF3, "");
+        }
         address k2 = _kernel(address(tv), ecdsaInit);
-        for (uint256 n; n < ROUNDS; ++n) _ecdsaOp(k2, _kernelCallData(), signers, n, KERNEL_ECDSA_2OF3, "");
+        for (uint256 n; n < ROUNDS; ++n) {
+            _ecdsaOp(k2, _kernelCallData(), signers, n, KERNEL_ECDSA_2OF3, "");
+        }
 
         WotsParams memory p = WotsParams(24, 431, 4, 0);
         WinterlockValidator wv = new WinterlockValidator(Ops.params(p));
 
         // each account gets its own member trees (one tree per member, account and chain)
-        WotsKey[] memory miniKeys = _team(p, "team mini");
-        MiniAccount mw = new MiniAccount{value: 1 ether}(ep, wv, Ops.installData(miniKeys, 2));
-        _wotsTeamOps(address(mw), _callData(), miniKeys, "Winterlock 2-of-3 24-byte target 431", MINI_ECDSA_2OF3);
+        MemberKeys[] memory miniKeys = _team(p, "team mini");
+        MiniAccount mw = new MiniAccount{value: 1 ether}(ep, wv, Ops.installData(Ops.masters(miniKeys), 2));
+        _wotsTeamOps(wv, address(mw), _callData(), miniKeys, "Winterlock 2-of-3 24-byte target 431", MINI_ECDSA_2OF3);
 
-        WotsKey[] memory kernelKeys = _team(p, "team kernel");
-        address kw = _kernel(address(wv), Ops.installData(kernelKeys, 2));
-        _wotsTeamOps(kw, _kernelCallData(), kernelKeys, "Kernel + Winterlock 2-of-3 24-byte target 431", KERNEL_ECDSA_2OF3);
+        MemberKeys[] memory kernelKeys = _team(p, "team kernel");
+        address kw = _kernel(address(wv), Ops.installData(Ops.masters(kernelKeys), 2));
+        _wotsTeamOps(
+            wv, kw, _kernelCallData(), kernelKeys, "Kernel + Winterlock 2-of-3 24-byte target 431", KERNEL_ECDSA_2OF3
+        );
     }
 
     // --- helpers ---
@@ -163,31 +177,39 @@ contract GasBench is Script {
         );
     }
 
-    function _key(WotsParams memory p, string memory tag, uint256 i, uint256 k) internal pure returns (WotsKey memory) {
-        return WotsTree.create(
-            p, uint128(uint256(keccak256(abi.encode(tag, "seed", i)))), keccak256(abi.encode(tag, "sk", i)), 20, k
-        );
+    /// Master tree (height 6) and an operation tree of height 20 with 2^k real keys; the first operation
+    /// carries the certificate (D10), so nonce 0 includes the enrolment.
+    function _key(WotsParams memory p, string memory tag, uint256 i, uint256 k)
+        internal
+        pure
+        returns (MemberKeys memory)
+    {
+        return Ops.keys(p, string(abi.encode(tag, i)), 20, k);
     }
 
     /// Members A and B sign (real leaves for the benchmark nonces), C only needs a root.
-    function _team(WotsParams memory p, string memory tag) internal pure returns (WotsKey[] memory keys) {
-        keys = new WotsKey[](3);
+    function _team(WotsParams memory p, string memory tag) internal pure returns (MemberKeys[] memory keys) {
+        keys = new MemberKeys[](3);
         keys[0] = _key(p, tag, 0, 4);
         keys[1] = _key(p, tag, 1, 4);
         keys[2] = _key(p, tag, 2, 0);
     }
 
     function _wotsTeamOps(
+        WinterlockValidator v,
         address account,
         bytes memory callData,
-        WotsKey[] memory keys,
+        MemberKeys[] memory keys,
         string memory name,
         string memory base
     ) internal {
         for (uint256 n; n < ROUNDS; ++n) {
             PackedUserOperation memory op = Ops.build(account, n, callData, 800_000);
             bytes32 h = ep.getUserOpHash(op);
-            op.signature = bytes.concat(Ops.memberSignature(keys[0], 0, 0, n * 2, h), Ops.memberSignature(keys[1], 1, 0, n * 2, h));
+            op.signature = bytes.concat(
+                Ops.memberSignature(v, account, keys[0], 0, 0, n, h),
+                Ops.memberSignature(v, account, keys[1], 1, 0, n, h)
+            );
             _submit(op, name, base, n);
         }
     }
@@ -212,7 +234,13 @@ contract GasBench is Script {
     function _kernel(address validator, bytes memory validatorData) internal returns (address account) {
         bytes memory init = abi.encodeCall(
             Kernel.initialize,
-            (ValidatorLib.validatorToIdentifier(KernelValidator(validator)), IHook(address(0)), validatorData, hex"", new bytes[](0))
+            (
+                ValidatorLib.validatorToIdentifier(KernelValidator(validator)),
+                IHook(address(0)),
+                validatorData,
+                hex"",
+                new bytes[](0)
+            )
         );
         account = kf.createAccount(init, bytes32(0));
         _pay(account, 1 ether);
@@ -223,7 +251,10 @@ contract GasBench is Script {
     }
 
     function _kernelCallData() internal view returns (bytes memory) {
-        return abi.encodeCall(Kernel.execute, (ExecMode.wrap(bytes32(0)), ExecLib.encodeSingle(recipient, 0.001 ether, "")));
+        return
+            abi.encodeCall(
+                Kernel.execute, (ExecMode.wrap(bytes32(0)), ExecLib.encodeSingle(recipient, 0.001 ether, ""))
+            );
     }
 
     /// ECDSA signatures (personal_sign of the userOpHash), in the order of `pks` (sorted by address)

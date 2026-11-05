@@ -6,8 +6,8 @@ import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
-import {MiniAccount} from "./utils/Harness.sol";
-import {WotsParams, WotsKey, WotsTree, Ops} from "./utils/WotsSigner.sol";
+import {MiniAccount, ValidationProbe} from "./utils/Harness.sol";
+import {WotsParams, WotsKey, MemberKeys, Ops} from "./utils/WotsSigner.sol";
 
 /// Threshold mode through EntryPoint v0.7, parameter set D6 (24-byte hashes, target sum 431).
 /// A team account with members A, B, C and threshold 2; each member has their own key tree.
@@ -27,17 +27,16 @@ contract WinterlockThresholdTest is Test {
         return WotsParams(24, 431, 4, 0);
     }
 
-    /// Member i's key tree for the team account (A = 0, B = 1, C = 2, ...)
-    function _member(uint256 i) internal pure returns (WotsKey memory) {
-        return WotsTree.create(
-            _p(), uint128(uint256(keccak256(abi.encode("team seed", i)))), keccak256(abi.encode("team sk", i)), H, K
-        );
+    /// Member i's keys for the team account (A = 0, B = 1, C = 2, ...)
+    function _member(uint256 i) internal pure returns (MemberKeys memory) {
+        return Ops.keys(_p(), string(abi.encode("team member", i)), H, K);
     }
 
-    function _members(uint256 count) internal pure returns (WotsKey[] memory keys) {
-        keys = new WotsKey[](count);
+    /// The first `count` members' master trees, for install data
+    function _members(uint256 count) internal pure returns (WotsKey[] memory masters) {
+        masters = new WotsKey[](count);
         for (uint256 i; i < count; ++i) {
-            keys[i] = _member(i);
+            masters[i] = _member(i).master;
         }
     }
 
@@ -51,9 +50,9 @@ contract WinterlockThresholdTest is Test {
         return Ops.build(account, nonce, abi.encodeCall(MiniAccount.execute, (recipient, 1 ether, "")), 800_000);
     }
 
-    /// Entry for member i, signing at the op's nonce with the given slot
+    /// Entry for member i, signing at the op's nonce with the given slot (with a certificate on first use)
     function _entry(PackedUserOperation memory op, uint256 i, uint256 slot) internal view returns (bytes memory) {
-        return Ops.memberSignature(_member(i), i, slot, uint256(uint64(op.nonce)) * 2 + slot, ep.getUserOpHash(op));
+        return Ops.memberSignature(val, op.sender, _member(i), i, slot, uint64(op.nonce), ep.getUserOpHash(op));
     }
 
     function _send(PackedUserOperation memory op) internal {
@@ -75,7 +74,7 @@ contract WinterlockThresholdTest is Test {
         assertEq(threshold, 2);
         assertEq(count, 3);
         for (uint256 i; i < 3; ++i) {
-            assertEq(val.member(address(team), i).root, _member(i).root);
+            assertEq(val.member(address(team), i).root, _member(i).master.root);
         }
     }
 
@@ -185,18 +184,20 @@ contract WinterlockThresholdTest is Test {
 
     // --- gas estimation ---
 
-    /// Wallets estimate gas with a dummy signature of the right shape (member indices, slots, lengths). Every
+    /// Wallets estimate gas with a dummy signature of the right shape (member indices, flags, lengths). Every
     /// entry is verified even after one fails, so the dummy costs at least as much as the real signature.
+    /// Measured on the steady state: the first call enrols both members' operation trees.
     function test_gas_dummySignatureCoversRealOne() public {
         ValidationProbe probe = new ValidationProbe();
         probe.install(val, Ops.installData(_members(3), 2)); // the probe is an account with the team's config
         PackedUserOperation memory op = _op(address(probe), 0);
         bytes32 h = ep.getUserOpHash(op);
-        bytes memory real = bytes.concat(_entry(op, 0, 0), _entry(op, 1, 0));
-        uint256 half = real.length / 2;
-        _validate(probe, op, real, h); // warm the storage, so every measurement below pays the same
-
         uint256 result;
+        (result,) = _validate(probe, op, bytes.concat(_entry(op, 0, 0), _entry(op, 1, 0)), h); // enrols, warms up
+        assertEq(result, 0);
+        bytes memory real = bytes.concat(_entry(op, 0, 0), _entry(op, 1, 0)); // no certificates any more
+        uint256 half = real.length / 2;
+
         uint256 realGas;
         uint256 dummyGas;
         uint256 firstBadGas;
@@ -226,7 +227,6 @@ contract WinterlockThresholdTest is Test {
 
     function _validate(ValidationProbe probe, PackedUserOperation memory op, bytes memory sig, bytes32 h)
         internal
-        view
         returns (uint256, uint256)
     {
         op.signature = sig;
@@ -238,19 +238,20 @@ contract WinterlockThresholdTest is Test {
     /// A's private account (1-of-1) and the team account (2-of-3) share the validator contract but
     /// not their rules or keys. A's private tree is a different tree from A's team tree.
     function test_privateAndTeamAccountsAreIsolated() public {
-        WotsKey memory aPrivate =
-            WotsTree.create(_p(), uint128(uint256(keccak256("A private seed"))), keccak256("A private sk"), H, K);
-        MiniAccount mine = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(aPrivate));
+        MemberKeys memory aPrivate = Ops.keys(_p(), "A private", H, K);
+        MiniAccount mine = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(aPrivate.master));
 
         // A alone controls the private account.
         PackedUserOperation memory op = _op(address(mine), 0);
-        op.signature = Ops.wotsSignature(aPrivate, 0, 0, ep.getUserOpHash(op));
+        op.signature = Ops.wotsSignature(val, aPrivate, 0, op, ep.getUserOpHash(op));
         _send(op);
         assertEq(recipient.balance, 1 ether);
 
         // A's private-tree signature counts for nothing in the team account, even with B's.
         op = _op(address(team), 0);
-        op.signature = bytes.concat(Ops.memberSignature(aPrivate, 0, 0, 0, ep.getUserOpHash(op)), _entry(op, 1, 0));
+        op.signature = bytes.concat(
+            Ops.memberSignature(val, address(team), aPrivate, 0, 0, 0, ep.getUserOpHash(op)), _entry(op, 1, 0)
+        );
         _expectFail();
         _send(op);
 
@@ -266,42 +267,22 @@ contract WinterlockThresholdTest is Test {
     /// forge-config: default.fuzz.runs = 32
     function testFuzz_randomSignerSets(uint8 mask) public {
         mask &= 0x0f;
-        WotsKey[] memory keys = new WotsKey[](4);
+        MemberKeys[] memory keys = new MemberKeys[](4);
         for (uint256 i; i < 4; ++i) {
-            keys[i] = WotsTree.create(
-                _p(), uint128(uint256(keccak256(abi.encode("fz seed", i)))), keccak256(abi.encode("fz sk", i)), H, 0
-            );
+            keys[i] = Ops.keys(_p(), string(abi.encode("fuzz member", i)), H, 0);
         }
-        MiniAccount acct = new MiniAccount{value: 2 ether}(ep, val, Ops.installData(keys, 2)); // transfer + gas
+        MiniAccount acct = new MiniAccount{value: 2 ether}(ep, val, Ops.installData(Ops.masters(keys), 2)); // transfer + gas
         PackedUserOperation memory op = _op(address(acct), 0);
         bytes32 h = ep.getUserOpHash(op);
         uint256 signers;
         for (uint256 i; i < 4; ++i) {
             if (mask & (1 << i) != 0) {
-                op.signature = bytes.concat(op.signature, Ops.memberSignature(keys[i], i, 0, 0, h));
+                op.signature = bytes.concat(op.signature, Ops.memberSignature(val, address(acct), keys[i], i, 0, 0, h));
                 ++signers;
             }
         }
         if (signers < 2) _expectFail();
         _send(op);
         if (signers >= 2) assertEq(recipient.balance, 1 ether);
-    }
-}
-
-/// Calls the validator as an account, from a fresh call frame, so gas measurements don't include the test
-/// contract's growing memory.
-contract ValidationProbe {
-    function install(WinterlockValidator val, bytes calldata data) external {
-        val.onInstall(data);
-    }
-
-    function measure(WinterlockValidator val, PackedUserOperation calldata op, bytes32 h)
-        external
-        view
-        returns (uint256 result, uint256 gasUsed)
-    {
-        gasUsed = gasleft();
-        result = val.validateUserOp(op, h);
-        gasUsed -= gasleft();
     }
 }

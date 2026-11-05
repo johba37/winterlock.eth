@@ -8,7 +8,7 @@ import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOper
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
 import {WotsVerifier} from "../src/WotsVerifier.sol";
 import {MiniAccount} from "./utils/Harness.sol";
-import {WotsParams, WotsKey, WotsTree, WotsSigner, Ops} from "./utils/WotsSigner.sol";
+import {WotsParams, WotsKey, WotsTree, MemberKeys, Ops} from "./utils/WotsSigner.sol";
 
 /// End-to-end through EntryPoint v0.7: nonce binding, slots, lanes, exhaustion. Runs once per parameter set.
 abstract contract WinterlockValidatorTestBase is Test {
@@ -18,9 +18,7 @@ abstract contract WinterlockValidatorTestBase is Test {
     address payable internal bundler = payable(makeAddr("bundler"));
     address internal recipient = makeAddr("recipient");
 
-    uint128 internal constant SEED = 0x5eed0000000000000000000000000002;
-    bytes32 internal constant SK = keccak256("winterlock.test.validator");
-    uint256 internal constant H = 4; // 16 keys = 8 nonces x 2 slots
+    uint256 internal constant H = 4; // operation tree: 16 keys = 8 nonces x 2 slots
 
     bytes internal constant AA24 = "AA24 signature error";
 
@@ -30,11 +28,11 @@ abstract contract WinterlockValidatorTestBase is Test {
         WotsParams memory p = _p();
         ep = new EntryPoint();
         val = new WinterlockValidator(Ops.params(p));
-        acct = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_key()));
+        acct = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_keys().master));
     }
 
-    function _key() internal pure returns (WotsKey memory) {
-        return WotsTree.create(_p(), SEED, SK, H, H);
+    function _keys() internal pure returns (MemberKeys memory) {
+        return Ops.keys(_p(), "winterlock.test.validator", H, H);
     }
 
     function _op(uint256 nonce, uint256 value) internal view returns (PackedUserOperation memory) {
@@ -43,8 +41,7 @@ abstract contract WinterlockValidatorTestBase is Test {
 
     function _signed(uint256 nonce, uint256 slot, uint256 value) internal view returns (PackedUserOperation memory op) {
         op = _op(nonce, value);
-        uint256 keyIndex = uint256(uint64(nonce)) * 2 + slot;
-        op.signature = Ops.wotsSignature(_key(), slot, keyIndex, ep.getUserOpHash(op));
+        op.signature = Ops.wotsSignature(val, _keys(), slot, op, ep.getUserOpHash(op));
     }
 
     function _send(PackedUserOperation memory op) internal {
@@ -62,7 +59,8 @@ abstract contract WinterlockValidatorTestBase is Test {
         WotsParams memory p = _p();
         assertTrue(val.isInitialized(address(acct)));
         assertTrue(val.isModuleType(1));
-        assertEq(val.member(address(acct), 0).height, H);
+        assertEq(val.member(address(acct), 0).height, Ops.MASTER_HEIGHT);
+        assertEq(val.tree(address(acct), 0).root, bytes32(0)); // enrolled by the first operation
         (, uint8 threshold, uint8 count) = val.settings(address(acct));
         assertEq(threshold, 1);
         assertEq(count, 1);
@@ -84,26 +82,24 @@ abstract contract WinterlockValidatorTestBase is Test {
     }
 
     function test_rejectsKeyOfAnotherNonce() public {
-        // The signature from nonce 1's key (index 2), submitted at nonce 0, claiming slot 0.
-        PackedUserOperation memory op = _op(0, 1 ether);
-        WotsKey memory key = _key();
-        bytes32 h = ep.getUserOpHash(op);
-        op.signature =
-            abi.encodePacked(uint8(0), uint8(0), WotsSigner.sign(_p(), SEED, SK, 2, h), WotsTree.path(key, 2));
+        _send(_signed(0, 0, 1 ether)); // enrols the operation tree
+        // The signature from nonce 2's key (index 4), submitted at nonce 1, claiming slot 0.
+        PackedUserOperation memory op = _op(1, 1 ether);
+        op.signature = Ops.entry(_keys(), 0, 0, 2, "", ep.getUserOpHash(op));
         _expectFail(AA24);
         _send(op);
     }
 
     function test_rejectsSlotOutOfRange() public {
         PackedUserOperation memory op = _signed(0, 1, 1 ether);
-        op.signature[1] = bytes1(uint8(2)); // [member][slot]...
+        op.signature[1] = bytes1(uint8(2)); // [member][flags]...: bit 1 is no flag
         _expectFail(AA24);
         _send(op);
     }
 
     function test_rejectsOtherNonceLane() public {
         PackedUserOperation memory op = _op((uint256(1) << 64) | 0, 1 ether);
-        op.signature = Ops.wotsSignature(_key(), 0, 0, ep.getUserOpHash(op));
+        op.signature = Ops.wotsSignature(val, _keys(), 0, op, ep.getUserOpHash(op));
         _expectFail(AA24);
         _send(op);
     }
@@ -135,12 +131,12 @@ abstract contract WinterlockValidatorTestBase is Test {
 
     function test_treeExhaustion() public {
         WotsParams memory p = _p();
-        // height 1: two keys, i.e. exactly one nonce
-        WotsKey memory small = WotsTree.create(p, SEED, SK, 1, 1);
-        MiniAccount tiny = new MiniAccount{value: 1 ether}(ep, val, Ops.installData(small));
+        // operation tree of height 1: two keys, i.e. exactly one nonce
+        MemberKeys memory small = Ops.keys(p, "winterlock.test.small", 1, 1);
+        MiniAccount tiny = new MiniAccount{value: 1 ether}(ep, val, Ops.installData(small.master));
         PackedUserOperation memory op =
             Ops.build(address(tiny), 0, abi.encodeCall(MiniAccount.execute, (recipient, 1, "")), 400_000);
-        op.signature = Ops.wotsSignature(small, 0, 0, ep.getUserOpHash(op));
+        op.signature = Ops.wotsSignature(val, small, 0, op, ep.getUserOpHash(op));
         _send(op);
 
         op = Ops.build(address(tiny), 1, abi.encodeCall(MiniAccount.execute, (recipient, 1, "")), 400_000);

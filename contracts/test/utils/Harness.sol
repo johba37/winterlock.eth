@@ -6,6 +6,7 @@ import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {IValidator, MODULE_TYPE_VALIDATOR} from "../../src/interfaces/IERC7579Module.sol";
 import {WotsVerifier} from "../../src/WotsVerifier.sol";
+import {WinterlockValidator} from "../../src/WinterlockValidator.sol";
 
 /// @notice The smallest 4337 account that sends validation to a 7579-style validator through an
 ///         external call. Real 7579 accounts (Kernel, Nexus, Safe7579) add the same dispatch overhead
@@ -166,5 +167,22 @@ contract EcdsaThresholdValidator is IValidator {
 
     function isValidSignatureWithSender(address, bytes32, bytes calldata) external pure returns (bytes4) {
         return 0xffffffff;
+    }
+}
+
+/// Calls the validator as an account, from a fresh call frame, so gas measurements don't include the test
+/// contract's growing memory.
+contract ValidationProbe {
+    function install(WinterlockValidator val, bytes calldata data) external {
+        val.onInstall(data);
+    }
+
+    function measure(WinterlockValidator val, PackedUserOperation calldata op, bytes32 h)
+        external
+        returns (uint256 result, uint256 gasUsed)
+    {
+        gasUsed = gasleft();
+        result = val.validateUserOp(op, h);
+        gasUsed -= gasleft();
     }
 }

@@ -49,9 +49,19 @@ The measurements under "`w`, hash function, EIP-7976, and Base" settle it:
 
 SHA-256 support stays in the verifier, so the question can be reopened if hardware signers turn out to need it.
 
+**D10. One address on every chain: a master tree certifies per-chain trees** (2026-11-05)
+- **Install data:** each member installs a master tree of one-time keys (default height 6, so 64 certificates). The install data holds only master roots, so it is identical on every chain and so is the account's address. The validator itself is deployed at the same address on every chain.
+- **Certificates:** a master key signs a certificate for one operation tree on one chain. The certificate binds the chain id, the validator, the account, the member, the tree's root, seed and height, and the first sequence number it signs for.
+- **Enrolment:** the first operation a member signs on a chain carries the certificate. The validator checks it and stores the tree in the account's storage on that chain. Later operations are verified against the stored tree and cost the same as before.
+- **Rotation:** the same mechanism replaces an exhausted tree. Each certificate on a chain must use a higher master index than the one before, so old certificates can't be replayed to roll a tree back.
+- **What the signer must guarantee:** a master key certifies at most one tree, across all chains and accounts. Certificates are rare and recorded on-chain, so the log is small and can be rebuilt.
+- **The same structure as LMS/HSS and XMSS^MT** (NIST SP 800-208).
+
+It replaces the single key tree of D2, keeps D2's binding of keys to nonces, and resolves the open questions about one address per chain and about tree exhaustion. Per-chain trees can be small and are generated when a chain is first used, which also eases key generation on devices.
+
 ## Constraints that every design must respect
 
-- **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all.
+- **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all. Under D10 the master tree is shared by all chains of one account, but each master key signs only one certificate.
 - **One nonce lane per validator.** EntryPoint nonces are a 192-bit key plus a 64-bit sequence. The validator only accepts its configured key. If it accepted more than one, sequence numbers would repeat across lanes.
 - **No ECDSA path left over.** An account is only as strong as its weakest way in: other validators, executors, fallback handlers, hooks, owners.
 
@@ -244,6 +254,27 @@ Gas used per transfer on an already deployed account (second transfer), as each 
   - SHA-256: `0x18565b26FFb7BFa10f8c2f54889e71c928Fd6c08`
   - w = 256: `0xDC9f57B3caa9847F0A838ffb1e034B5d2a0Ab6Ef`
 
+**2026-11-05: D10 certificates, validator (step 1)** (`contracts/test/WinterlockCertificates.t.sol`, `bench/bundlers/run.sh`)
+
+The validator now installs master trees and stores per-chain operation trees certified by them. The tests cover:
+- enrolment on the first operation
+- rejection when there is no tree, a certificate from another chain or for another account, or a foreign master tree
+- the start and master-index bounds
+- rotation, and rollback to an old tree
+- a direct call storing only valid certificates
+
+| D6, height-3 operation tree, master height 6 | Validation gas |
+|---|---|
+| Steady state (tree enrolled) | 66,623 |
+| With certificate (first operation on a chain) | 167,202 |
+| Dummy carrying the real certificate | 169,978 |
+
+- **A certificate is 1,379 bytes** and adds about 100k validation gas: one master verification (~57k) and two new storage slots (~44k).
+- **Measured end to end on Kernel with Rundler (local),** the first D6 operation on a chain costs about 130k gas more than later ones, after subtracting what any first operation costs. That's validation plus about 55k preverification gas, because Rundler prices the 1.4 KB at the EIP-7623 floor. A 2-of-3 team pays it once per signing member: about 290k for two members.
+- **The steady state is unchanged:** 210.8k gas per D6 transfer on Kernel, against 210.2k before D10.
+- **Rundler accepts the storage write in validation** under full ERC-7562 checks: certificate operations were accepted and included, single and 2-of-3, with Rundler's own estimates.
+- **Validation writes storage only for a valid certificate.** An account can call the validator outside the EntryPoint, from a batch or an executor. If an invalid certificate were stored, such a call could install an attacker's tree. So wallets put the real certificate into the dummy signature for gas estimation; the certificate doesn't depend on the operation.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7 tests.
@@ -260,12 +291,15 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 
 **Cryptography**
 - Hash function on hardware signers: D9 keeps keccak. If a hardware signer can't hash keccak fast enough for key generation and target-sum retries, weigh SHA-256 (+50k gas per signature) against it.
-- Key generation on a device: tree height is nearly free on-chain, but whoever computes the root must generate every key. 2^20 keys with D6 is roughly 750 million hashes, which is minutes on a laptop and likely too slow for a hardware wallet. Options: a smaller tree with rotation, or a hypertree whose top tree signs subtree roots.
+- Key generation on a device: tree height is nearly free on-chain, but whoever computes the root must generate every key. 2^20 keys with D6 is roughly 750 million hashes, which is minutes on a laptop and likely too slow for a hardware wallet. D10 makes small operation trees with rotation possible: a height-14 tree is about 12 million hashes. Open: the tree size the signer should default to, and when it should rotate.
 - An independent reference implementation and test vectors, in Python or Rust. So far the tests only cross-check against a Solidity signer.
 
 **Accounts and chains**
-- How to keep one address on every chain while using different keys on each. One option: a single root over per-chain subtrees, with the validator checking that the subtree matches `block.chainid`.
-- What happens when a tree runs out of keys: how to rotate to a new root, and what signs the rotation.
+- One address on every chain, and tree rotation: decided in D10. The validator is done (step 1, measured above). Still to do:
+  - deploy the validator at the same address on every chain
+  - Kernel tests across two chain ids (same address, separate trees)
+  - the same account live on Ethereum Sepolia and Arbitrum Sepolia
+  - the signer's log of used master keys: where it lives and how it is backed up
 - A recovery key: SPHINCS+, a cold WOTS tree, or none.
 - Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum.
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.

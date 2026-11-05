@@ -67,14 +67,20 @@ def cast(*args):
     return out.stdout.strip().split(" ")[0]
 
 
+def cast_values(*args):
+    """cast output with one value per line (first token of each)"""
+    out = subprocess.run(["cast", *map(str, args)], capture_output=True, text=True)
+    if out.returncode != 0:
+        raise RuntimeError(f"cast {args[0]} failed: {out.stderr.strip()[:300]}")
+    return [line.split(" ")[0] for line in out.stdout.strip().splitlines()]
+
+
 def h(x):
     return hex(int(x))
 
 
-def sig_len(params, signers):
-    """Bytes of one Winterlock signature: per signer [index][slot][R + chains][path]"""
-    if params is None:
-        return 65
+def op_sig_len(params):
+    """Bytes of one member's operation signature and path: [R + chains][path of height 20]"""
     n, target, logw, _ = params
     w = 1 << logw
     len1 = 8 * n // logw
@@ -84,20 +90,22 @@ def sig_len(params, signers):
         while cap <= len1 * (w - 1):
             digits, cap = digits + 1, cap * w
         chains += digits
-    return len(signers) * (2 + n * (1 + chains) + n * 20)
+    return n * (1 + chains) + n * 20
 
 
 DUMMY_ECDSA = None
 
 
-def dummy_signature(params, signers):
+def dummy_signature(params, signers, certs):
+    """What a wallet sends for estimation: the right shape, the real certificates (they don't depend on the
+    operation, and only a valid one stores its tree), and filler in place of the operation signatures"""
     global DUMMY_ECDSA
     if params is None:  # a recoverable signature from a throwaway key: wrong signer, but no revert
         if DUMMY_ECDSA is None:
             DUMMY_ECDSA = cast("wallet", "sign", "--private-key", "0x" + "42" * 32, "0x" + "00" * 32)
         return DUMMY_ECDSA
-    n_entry = sig_len(params, signers) // len(signers)
-    entries = [f"{i:02x}00" + "ab" * (n_entry - 2) for i in signers]  # member index, slot 0, nonzero filler
+    entries = [f"{i:02x}" + ("80" if c != "0x" else "00") + c[2:] + "ab" * op_sig_len(params)
+               for i, c in zip(signers, certs)]  # member index, flags (slot 0), certificate, nonzero filler
     return "0x" + "".join(entries)
 
 
@@ -157,13 +165,32 @@ class Driver:
                                                  agl, int(op["preVerificationGas"], 16), fees)
         return self.call(self.ep, f"getUserOpHash({PACKED_OP})(bytes32)", tup)
 
-    def sign(self, op, params, tag, signers, nonce):
+    def certs(self, validator, account, params, tag, signers):
+        """Each signer's certificate, or "0x" if its operation tree is already enrolled on the target chain (D10)"""
+        if params is None:
+            return []
+        out = []
+        p = "(%d,%d,%d,%d)" % params
+        for m in signers:
+            root, seed, height, start = cast_values(
+                "call", self.helper, f"tree({PARAMS_TYPE},string,uint256)(bytes32,uint128,uint8,uint64)", p, tag, m,
+                "--rpc-url", self.signer_rpc)
+            enrolled = self.call(validator, "tree(address,uint256)(bytes32)", account, m)
+            if enrolled.lower() == root.lower():
+                out.append("0x")
+                continue
+            digest = self.call(validator, "certificateDigest(address,uint256,bytes32,uint128,uint8,uint64)(bytes32)",
+                               account, m, root, seed, height, start)
+            out.append(self.helper_call(f"certificate({PARAMS_TYPE},string,uint256,bytes32)(bytes)", p, tag, m, digest))
+        return out
+
+    def sign(self, op, params, tag, signers, nonce, certs):
         digest = self.user_op_hash(op)
         if params is None:
             return cast("wallet", "sign", "--private-key", ECDSA_PK, digest)
-        return self.helper_call(f"sign({PARAMS_TYPE},string,uint256[],uint256,uint256,bytes32)(bytes)",
-                                "(%d,%d,%d,%d)" % params, tag, "[%s]" % ",".join(map(str, signers)), 0, nonce * 2,
-                                digest)
+        return self.helper_call(f"sign({PARAMS_TYPE},string,uint256[],uint256,uint256,bytes[],bytes32)(bytes)",
+                                "(%d,%d,%d,%d)" % params, tag, "[%s]" % ",".join(map(str, signers)), 0, nonce,
+                                "[%s]" % ",".join(certs), digest)
 
     def run_scenario(self, bundler_name, bundler_url, scenario, counterfactual=False):
         """counterfactual: the first op deploys the account through initCode. Otherwise the account is
@@ -180,6 +207,7 @@ class Driver:
                  "deployWithFactory(address,bytes,bytes32)", self.d["kernelFactory"], init, salt, "--rpc-url", self.rpc)
         results = []
         for nonce in ((0,) if counterfactual else (0, 1)):
+            certs = self.certs(self.d[vkey], sender, params, tag, signers)
             max_fee, prio = self.fees(bundler_url)
             op = {
                 "sender": sender,
@@ -191,14 +219,15 @@ class Driver:
                 "preVerificationGas": h(1_000_000),
                 "maxFeePerGas": h(max_fee),
                 "maxPriorityFeePerGas": h(prio),
-                "signature": dummy_signature(params, signers),
+                "signature": dummy_signature(params, signers, certs),
             }
             if counterfactual:
                 op["factory"] = self.d["factoryStaker"]
                 op["factoryData"] = cast("calldata", "deployWithFactory(address,bytes,bytes32)",
                                          self.d["kernelFactory"], init, salt)
             row = dict(scenario=name, op="deploy (initCode)" if counterfactual else f"transfer n{nonce}",
-                       bundler=bundler_name, sig_bytes=sig_len(params, signers))
+                       bundler=bundler_name, sig_bytes=len(op["signature"]) // 2 - 1,
+                       certificates=sum(c != "0x" for c in certs))
             # Rundler estimates best from zero limits; Alto needs room to simulate. Try zero, then generous.
             est, errors = None, []
             for limits in ((0, 0, 0), (1_000_000, 2_000_000, 1_000_000)):
@@ -223,10 +252,11 @@ class Driver:
                 # fall back to fixed limits so acceptance itself can still be tested
                 op["callGasLimit"] = h(100_000)
                 op["preVerificationGas"] = h(100_000 + 20 * row["sig_bytes"])
-                vgl = (600_000 if counterfactual else 150_000) + verifier_gas * len(signers)
+                vgl = ((600_000 if counterfactual else 150_000) + verifier_gas * len(signers)
+                       + 110_000 * row["certificates"])  # a certificate: master verification and storage
                 op["verificationGasLimit"] = h(vgl * 12 // 10)
             row["vgl"] = int(op["verificationGasLimit"], 16)
-            op["signature"] = self.sign(op, params, tag, signers, nonce)
+            op["signature"] = self.sign(op, params, tag, signers, nonce, certs)
             try:
                 op_hash = rpc(bundler_url, "eth_sendUserOperation", [op, self.ep])
                 row["send"] = "accepted"

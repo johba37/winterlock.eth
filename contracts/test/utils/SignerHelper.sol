@@ -1,24 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {WotsParams, WotsKey, WotsTree, Ops} from "./WotsSigner.sol";
+import {WotsParams, WotsKey, MemberKeys, Ops} from "./WotsSigner.sol";
 
 /// @notice Test only. Exposes the reference signer through eth_call, so tools outside Foundry (the bundler
 ///         acceptance driver) can produce WOTS signatures and install data. Keys are derived from a PUBLIC
-///         tag, so anyone can sign with them: local tests only, never real funds.
-///         Trees have height 20 with real leaves for key indices 0..3 (nonces 0 and 1, both slots).
+///         tag, so anyone can sign with them: tests only, never real funds.
+///         Each member has a master tree (height 6) and one operation tree of height 20, certified by master
+///         key 0 from sequence 0, with real leaves for key indices 0..3 (nonces 0 and 1, both slots).
+///         The helper can run on any node: the certificate digest comes from the validator on the target chain
+///         (WinterlockValidator.certificateDigest), passed in by the caller.
 contract WotsSignerHelper {
     uint256 internal constant HEIGHT = 20;
     uint256 internal constant REAL = 2;
 
-    function _key(WotsParams memory p, string memory tag, uint256 member) internal pure returns (WotsKey memory) {
-        return WotsTree.create(
-            p,
-            uint128(uint256(keccak256(abi.encode(tag, "seed", member)))),
-            keccak256(abi.encode(tag, "sk", member)),
-            HEIGHT,
-            REAL
-        );
+    function _keys(WotsParams memory p, string memory tag, uint256 member) internal pure returns (MemberKeys memory) {
+        return Ops.keys(p, string(abi.encode(tag, member)), HEIGHT, REAL);
     }
 
     /// Install data for an account whose members are derived from `tag`
@@ -27,25 +24,47 @@ contract WotsSignerHelper {
         pure
         returns (bytes memory)
     {
-        WotsKey[] memory keys = new WotsKey[](members);
+        WotsKey[] memory masters = new WotsKey[](members);
         for (uint256 i; i < members; ++i) {
-            keys[i] = _key(p, tag, i);
+            masters[i] = _keys(p, tag, i).master;
         }
-        return Ops.installData(keys, threshold);
+        return Ops.installData(masters, threshold);
     }
 
-    /// Signature entries of the given members (strictly increasing) for one key index
+    /// A member's operation tree and the first sequence it covers, for WinterlockValidator.certificateDigest
+    function tree(WotsParams memory p, string memory tag, uint256 member)
+        external
+        pure
+        returns (bytes32 root, uint128 seed, uint8 height, uint64 start)
+    {
+        MemberKeys memory k = _keys(p, tag, member);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (k.ops.root, k.ops.seed, uint8(k.ops.height), k.start);
+    }
+
+    /// A member's certificate for its operation tree, given the digest from the target chain's validator
+    function certificate(WotsParams memory p, string memory tag, uint256 member, bytes32 digest)
+        external
+        pure
+        returns (bytes memory)
+    {
+        return Ops.certificateFor(_keys(p, tag, member), digest);
+    }
+
+    /// Signature entries of the given members (strictly increasing) for the operation at `sequence`;
+    /// certs[i] is member signers[i]'s certificate, or empty once its tree is enrolled on the target chain
     function sign(
         WotsParams memory p,
         string memory tag,
         uint256[] memory signers,
         uint256 slot,
-        uint256 keyIndex,
+        uint256 sequence,
+        bytes[] memory certs,
         bytes32 userOpHash
     ) external pure returns (bytes memory sig) {
         for (uint256 i; i < signers.length; ++i) {
             sig = bytes.concat(
-                sig, Ops.memberSignature(_key(p, tag, signers[i]), signers[i], slot, keyIndex, userOpHash)
+                sig, Ops.entry(_keys(p, tag, signers[i]), signers[i], slot, sequence, certs[i], userOpHash)
             );
         }
     }
