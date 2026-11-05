@@ -27,7 +27,7 @@ abstract contract WinterlockValidatorTestBase is Test {
     function setUp() public {
         WotsParams memory p = _p();
         ep = new EntryPoint();
-        val = new WinterlockValidator(Ops.params(p));
+        val = new WinterlockValidator(Ops.params(p), Ops.deployStatelessVerifier());
         acct = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_keys().master));
     }
 
@@ -60,7 +60,12 @@ abstract contract WinterlockValidatorTestBase is Test {
         assertTrue(val.isInitialized(address(acct)));
         assertTrue(val.isModuleType(1));
         WotsKey memory m = _keys().master;
-        assertEq(val.member(address(acct), 0), val.masterCommitment(m.root, m.seed, uint8(Ops.MASTER_HEIGHT)));
+        assertEq(
+            val.member(address(acct), 0),
+            val.memberCommitment(
+                val.masterCommitment(m.root, m.seed, uint8(Ops.MASTER_HEIGHT)), Ops.placeholderStatelessKey(m)
+            )
+        );
         assertEq(val.tree(address(acct), 0).root, bytes32(0)); // enrolled by the first operation
         (, uint8 threshold, uint8 count) = val.settings(address(acct));
         assertEq(threshold, 1);

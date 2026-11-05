@@ -42,7 +42,7 @@ contract WinterlockThresholdTest is Test {
 
     function setUp() public {
         ep = new EntryPoint();
-        val = new WinterlockValidator(Ops.params(_p()));
+        val = new WinterlockValidator(Ops.params(_p()), Ops.deployStatelessVerifier());
         team = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_members(3), 2));
     }
 
@@ -75,7 +75,12 @@ contract WinterlockThresholdTest is Test {
         assertEq(count, 3);
         for (uint256 i; i < 3; ++i) {
             WotsKey memory m = _member(i).master;
-            assertEq(val.member(address(team), i), val.masterCommitment(m.root, m.seed, uint8(m.height)));
+            assertEq(
+                val.member(address(team), i),
+                val.memberCommitment(
+                    val.masterCommitment(m.root, m.seed, uint8(m.height)), Ops.placeholderStatelessKey(m)
+                )
+            );
         }
     }
 
@@ -96,7 +101,7 @@ contract WinterlockThresholdTest is Test {
 
         WinterlockValidator.Member[] memory many = new WinterlockValidator.Member[](17);
         for (uint256 i; i < 17; ++i) {
-            many[i] = WinterlockValidator.Member(bytes32(i + 1), 1, 4);
+            many[i] = WinterlockValidator.Member(bytes32(i + 1), 1, 4, bytes32(type(uint256).max - i));
         }
         vm.expectRevert(WinterlockValidator.InvalidConfig.selector);
         val.onInstall(abi.encode(uint192(0), uint8(1), many)); // more than MAX_MEMBERS

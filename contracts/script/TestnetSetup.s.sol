@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Script} from "forge-std/Script.sol";
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
+import {IStatelessVerifier} from "../src/interfaces/IStatelessVerifier.sol";
 import {WotsParams, Ops} from "../test/utils/WotsSigner.sol";
 
 /// @notice Stage 2 of the bundler acceptance test (bench/bundlers/testnet.sh): deploys the Winterlock validators
@@ -21,11 +22,12 @@ contract TestnetSetup is Script {
         require(META_FACTORY.code.length > 0 && ECDSA_VALIDATOR.code.length > 0, "Kernel meta factory missing");
 
         vm.startBroadcast(vm.envUint("DEPLOYER_PRIVATE_KEY"));
-        address d6 = address(new WinterlockValidator(Ops.params(WotsParams(24, 431, 4, 0))));
-        address n16 = address(new WinterlockValidator(Ops.params(WotsParams(16, 300, 4, 0))));
-        address n32 = address(new WinterlockValidator(Ops.params(WotsParams(32, 0, 4, 0))));
-        address sha = address(new WinterlockValidator(Ops.params(WotsParams(24, 431, 4, 1))));
-        address w256 = address(new WinterlockValidator(Ops.params(WotsParams(24, 3216, 8, 0))));
+        IStatelessVerifier slh = Ops.deployStatelessVerifier(); // shared by the five validators
+        address d6 = address(new WinterlockValidator(Ops.params(WotsParams(24, 431, 4, 0)), slh));
+        address n16 = address(new WinterlockValidator(Ops.params(WotsParams(16, 300, 4, 0)), slh));
+        address n32 = address(new WinterlockValidator(Ops.params(WotsParams(32, 0, 4, 0)), slh));
+        address sha = address(new WinterlockValidator(Ops.params(WotsParams(24, 431, 4, 1)), slh));
+        address w256 = address(new WinterlockValidator(Ops.params(WotsParams(24, 3216, 8, 0)), slh));
         vm.stopBroadcast();
 
         string memory j = "deployment";

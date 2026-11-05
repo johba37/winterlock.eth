@@ -16,6 +16,7 @@ import {ExecMode} from "kernel/types/Types.sol";
 import {WinterlockValidator} from "../../src/WinterlockValidator.sol";
 import {ValidatorDeployment} from "../../script/DeployValidator.s.sol";
 import {WotsParams, MemberKeys, Ops} from "../utils/WotsSigner.sol";
+import {StatelessKey, StatelessSigner} from "../utils/StatelessSigner.sol";
 
 /// D10 on Kernel v3.3: one account address on two chains, with a separate operation tree on each, both
 /// certified by the same master tree. Each chain is the same deployment from a state snapshot, with its own
@@ -120,6 +121,9 @@ contract KernelMultichainTest is Test {
         assertEq(address(val), ValidatorDeployment.predict(params));
         assertGt(address(val).code.length, 0);
         assertEq(ValidatorDeployment.deploy(params), address(val)); // deploying again is a no-op
+        // the stateless verifier has its own deterministic address, shared by every parameter set
+        assertEq(address(val.STATELESS_VERIFIER()), ValidatorDeployment.predictVerifier());
+        assertGt(ValidatorDeployment.predictVerifier().code.length, 0);
         // each parameter set has its own address
         assertTrue(ValidatorDeployment.predict(Ops.params(WotsParams(16, 300, 4, 0))) != address(val));
     }
@@ -180,5 +184,53 @@ contract KernelMultichainTest is Test {
         op.signature = Ops.memberSignature(val, account, _keysOn(0), 0, 0, 2, h);
         _expectFail();
         _send(op);
+    }
+
+    // --- D11: stateless certificates on two chains ---
+
+    /// One account on two chains whose trees are both certified by the stateless key: no master key is spent on
+    /// either chain. The install data (master tree and stateless public key) is the same on both, and so is the
+    /// address; each chain's certificate is refused on the other.
+    function test_statelessCertificatesOnTwoChains() public {
+        StatelessKey memory sk = StatelessSigner.testKey(LABEL);
+        MemberKeys memory k = Ops.statelessTree(_keysOn(0), 0);
+        k.statelessKey = StatelessSigner.publicKey(sk);
+        bytes memory init = abi.encodeCall(
+            Kernel.initialize,
+            (
+                ValidatorLib.validatorToIdentifier(KernelValidator(address(val))),
+                IHook(address(0)),
+                Ops.installData(k),
+                hex"",
+                new bytes[](0)
+            )
+        );
+        address account = factory.getAddress(init, bytes32(0));
+        PackedUserOperation memory op = Ops.build(account, 0, _transfer(), 1_000_000);
+        op.initCode =
+            abi.encodePacked(address(factory), abi.encodeCall(KernelFactory.createAccount, (init, bytes32(0))));
+        vm.deal(account, 10 ether);
+
+        uint256 snap = vm.snapshotState();
+        vm.chainId(SEPOLIA);
+        bytes memory sepoliaCertificate = Ops.statelessCertificate(val, account, 0, k, sk);
+        op.signature = Ops.statelessMemberSignature(val, account, k, sk, 0, 0, 0, ep.getUserOpHash(op));
+        _send(op);
+        WinterlockValidator.Tree memory onSepolia = val.tree(account, 0);
+        assertTrue(onSepolia.stateless);
+        assertEq(onSepolia.nextMaster, 0, "no master key spent");
+
+        vm.revertToState(snap);
+        vm.chainId(ARBITRUM_SEPOLIA);
+        bytes32 h = ep.getUserOpHash(op);
+        op.signature = Ops.entry(Ops.forAccount(val, account, 0, k), 0, 0, 0, sepoliaCertificate, h);
+        _expectFail();
+        _send(op);
+        op.signature = Ops.statelessMemberSignature(val, account, k, sk, 0, 0, 0, h);
+        _send(op);
+        WinterlockValidator.Tree memory onArbitrum = val.tree(account, 0);
+        assertTrue(onArbitrum.stateless);
+        assertTrue(onArbitrum.root != onSepolia.root, "separate trees: the seed binds the chain");
+        assertGt(account.code.length, 0);
     }
 }

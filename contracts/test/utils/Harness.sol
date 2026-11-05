@@ -185,4 +185,15 @@ contract ValidationProbe {
         result = val.validateUserOp(op, h);
         gasUsed -= gasleft();
     }
+
+    /// ERC-1271 check of `hash` by this account, as the account would ask the validator
+    function measureMessage(WinterlockValidator val, bytes32 hash, bytes calldata sig)
+        external
+        view
+        returns (bytes4 result, uint256 gasUsed)
+    {
+        gasUsed = gasleft();
+        result = val.isValidSignatureWithSender(msg.sender, hash, sig);
+        gasUsed -= gasleft();
+    }
 }

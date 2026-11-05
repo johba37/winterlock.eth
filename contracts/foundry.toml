@@ -18,4 +18,10 @@ remappings = [
   "solady/=lib/kernel/lib/solady/src/",
   "ExcessivelySafeCall/=lib/kernel/lib/ExcessivelySafeCall/src/",
 ]
-fs_permissions = [{ access = "read-write", path = "./bench" }, { access = "read", path = "./lib/kernel/out" }]
+fs_permissions = [
+  { access = "read-write", path = "./bench" },
+  { access = "read", path = "./lib/kernel/out" },
+  { access = "read", path = "./test/fixtures" },
+]
+additional_compiler_profiles = [{ name = "via-ir", via_ir = true }]
+compilation_restrictions = [{ paths = "src/vendor/sphincs-minus/LeanSphincsAsm.sol", via_ir = true }]

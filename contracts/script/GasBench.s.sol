@@ -97,7 +97,7 @@ contract GasBench is Script {
         for (uint256 t; t < sets.length; ++t) {
             WotsParams memory p = sets[t];
             MemberKeys memory key = _key(p, "single", t, 4);
-            WinterlockValidator v = new WinterlockValidator(Ops.params(p));
+            WinterlockValidator v = new WinterlockValidator(Ops.params(p), Ops.deployStatelessVerifier());
             MiniAccount wa = new MiniAccount{value: 1 ether}(ep, v, Ops.installData(key.master));
             string memory name = string.concat("Winterlock ", _setName(p));
             for (uint256 n; n < ROUNDS; ++n) {
@@ -124,7 +124,7 @@ contract GasBench is Script {
         for (uint256 t; t < kSets.length; ++t) {
             WotsParams memory p = kSets[t];
             MemberKeys memory key = _key(p, "kernel", t, 4);
-            WinterlockValidator v = new WinterlockValidator(Ops.params(p));
+            WinterlockValidator v = new WinterlockValidator(Ops.params(p), Ops.deployStatelessVerifier());
             address kw = _kernel(address(v), Ops.installData(key.master));
             string memory name = string.concat("Kernel + Winterlock ", _setName(p));
             for (uint256 n; n < ROUNDS; ++n) {
@@ -151,7 +151,7 @@ contract GasBench is Script {
         }
 
         WotsParams memory p = WotsParams(24, 431, 4, 0);
-        WinterlockValidator wv = new WinterlockValidator(Ops.params(p));
+        WinterlockValidator wv = new WinterlockValidator(Ops.params(p), Ops.deployStatelessVerifier());
 
         // each account gets its own member trees (one tree per member, account and chain)
         MemberKeys[] memory miniKeys = _team(p, "team mini");

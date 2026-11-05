@@ -29,7 +29,7 @@ contract WinterlockCertificatesTest is Test {
 
     function setUp() public {
         ep = new EntryPoint();
-        val = new WinterlockValidator(Ops.params(_p()));
+        val = new WinterlockValidator(Ops.params(_p()), Ops.deployStatelessVerifier());
         acct = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_keys().master));
     }
 
@@ -159,17 +159,24 @@ contract WinterlockCertificatesTest is Test {
 
     // --- packing ---
 
-    /// Storage after the first operation: config, one slot for the master commitment, one for the tree (D6).
+    /// Storage after the first operation: config, one slot for the member commitment (master tree and stateless
+    /// key), one for the tree (D6).
     function test_storagePacking() public {
         MemberKeys memory k = _built();
         _send(_signed(k, 0));
         uint256 base = uint256(keccak256(abi.encode(address(acct), uint256(0)))); // _config is slot 0
-        bytes32 master = vm.load(address(val), bytes32(base + 1));
-        assertEq(master, val.masterCommitment(k.master.root, k.master.seed, uint8(k.master.height)));
-        assertEq(vm.load(address(val), bytes32(base + 2)), bytes32(0), "one slot per master");
+        bytes32 stored = vm.load(address(val), bytes32(base + 1));
+        assertEq(
+            stored,
+            val.memberCommitment(
+                val.masterCommitment(k.master.root, k.master.seed, uint8(k.master.height)), k.statelessKey
+            )
+        );
+        assertEq(vm.load(address(val), bytes32(base + 2)), bytes32(0), "one slot per member");
         uint256 word = uint256(vm.load(address(val), bytes32(base + 17))); // trees[0][0]
         assertEq(bytes32(word & ~uint256(type(uint64).max)), k.ops.root);
-        assertEq(word & type(uint64).max, (uint256(0) << 24) | (uint256(0) << 8) | H); // start 0, master 0, height
+        // start 0, next master 1, not stateless, height
+        assertEq(word & type(uint64).max, (uint256(0) << 24) | (uint256(1) << 7) | H);
         assertEq(vm.load(address(val), bytes32(base + 18)), bytes32(0), "one slot per tree");
         assertEq(val.tree(address(acct), 0).seed, val.treeSeed(address(acct), 0, 0));
     }

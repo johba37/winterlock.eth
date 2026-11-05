@@ -7,6 +7,7 @@ import {FactoryStaker} from "kernel/factory/FactoryStaker.sol";
 import {KernelFactory} from "kernel/factory/KernelFactory.sol";
 import {IEntryPoint as KernelEntryPoint} from "kernel/interfaces/IEntryPoint.sol";
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
+import {IStatelessVerifier} from "../src/interfaces/IStatelessVerifier.sol";
 import {WotsParams, Ops} from "../test/utils/WotsSigner.sol";
 import {WotsSignerHelper} from "../test/utils/SignerHelper.sol";
 
@@ -32,11 +33,12 @@ contract BundlerSetup is Script {
         staker.stake{value: 1 ether}(KernelEntryPoint(address(ep)), 86400);
         address ecdsa = vm.deployCode("lib/kernel/out/ECDSAValidator.sol/ECDSAValidator.json");
 
-        address d6 = address(new WinterlockValidator(Ops.params(WotsParams(24, 431, 4, 0))));
-        address n16 = address(new WinterlockValidator(Ops.params(WotsParams(16, 300, 4, 0))));
-        address n32 = address(new WinterlockValidator(Ops.params(WotsParams(32, 0, 4, 0))));
-        address sha = address(new WinterlockValidator(Ops.params(WotsParams(24, 431, 4, 1))));
-        address w256 = address(new WinterlockValidator(Ops.params(WotsParams(24, 3216, 8, 0))));
+        IStatelessVerifier slh = Ops.deployStatelessVerifier(); // shared by the five validators
+        address d6 = address(new WinterlockValidator(Ops.params(WotsParams(24, 431, 4, 0)), slh));
+        address n16 = address(new WinterlockValidator(Ops.params(WotsParams(16, 300, 4, 0)), slh));
+        address n32 = address(new WinterlockValidator(Ops.params(WotsParams(32, 0, 4, 0)), slh));
+        address sha = address(new WinterlockValidator(Ops.params(WotsParams(24, 431, 4, 1)), slh));
+        address w256 = address(new WinterlockValidator(Ops.params(WotsParams(24, 3216, 8, 0)), slh));
         address helper = address(new WotsSignerHelper());
         vm.stopBroadcast();
 

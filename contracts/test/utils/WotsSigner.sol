@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Vm} from "forge-std/Vm.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {WinterlockValidator} from "../../src/WinterlockValidator.sol";
 import {WotsVerifier} from "../../src/WotsVerifier.sol";
+import {IStatelessVerifier} from "../../src/interfaces/IStatelessVerifier.sol";
+import {StatelessKey, StatelessSigner} from "./StatelessSigner.sol";
 
 /// @notice A parameter set: hash size n (bytes), targetSum (0 = checksum encoding), log2(w), and the
 ///         hash function (0 = keccak256, 1 = SHA-256).
@@ -251,10 +254,13 @@ library WotsTree {
     }
 }
 
-/// D10 keys of one member: a master tree (in the install data, the same on every chain) and an operation tree
-/// for one account on one chain, certified by master key `masterIndex` for sequence numbers from `start` on.
-/// The operation tree's public seed comes from the validator (treeSeed), so `ops` is built for an account and a
-/// chain: Ops.forAccount, which the signing helpers call.
+/// Keys of one member: a master tree and a stateless public key (in the install data, the same on every chain,
+/// D10 and D11), and an operation tree for one account on one chain, certified for sequence numbers from `start` on
+/// by master key `masterIndex` or, if `stateless`, by the stateless key.
+/// The operation tree's public seed comes from the validator (treeSeed, statelessTreeSeed), so `ops` is built for
+/// an account and a chain: Ops.forAccount, which the signing helpers call.
+/// The stateless secret key (StatelessKey) is kept apart, since its keygen is costly: Ops.keys sets a placeholder
+/// public key that nobody can sign for, and Ops.withStateless replaces it with a real one.
 struct MemberKeys {
     WotsKey master;
     WotsKey ops;
@@ -263,11 +269,22 @@ struct MemberKeys {
     string label; // keys derive from it
     uint256 h; // operation tree height
     uint256 k; // log2 of its real keys
+    bytes32 statelessKey; // the stateless public key in the install data: root ‖ P
+    bool stateless; // the operation tree is certified by the stateless key
 }
 
 library Ops {
     uint256 internal constant MAX_PRIORITY_FEE = 1 gwei;
     uint256 internal constant MAX_FEE = 10 gwei;
+    /// The vendored leanSphincs verifier, compiled with via-IR (foundry.toml: compilation_restrictions). Deployed
+    /// from its artifact, so that nothing else imports it and it is compiled once.
+    string internal constant STATELESS_VERIFIER_ARTIFACT = "LeanSphincsAsm.sol:LeanSphincsAsm";
+    Vm private constant VM = Vm(address(uint160(uint256(keccak256("hevm cheat code")))));
+
+    /// Deploys a stateless verifier (tests and local scripts; deterministic deployments use ValidatorDeployment)
+    function deployStatelessVerifier() internal returns (IStatelessVerifier) {
+        return IStatelessVerifier(VM.deployCode(STATELESS_VERIFIER_ARTIFACT));
+    }
 
     /// Packed parameter word for WotsVerifier and WinterlockValidator
     function params(WotsParams memory p) internal pure returns (uint256) {
@@ -301,6 +318,31 @@ library Ops {
         m.label = label;
         m.h = h;
         m.k = k;
+        m.statelessKey = placeholderStatelessKey(m.master);
+    }
+
+    /// A stateless public key for members whose tests never sign with it: a hash, so no one has its secret key
+    function placeholderStatelessKey(WotsKey memory masterKey) internal pure returns (bytes32) {
+        return keccak256(abi.encode("winterlock.test.stateless placeholder", masterKey.root));
+    }
+
+    /// m with a real stateless key
+    function withStateless(MemberKeys memory m, StatelessKey memory sk) internal pure returns (MemberKeys memory) {
+        m.statelessKey = StatelessSigner.publicKey(sk);
+        return m;
+    }
+
+    /// m with an operation tree certified by its stateless key from sequence `start`
+    function statelessTree(MemberKeys memory m, uint64 start) internal pure returns (MemberKeys memory) {
+        m.stateless = true;
+        m.start = start;
+        return m;
+    }
+
+    /// What the validator computes for m's master tree (WinterlockValidator.masterCommitment)
+    function masterCommitment(MemberKeys memory m) internal pure returns (bytes32) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return keccak256(abi.encode(m.master.root, m.master.seed, uint8(m.master.height)));
     }
 
     function master(WotsParams memory p, string memory label) internal pure returns (WotsKey memory) {
@@ -328,8 +370,15 @@ library Ops {
         view
         returns (MemberKeys memory)
     {
-        uint128 seed = val.treeSeed(account, memberIndex, m.masterIndex);
-        m.ops = opsTree(m.master.p, m.label, m.masterIndex, seed, m.h, m.k);
+        if (m.stateless) {
+            uint128 seed = val.statelessTreeSeed(account, memberIndex, m.start);
+            m.ops = WotsTree.create(
+                m.master.p, seed, keccak256(abi.encode(m.label, "stateless ops sk", m.start)), m.h, m.k
+            );
+        } else {
+            uint128 seed = val.treeSeed(account, memberIndex, m.masterIndex);
+            m.ops = opsTree(m.master.p, m.label, m.masterIndex, seed, m.h, m.k);
+        }
         return m;
     }
 
@@ -345,9 +394,9 @@ library Ops {
         return certificateFor(k, digest);
     }
 
-    /// [master index: 2][root: 32][height: 1][start: 8][master seed: 16][master height: 1][master WOTS signature]
-    /// [master path], with the master key signing `digest` (WinterlockValidator.certificateDigest on the target
-    /// chain). k.ops must be built.
+    /// [master index: 2][root: 32][height: 1][start: 8][master seed: 16][master height: 1][stateless key: 32]
+    /// [master WOTS signature][master path], with the master key signing `digest`
+    /// (WinterlockValidator.certificateDigest on the target chain). k.ops must be built.
     function certificateFor(MemberKeys memory k, bytes32 digest) internal pure returns (bytes memory) {
         return abi.encodePacked(
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -359,8 +408,42 @@ library Ops {
             k.master.seed,
             // forge-lint: disable-next-line(unsafe-typecast)
             uint8(k.master.height),
+            k.statelessKey,
             WotsSigner.sign(k.master.p, k.master.seed, k.master.skSeed, k.masterIndex, digest),
             WotsTree.path(k.master, k.masterIndex)
+        );
+    }
+
+    /// The stateless certificate for `k`'s operation tree (k.stateless, from k.start) for `account` on `val`'s chain
+    function statelessCertificate(
+        WinterlockValidator val,
+        address account,
+        uint256 memberIndex,
+        MemberKeys memory k,
+        StatelessKey memory sk
+    ) internal view returns (bytes memory) {
+        require(k.stateless, "not a stateless-certified tree");
+        k = forAccount(val, account, memberIndex, k);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        bytes32 digest = val.statelessCertificateDigest(account, memberIndex, k.ops.root, uint8(k.ops.height), k.start);
+        return statelessCertificateFor(k, sk, digest);
+    }
+
+    /// [root: 32][height: 1][start: 8][master commitment: 32][stateless key: 32][stateless signature], with the
+    /// stateless key signing `digest` (WinterlockValidator.statelessCertificateDigest). k.ops must be built.
+    function statelessCertificateFor(MemberKeys memory k, StatelessKey memory sk, bytes32 digest)
+        internal
+        pure
+        returns (bytes memory)
+    {
+        return abi.encodePacked(
+            k.ops.root,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint8(k.ops.height),
+            k.start,
+            masterCommitment(k),
+            StatelessSigner.publicKey(sk),
+            StatelessSigner.sign(sk, digest)
         );
     }
 
@@ -377,7 +460,7 @@ library Ops {
         uint256 keyIndex = (sequence - k.start) * 2 + slot;
         return abi.encodePacked(
             uint8(memberIndex),
-            uint8(slot | (cert.length == 0 ? 0 : 0x80)),
+            uint8(slot | (cert.length == 0 ? 0 : k.stateless ? 0x40 : 0x80)),
             cert,
             WotsSigner.sign(k.ops.p, k.ops.seed, k.ops.skSeed, keyIndex, userOpHash),
             WotsTree.path(k.ops, keyIndex)
@@ -397,8 +480,49 @@ library Ops {
     ) internal view returns (bytes memory) {
         k = forAccount(val, account, memberIndex, k);
         bytes memory cert;
-        if (val.tree(account, memberIndex).root != k.ops.root) cert = certificate(val, account, memberIndex, k);
+        if (val.tree(account, memberIndex).root != k.ops.root) {
+            require(!k.stateless, "a stateless certificate needs the secret key: statelessMemberSignature");
+            cert = certificate(val, account, memberIndex, k);
+        }
         return entry(k, memberIndex, slot, sequence, cert, userOpHash);
+    }
+
+    /// One member's entry for a tree certified by the stateless key, with the certificate if the validator doesn't
+    /// have the tree yet
+    function statelessMemberSignature(
+        WinterlockValidator val,
+        address account,
+        MemberKeys memory k,
+        StatelessKey memory sk,
+        uint256 memberIndex,
+        uint256 slot,
+        uint256 sequence,
+        bytes32 userOpHash
+    ) internal view returns (bytes memory) {
+        k = forAccount(val, account, memberIndex, k);
+        bytes memory cert;
+        if (val.tree(account, memberIndex).root != k.ops.root) {
+            cert = statelessCertificate(val, account, memberIndex, k, sk);
+        }
+        return entry(k, memberIndex, slot, sequence, cert, userOpHash);
+    }
+
+    /// One member's ERC-1271 entry for `hash` checked by `account`:
+    /// [member index: 1][master commitment: 32][stateless key: 32][stateless signature of messageDigest]
+    function messageEntry(
+        WinterlockValidator val,
+        address account,
+        MemberKeys memory k,
+        StatelessKey memory sk,
+        uint256 memberIndex,
+        bytes32 hash
+    ) internal view returns (bytes memory) {
+        return abi.encodePacked(
+            uint8(memberIndex),
+            masterCommitment(k),
+            StatelessSigner.publicKey(sk),
+            StatelessSigner.sign(sk, val.messageDigest(account, hash))
+        );
     }
 
     /// Signature of a 1-of-1 account (member 0) for `op`
@@ -420,23 +544,46 @@ library Ops {
         }
     }
 
+    /// A member with this master tree and the placeholder stateless key (as Ops.keys sets it)
     function asMember(WotsKey memory key) internal pure returns (WinterlockValidator.Member memory) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        return WinterlockValidator.Member(key.root, key.seed, uint8(key.height));
+        return WinterlockValidator.Member(key.root, key.seed, uint8(key.height), placeholderStatelessKey(key));
     }
 
-    /// Install data for a 1-of-1 account on nonce lane 0 (key: the master tree)
+    function asMember(MemberKeys memory k) internal pure returns (WinterlockValidator.Member memory m) {
+        m = asMember(k.master);
+        m.statelessKey = k.statelessKey;
+    }
+
+    /// Install data for a 1-of-1 account on nonce lane 0 (key: the master tree; placeholder stateless key)
     function installData(WotsKey memory key) internal pure returns (bytes memory) {
         WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](1);
         members[0] = asMember(key);
         return abi.encode(uint192(0), uint8(1), members);
     }
 
-    /// Install data for a threshold account on nonce lane 0 (keys: the members' master trees)
+    /// Install data for a threshold account on nonce lane 0 (keys: the members' master trees; placeholder stateless
+    /// keys)
     function installData(WotsKey[] memory trees, uint8 threshold) internal pure returns (bytes memory) {
         WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](trees.length);
         for (uint256 i; i < trees.length; ++i) {
             members[i] = asMember(trees[i]);
+        }
+        return abi.encode(uint192(0), threshold, members);
+    }
+
+    /// Install data for a 1-of-1 account on nonce lane 0, with the member's stateless key
+    function installData(MemberKeys memory k) internal pure returns (bytes memory) {
+        WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](1);
+        members[0] = asMember(k);
+        return abi.encode(uint192(0), uint8(1), members);
+    }
+
+    /// Install data for a threshold account on nonce lane 0, with the members' stateless keys
+    function installData(MemberKeys[] memory ks, uint8 threshold) internal pure returns (bytes memory) {
+        WinterlockValidator.Member[] memory members = new WinterlockValidator.Member[](ks.length);
+        for (uint256 i; i < ks.length; ++i) {
+            members[i] = asMember(ks[i]);
         }
         return abi.encode(uint192(0), threshold, members);
     }

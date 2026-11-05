@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
@@ -14,9 +14,11 @@ import {IHook, IValidator as KernelValidator} from "kernel/interfaces/IERC7579Mo
 import {ValidatorLib} from "kernel/utils/ValidationTypeLib.sol";
 import {ExecLib} from "kernel/utils/ExecLib.sol";
 import {ValidationId, ExecMode} from "kernel/types/Types.sol";
+import {KERNEL_WRAPPER_TYPE_HASH, MAGIC_VALUE_SIG_REPLAYABLE} from "kernel/types/Constants.sol";
 
 import {WinterlockValidator} from "../../src/WinterlockValidator.sol";
 import {WotsParams, WotsKey, MemberKeys, Ops} from "../utils/WotsSigner.sol";
+import {StatelessKey, StatelessSigner} from "../utils/StatelessSigner.sol";
 
 /// Winterlock as the root validator of a ZeroDev Kernel v3.3 account, through EntryPoint v0.7.
 /// Parameter set D6: 24-byte hashes, target sum 431.
@@ -49,7 +51,7 @@ contract KernelWinterlockTest is Test {
         ep = new EntryPoint();
         impl = Kernel(payable(vm.deployCode(KERNEL_ARTIFACT, abi.encode(address(ep)))));
         factory = KernelFactory(vm.deployCode(FACTORY_ARTIFACT, abi.encode(address(impl))));
-        val = new WinterlockValidator(Ops.params(_p()));
+        val = new WinterlockValidator(Ops.params(_p()), Ops.deployStatelessVerifier());
         ecdsa = ECDSAValidator(vm.deployCode(ECDSA_ARTIFACT));
     }
 
@@ -157,12 +159,146 @@ contract KernelWinterlockTest is Test {
         _send(op);
     }
 
-    /// Off-chain messages through ERC-1271 are refused until key slots for them exist.
-    function test_erc1271Refused() public {
+    /// ERC-1271 without a valid stateless signature is refused (here: a WOTS-sized blob).
+    function test_erc1271WithoutStatelessSignatureRefused() public {
         address account = _deploy();
         bytes32 h = keccak256("sign in with ethereum");
         bytes4 res = Kernel(payable(account)).isValidSignature(h, abi.encodePacked(bytes1(0x00), new bytes(1200)));
         assertEq(res, bytes4(0xffffffff));
+    }
+
+    // --- D11 on Kernel: the stateless key ---
+
+    string internal constant STATELESS_LABEL = "winterlock.test.kernel.stateless";
+
+    function _sk() internal pure returns (StatelessKey memory) {
+        return StatelessSigner.testKey(STATELESS_LABEL);
+    }
+
+    /// A member whose stateless public key is `pub` (passed in: keygen is costly)
+    function _statelessMember(bytes32 pub) internal pure returns (MemberKeys memory k) {
+        k = Ops.keys(_p(), STATELESS_LABEL, H, H);
+        k.statelessKey = pub;
+    }
+
+    function _initFor(MemberKeys memory k) internal view returns (bytes memory) {
+        return
+            abi.encodeCall(Kernel.initialize, (_rootId(), IHook(address(0)), Ops.installData(k), hex"", new bytes[](0)));
+    }
+
+    /// Deploys k's account with its first operation (WOTS, master certificate), a transfer
+    function _deployFor(MemberKeys memory k) internal returns (address account) {
+        bytes memory init = _initFor(k);
+        account = factory.getAddress(init, bytes32(0));
+        vm.deal(account, 10 ether);
+        PackedUserOperation memory op = Ops.build(account, 0, _transfer(1 ether), 1_000_000);
+        op.initCode =
+            abi.encodePacked(address(factory), abi.encodeCall(KernelFactory.createAccount, (init, bytes32(0))));
+        op.signature = Ops.wotsSignature(val, k, 0, op, ep.getUserOpHash(op));
+        _send(op);
+    }
+
+    /// The hash Kernel hands its root validator for isValidSignature(hash): EIP-712 Kernel(bytes32 hash) in the
+    /// account's domain, with chain id 0 in replayable mode
+    function _kernelWrapped(address account, bytes32 hash, bool replayable) internal view returns (bytes32) {
+        (, string memory name, string memory version,,,,) = Kernel(payable(account)).eip712Domain();
+        bytes32 domain = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes(name)),
+                keccak256(bytes(version)),
+                replayable ? 0 : block.chainid,
+                account
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", domain, keccak256(abi.encode(KERNEL_WRAPPER_TYPE_HASH, hash))));
+    }
+
+    /// Kernel routes isValidSignature to its root validator with its own wrap of the hash (Kernel(bytes32 hash),
+    /// bound to the account and chain); the member's stateless key signs Winterlock's wrap of that.
+    function test_erc1271ThroughKernel() public {
+        StatelessKey memory sk = _sk();
+        MemberKeys memory k = _statelessMember(StatelessSigner.publicKey(sk));
+        address account = _deployFor(k);
+        bytes32 hash = keccak256("sign in with ethereum");
+        bytes memory sig = abi.encodePacked(
+            bytes1(0x00), // root validator
+            Ops.messageEntry(val, account, k, sk, 0, _kernelWrapped(account, hash, false))
+        );
+        vm.cool(account);
+        vm.cool(address(val));
+        vm.cool(address(val.STATELESS_VERIFIER()));
+        assertEq(Kernel(payable(account)).isValidSignature(hash, sig), bytes4(0x1626ba7e));
+        console.log("Kernel isValidSignature gas (Kernel frame, cold)", vm.lastCallGas().gasTotalUsed);
+        assertEq(Kernel(payable(account)).isValidSignature(keccak256("other"), sig), bytes4(0xffffffff));
+        // signed over the raw hash instead of Kernel's wrap: refused
+        bytes memory raw = abi.encodePacked(bytes1(0x00), Ops.messageEntry(val, account, k, sk, 0, hash));
+        assertEq(Kernel(payable(account)).isValidSignature(hash, raw), bytes4(0xffffffff));
+    }
+
+    /// Kernel's replayable mode leaves the chain id out of its own wrap, so that one signature counts on every
+    /// chain. Winterlock's wrap keeps the chain id, so the signature still counts on one chain only.
+    function test_erc1271ReplayableModeStaysOnOneChain() public {
+        StatelessKey memory sk = _sk();
+        MemberKeys memory k = _statelessMember(StatelessSigner.publicKey(sk));
+        address account = _deployFor(k);
+        bytes32 hash = keccak256("sign in with ethereum");
+        bytes memory sig = abi.encodePacked(
+            bytes1(0x00),
+            MAGIC_VALUE_SIG_REPLAYABLE,
+            Ops.messageEntry(val, account, k, sk, 0, _kernelWrapped(account, hash, true))
+        );
+        assertEq(Kernel(payable(account)).isValidSignature(hash, sig), bytes4(0x1626ba7e));
+        vm.chainId(42161);
+        assertEq(Kernel(payable(account)).isValidSignature(hash, sig), bytes4(0xffffffff));
+    }
+
+    /// Recovery (D11): the signer lost its state, so it no longer knows which one-time keys or master keys it
+    /// used. From its seeds and the chain alone it certifies a fresh operation tree with the stateless key, starting
+    /// at the account's current nonce. No one-time key is used twice, operations continue, and the old tree is
+    /// revoked: it signs no more, with or without its certificate.
+    function test_recoveryAfterStateLoss() public {
+        StatelessKey memory sk = _sk();
+        bytes32 pub = StatelessSigner.publicKey(sk);
+        MemberKeys memory k = _statelessMember(pub);
+        address account = _deployFor(k); // nonce 0: master key 0's tree
+        for (uint256 n = 1; n < 3; ++n) {
+            PackedUserOperation memory used = Ops.build(account, n, _transfer(1 ether), 400_000);
+            used.signature = Ops.wotsSignature(val, k, 0, used, ep.getUserOpHash(used));
+            _send(used);
+        }
+
+        // State lost. The restored signer reads the nonce and certifies a fresh tree from there.
+        uint64 nonce = uint64(ep.getNonce(account, 0));
+        assertEq(nonce, 3);
+        MemberKeys memory fresh = Ops.statelessTree(_statelessMember(pub), nonce);
+        PackedUserOperation memory op = Ops.build(account, nonce, _transfer(1 ether), 1_000_000);
+        op.signature = Ops.statelessMemberSignature(val, account, fresh, sk, 0, 0, nonce, ep.getUserOpHash(op));
+        assertEq(uint8(op.signature[1]), 0x40, "stateless certificate");
+        _send(op);
+        WinterlockValidator.Tree memory t = val.tree(account, 0);
+        assertTrue(t.stateless);
+        assertEq(t.start, nonce);
+        assertEq(t.nextMaster, 1, "master key 0 stays spent");
+
+        // operations continue on the fresh tree, without certificates
+        op = Ops.build(account, nonce + 1, _transfer(1 ether), 400_000);
+        op.signature = Ops.memberSignature(val, account, fresh, 0, 0, nonce + 1, ep.getUserOpHash(op));
+        assertEq(op.signature[1], 0x00);
+        _send(op);
+        assertEq(recipient.balance, 5 ether);
+
+        // the old tree is revoked, although it still has unused keys for this nonce
+        op = Ops.build(account, nonce + 2, _transfer(1 ether), 1_000_000);
+        bytes32 h = ep.getUserOpHash(op);
+        MemberKeys memory old = Ops.forAccount(val, account, 0, k);
+        assertLt((nonce + 2) * 2, 1 << H, "the old tree has a key for this nonce");
+        op.signature = Ops.entry(old, 0, 0, nonce + 2, "", h);
+        _expectFail(AA24);
+        _send(op);
+        op.signature = Ops.entry(old, 0, 0, nonce + 2, Ops.certificate(val, account, 0, old), h);
+        _expectFail(AA24);
+        _send(op);
     }
 
     /// Lock-down: adding another validator needs a Winterlock signature, but once added it is a second
