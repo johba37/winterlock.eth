@@ -56,8 +56,12 @@ contract KernelMultichainTest is Test {
     /// master key `t` (the signer gives every chain its own master key and tree)
     function _keysOn(uint256 t) internal pure returns (MemberKeys memory k) {
         k = Ops.keys(_p(), LABEL, H, H);
-        k.ops = Ops.opsTree(_p(), LABEL, t, H, H);
         k.masterIndex = t;
+    }
+
+    /// The root of operation tree t for `account` on the current chain
+    function _rootOn(uint256 t, address account) internal view returns (bytes32) {
+        return Ops.forAccount(val, account, 0, _keysOn(t)).ops.root;
     }
 
     function _initData() internal view returns (bytes memory) {
@@ -126,16 +130,16 @@ contract KernelMultichainTest is Test {
         vm.chainId(SEPOLIA);
         address onSepolia = _useAccount(_keysOn(0));
         WinterlockValidator.Tree memory treeSepolia = val.tree(onSepolia, 0);
+        assertEq(treeSepolia.root, _rootOn(0, onSepolia));
 
         vm.revertToState(snap);
         vm.chainId(ARBITRUM_SEPOLIA);
         assertEq(val.tree(onSepolia, 0).root, bytes32(0), "a fresh chain knows no tree");
         address onArbitrum = _useAccount(_keysOn(1));
         WinterlockValidator.Tree memory treeArbitrum = val.tree(onArbitrum, 0);
+        assertEq(treeArbitrum.root, _rootOn(1, onArbitrum));
 
         assertEq(onSepolia, onArbitrum, "same address");
-        assertEq(treeSepolia.root, _keysOn(0).ops.root);
-        assertEq(treeArbitrum.root, _keysOn(1).ops.root);
         assertTrue(treeSepolia.root != treeArbitrum.root, "separate trees");
         assertEq(treeSepolia.nextMaster, 1);
         assertEq(treeArbitrum.nextMaster, 2);
@@ -160,9 +164,13 @@ contract KernelMultichainTest is Test {
         vm.chainId(ARBITRUM_SEPOLIA);
         address account = _useAccount(_keysOn(1));
 
+        vm.chainId(SEPOLIA);
+        MemberKeys memory sepoliaKeys = Ops.forAccount(val, account, 0, _keysOn(0)); // Sepolia's tree
+        vm.chainId(ARBITRUM_SEPOLIA);
+
         PackedUserOperation memory op = Ops.build(account, 2, _transfer(), 600_000);
         bytes32 h = ep.getUserOpHash(op);
-        op.signature = Ops.entry(_keysOn(0), 0, 0, 2, "", h); // Sepolia's tree, no certificate
+        op.signature = Ops.entry(sepoliaKeys, 0, 0, 2, "", h); // no certificate
         _expectFail();
         _send(op);
 

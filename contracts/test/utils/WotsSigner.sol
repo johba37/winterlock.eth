@@ -252,12 +252,17 @@ library WotsTree {
 }
 
 /// D10 keys of one member: a master tree (in the install data, the same on every chain) and an operation tree
-/// for one chain, certified by master key `masterIndex` for sequence numbers from `start` on.
+/// for one account on one chain, certified by master key `masterIndex` for sequence numbers from `start` on.
+/// The operation tree's public seed comes from the validator (treeSeed), so `ops` is built for an account and a
+/// chain: Ops.forAccount, which the signing helpers call.
 struct MemberKeys {
     WotsKey master;
     WotsKey ops;
     uint256 masterIndex;
     uint64 start;
+    string label; // keys derive from it
+    uint256 h; // operation tree height
+    uint256 k; // log2 of its real keys
 }
 
 library Ops {
@@ -285,67 +290,82 @@ library Ops {
     /// Master tree height for tests and tools (D10: 64 certificates)
     uint256 internal constant MASTER_HEIGHT = 6;
 
-    /// Test keys for one member, derived from a public label: a master tree of height 6 with 4 real keys, and an
-    /// operation tree of height h with 2^k real keys, certified by master key 0 from sequence 0.
+    /// Test keys for one member, derived from a public label: a master tree of height 6 with 4 real keys, and the
+    /// parameters of its operation trees (height h, 2^k real keys), certified by master key 0 from sequence 0
     function keys(WotsParams memory p, string memory label, uint256 h, uint256 k)
         internal
         pure
         returns (MemberKeys memory m)
     {
-        m.master = WotsTree.create(
+        m.master = master(p, label);
+        m.label = label;
+        m.h = h;
+        m.k = k;
+    }
+
+    function master(WotsParams memory p, string memory label) internal pure returns (WotsKey memory) {
+        return WotsTree.create(
             p,
             uint128(uint256(keccak256(abi.encode(label, "master seed")))),
             keccak256(abi.encode(label, "master sk")),
             MASTER_HEIGHT,
             2
         );
-        m.ops = opsTree(p, label, 0, h, k);
     }
 
-    /// The label's operation tree number `epoch`
-    function opsTree(WotsParams memory p, string memory label, uint256 epoch, uint256 h, uint256 k)
+    /// The label's operation tree for master key `masterIndex`, with the public seed the validator derives
+    function opsTree(WotsParams memory p, string memory label, uint256 masterIndex, uint128 seed, uint256 h, uint256 k)
         internal
         pure
         returns (WotsKey memory)
     {
-        return WotsTree.create(
-            p,
-            uint128(uint256(keccak256(abi.encode(label, "ops seed", epoch)))),
-            keccak256(abi.encode(label, "ops sk", epoch)),
-            h,
-            k
-        );
+        return WotsTree.create(p, seed, keccak256(abi.encode(label, "ops sk", masterIndex)), h, k);
     }
 
-    /// The certificate for `k`'s operation tree on `val`'s chain
+    /// m with its operation tree built for member `memberIndex` of `account` on this chain
+    function forAccount(WinterlockValidator val, address account, uint256 memberIndex, MemberKeys memory m)
+        internal
+        view
+        returns (MemberKeys memory)
+    {
+        uint128 seed = val.treeSeed(account, memberIndex, m.masterIndex);
+        m.ops = opsTree(m.master.p, m.label, m.masterIndex, seed, m.h, m.k);
+        return m;
+    }
+
+    /// The certificate for `k`'s operation tree for `account` on `val`'s chain
     function certificate(WinterlockValidator val, address account, uint256 memberIndex, MemberKeys memory k)
         internal
         view
         returns (bytes memory)
     {
+        k = forAccount(val, account, memberIndex, k);
         // forge-lint: disable-next-line(unsafe-typecast)
-        bytes32 digest =
-            val.certificateDigest(account, memberIndex, k.ops.root, k.ops.seed, uint8(k.ops.height), k.start);
+        bytes32 digest = val.certificateDigest(account, memberIndex, k.ops.root, uint8(k.ops.height), k.start);
         return certificateFor(k, digest);
     }
 
-    /// [master index: 2][root: 32][seed: 16][height: 1][start: 8][master WOTS signature][master path], with the
-    /// master key signing `digest` (WinterlockValidator.certificateDigest on the target chain)
+    /// [master index: 2][root: 32][height: 1][start: 8][master seed: 16][master height: 1][master WOTS signature]
+    /// [master path], with the master key signing `digest` (WinterlockValidator.certificateDigest on the target
+    /// chain). k.ops must be built.
     function certificateFor(MemberKeys memory k, bytes32 digest) internal pure returns (bytes memory) {
         return abi.encodePacked(
             // forge-lint: disable-next-line(unsafe-typecast)
             uint16(k.masterIndex),
             k.ops.root,
-            k.ops.seed,
             // forge-lint: disable-next-line(unsafe-typecast)
             uint8(k.ops.height),
             k.start,
+            k.master.seed,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint8(k.master.height),
             WotsSigner.sign(k.master.p, k.master.seed, k.master.skSeed, k.masterIndex, digest),
             WotsTree.path(k.master, k.masterIndex)
         );
     }
 
-    /// One member's entry: [member index][flags][certificate?][WOTS signature][path] for the operation at `sequence`
+    /// One member's entry: [member index][flags][certificate?][WOTS signature][path] for the operation at `sequence`;
+    /// k.ops must be built (forAccount)
     function entry(
         MemberKeys memory k,
         uint256 memberIndex,
@@ -375,6 +395,7 @@ library Ops {
         uint256 sequence,
         bytes32 userOpHash
     ) internal view returns (bytes memory) {
+        k = forAccount(val, account, memberIndex, k);
         bytes memory cert;
         if (val.tree(account, memberIndex).root != k.ops.root) cert = certificate(val, account, memberIndex, k);
         return entry(k, memberIndex, slot, sequence, cert, userOpHash);

@@ -22,7 +22,7 @@ DEPLOYMENT = {
     "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     "kernelFactory": "0x2577507b78c2008Ff367261CB6285d44ba5eF2E9",
     "factoryStaker": "0xd703aaE79538628d27099B8c4f621bE4CCd142d5",
-    "winterlockD6": "0xd2B64A501c37957EF154A5971BbEBE417726b535",  # script/DeployValidator.s.sol, D6
+    "winterlockD6": "0x05326803001b3FD4875005aACe351f3E3Ecc685E",  # script/DeployValidator.s.sol, D6
 }
 D6 = (24, 431, 4, 0)
 SALT = "0x" + "00" * 32

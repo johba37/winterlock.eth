@@ -51,7 +51,7 @@ SHA-256 support stays in the verifier, so the question can be reopened if hardwa
 
 **D10. One address on every chain: a master tree certifies per-chain trees** (2026-11-05)
 - **Install data:** each member installs a master tree of one-time keys (default height 6, so 64 certificates). The install data holds only master roots, so it is identical on every chain and so is the account's address. The validator itself is deployed at the same address on every chain.
-- **Certificates:** a master key signs a certificate for one operation tree on one chain. The certificate binds the chain id, the validator, the account, the member, the tree's root, seed and height, and the first sequence number it signs for.
+- **Certificates:** a master key signs a certificate for one operation tree on one chain. The certificate binds the chain id, the validator, the account, the member, the tree's root and height, and the first sequence number it signs for. The tree's public seed is derived from the same bindings and the master index (since the packed storage, below).
 - **Enrolment:** the first operation a member signs on a chain carries the certificate. The validator checks it and stores the tree in the account's storage on that chain. Later operations are verified against the stored tree and cost the same as before.
 - **Rotation:** the same mechanism replaces an exhausted tree. Each certificate on a chain must use a higher master index than the one before, so old certificates can't be replayed to roll a tree back.
 - **What the signer must guarantee:** a master key certifies at most one tree, across all chains and accounts. Certificates are rare and recorded on-chain, so the log is small and can be rebuilt.
@@ -310,6 +310,37 @@ The validator now installs master trees and stores per-chain operation trees cer
 - **Preverification gas differs by bundler.** For D6's extra 1.6 KB, Pimlico charged about 110k on Sepolia, Candide and Alchemy about 26k (16 gas per byte).
 - **Funding matters with Pimlico.** Pimlico simulates at its own gas price (about 1.2 gwei on Sepolia, where the base fee is about 1,000 wei). Test accounts funded with 0.001 ETH failed its estimation with AA21 (prefund). That was the cause of three Pimlico failures in this run; the 0.01 ETH-funded live run went through.
 
+**2026-11-05: packed storage for D10** (`src/WinterlockValidator.sol`, `test/WinterlockCertificates.t.sol`)
+
+Glamsterdam makes new storage slots the most expensive thing Winterlock does, so the validator now stores less:
+- **Master tree: one slot** holding a commitment to its root, seed and height. The certificate carries the master seed and height (17 bytes), and the validator checks them against the commitment.
+- **Operation tree: one slot** for hash sizes up to 24 bytes: root in the high bytes, then start (40 bits), master index (16 bits) and height (8 bits).
+  - The tree's public seed is no longer stored. It is derived as `treeSeed(chain, validator, account, member, master index)`, which is unique per tree because a master key certifies only one tree.
+  - 32-byte hashes keep a second slot.
+- **New checks:** the certificate's root must be high-aligned and its start must fit in 40 bits. A mutation test confirms that without the alignment check a properly signed certificate would corrupt the packed fields.
+- **New address:** the D6 validator moved to `0x05326803001b3FD4875005aACe351f3E3Ecc685E` (both testnets, identical code; deploying took 15.0M gas on Sepolia).
+
+**Saving, measured on Sepolia (Glamsterdam) with the bundlers' own estimates, against the run before packing:**
+
+| D6 on Kernel | Candide | Alchemy |
+|---|---|---|
+| First transfer with certificate | 722,405 → 610,991 (−111k) | 817,504 → 706,102 (−111k) |
+| Later transfers | 325,160 → 323,660 (−1.5k) | 322,063 → 320,587 (−1.5k) |
+| Counterfactual deploy + certificate | 1,510,003 → 1,290,634 (−219k) | rejected (CREATE2 rule) |
+
+**Against ECDSA, same chain and run:**
+- **Later transfers:** 1.34× with Candide and Alchemy, 1.63× with Pimlico, whose preverification gas charges more per signature byte.
+- **A chain's first certificate:** about 189k gas over the steady state, against about 300k before packing.
+- **First operation on a new chain:** +381k gas over ECDSA (Candide), against +601k before.
+- **What's left of that first-operation surcharge:**
+  - the certificate's master verification and calldata
+  - two new slots: the master commitment and the tree
+  - ECDSA's own install writes one new slot
+
+In Foundry (old pricing), validation drops from 66.6k to 65.1k gas per operation, and from 167.2k to 143.7k with a certificate.
+
+All three bundlers accepted every operation, Alchemy's Rundler included (full ERC-7562 checks), apart from the known CREATE2 rejection of counterfactual deploys at Alchemy.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7 tests.
@@ -332,7 +363,6 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 **Accounts and chains**
 - One address on every chain, and tree rotation: decided in D10, built and shown live on two testnets (above). Still open:
   - the signer's log of used master keys: where it lives and how it is backed up
-  - one storage slot per operation tree instead of two, which matters under Glamsterdam's pricing of new state
   - deploying on chains without Cancun opcodes, or with a different deterministic deployer
 - A recovery key: SPHINCS+, a cold WOTS tree, or none.
 - Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum.

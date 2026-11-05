@@ -38,12 +38,17 @@ contract WinterlockCertificatesTest is Test {
         return Ops.keys(_p(), LABEL, H, H);
     }
 
-    /// The same member after a rotation: master key `masterIndex` certifies operation tree `epoch` from `start`
-    function _rotated(uint256 epoch, uint256 masterIndex, uint64 start) internal pure returns (MemberKeys memory k) {
+    /// The keys with their operation tree for the account built (tree seed from the validator)
+    function _built() internal view returns (MemberKeys memory) {
+        return Ops.forAccount(val, address(acct), 0, _keys());
+    }
+
+    /// The same member after a rotation: master key `masterIndex` certifies its tree from `start`
+    function _rotated(uint256 masterIndex, uint64 start) internal view returns (MemberKeys memory k) {
         k = _keys();
-        k.ops = Ops.opsTree(_p(), LABEL, epoch, H, H);
         k.masterIndex = masterIndex;
         k.start = start;
+        k = Ops.forAccount(val, address(acct), 0, k);
     }
 
     function _op(address account, uint256 nonce) internal view returns (PackedUserOperation memory) {
@@ -70,7 +75,7 @@ contract WinterlockCertificatesTest is Test {
     // --- enrolment ---
 
     function test_firstOperationEnrolsTree() public {
-        MemberKeys memory k = _keys();
+        MemberKeys memory k = _built();
         PackedUserOperation memory op = _signed(k, 0);
         assertEq(uint8(op.signature[1]) & 0x80, 0x80, "first operation carries a certificate");
         _send(op);
@@ -90,7 +95,7 @@ contract WinterlockCertificatesTest is Test {
 
     function test_operationWithoutTreeRejected() public {
         PackedUserOperation memory op = _op(address(acct), 0);
-        op.signature = Ops.entry(_keys(), 0, 0, 0, "", ep.getUserOpHash(op));
+        op.signature = Ops.entry(_built(), 0, 0, 0, "", ep.getUserOpHash(op));
         _expectFail();
         _send(op);
     }
@@ -132,7 +137,7 @@ contract WinterlockCertificatesTest is Test {
 
     function test_startAfterSequenceRejected() public {
         // certifies the tree from sequence 1 on, used at 0 (no key exists for it, so the signature is filler)
-        MemberKeys memory k = _rotated(0, 0, 1);
+        MemberKeys memory k = _rotated(0, 1);
         PackedUserOperation memory op = _op(address(acct), 0);
         uint256 sigBytes = WotsVerifier.sigBytes(Ops.params(_p())) + _p().n * H;
         op.signature =
@@ -152,13 +157,68 @@ contract WinterlockCertificatesTest is Test {
         _send(op);
     }
 
+    // --- packing ---
+
+    /// Storage after the first operation: config, one slot for the master commitment, one for the tree (D6).
+    function test_storagePacking() public {
+        MemberKeys memory k = _built();
+        _send(_signed(k, 0));
+        uint256 base = uint256(keccak256(abi.encode(address(acct), uint256(0)))); // _config is slot 0
+        bytes32 master = vm.load(address(val), bytes32(base + 1));
+        assertEq(master, val.masterCommitment(k.master.root, k.master.seed, uint8(k.master.height)));
+        assertEq(vm.load(address(val), bytes32(base + 2)), bytes32(0), "one slot per master");
+        uint256 word = uint256(vm.load(address(val), bytes32(base + 17))); // trees[0][0]
+        assertEq(bytes32(word & ~uint256(type(uint64).max)), k.ops.root);
+        assertEq(word & type(uint64).max, (uint256(0) << 24) | (uint256(0) << 8) | H); // start 0, master 0, height
+        assertEq(vm.load(address(val), bytes32(base + 18)), bytes32(0), "one slot per tree");
+        assertEq(val.tree(address(acct), 0).seed, val.treeSeed(address(acct), 0, 0));
+    }
+
+    /// The certificate names the master seed and height; they must match the commitment.
+    function test_wrongMasterSeedRejected() public {
+        PackedUserOperation memory op = _op(address(acct), 0);
+        bytes memory cert = Ops.certificate(val, address(acct), 0, _keys());
+        cert[43] ^= 0x01; // master seed: bytes 43..58 of the certificate
+        op.signature = Ops.entry(_built(), 0, 0, 0, cert, ep.getUserOpHash(op));
+        _expectFail();
+        _send(op);
+    }
+
+    /// A root must be n bytes, high-aligned, or it would spill into the packed fields. The certificate below is
+    /// properly signed by the master key, so only the shape check keeps it out of storage.
+    function test_rootWithLowBytesRejected() public {
+        MemberKeys memory k = _built();
+        k.ops.root = bytes32(uint256(k.ops.root) | (1 << 8)); // would flip a master index bit
+        bytes32 digest = val.certificateDigest(address(acct), 0, k.ops.root, uint8(H), 0);
+        PackedUserOperation memory op = _op(address(acct), 0);
+        bytes32 h = ep.getUserOpHash(op);
+        op.signature = Ops.entry(k, 0, 0, 0, Ops.certificateFor(k, digest), h);
+        vm.prank(address(acct));
+        assertEq(val.validateUserOp(op, h), 1);
+        assertEq(val.tree(address(acct), 0).root, bytes32(0), "not stored");
+    }
+
+    /// Start sequences beyond 40 bits don't fit the packed tree.
+    function test_startBeyond40BitsRejected() public {
+        uint64 start = uint64(1 << 40);
+        MemberKeys memory k = _keys();
+        k.start = start;
+        k = Ops.forAccount(val, address(acct), 0, k);
+        PackedUserOperation memory op = _op(address(acct), start);
+        bytes32 h = ep.getUserOpHash(op);
+        op.signature = Ops.entry(k, 0, 0, start, Ops.certificate(val, address(acct), 0, k), h);
+        vm.prank(address(acct)); // a direct call: the EntryPoint wouldn't accept this nonce yet
+        assertEq(val.validateUserOp(op, h), 1);
+        assertEq(val.tree(address(acct), 0).root, bytes32(0));
+    }
+
     // --- rotation ---
 
     function test_rotationReplacesTree() public {
         for (uint256 n; n < 3; ++n) {
             _send(_signed(_keys(), n));
         }
-        MemberKeys memory next = _rotated(1, 1, 3); // master key 1 certifies tree 1 from sequence 3
+        MemberKeys memory next = _rotated(1, 3); // master key 1 certifies its tree from sequence 3
         PackedUserOperation memory op = _signed(next, 3);
         assertEq(uint8(op.signature[1]) & 0x80, 0x80);
         _send(op);
@@ -174,24 +234,24 @@ contract WinterlockCertificatesTest is Test {
     /// After a rotation, the old tree no longer signs, and its certificate can't bring it back.
     function test_rollbackRejected() public {
         _send(_signed(_keys(), 0));
-        _send(_signed(_rotated(1, 1, 1), 1));
+        _send(_signed(_rotated(1, 1), 1));
 
         PackedUserOperation memory op = _op(address(acct), 2);
         bytes32 h = ep.getUserOpHash(op);
-        op.signature = Ops.entry(_keys(), 0, 0, 2, "", h); // old tree, no certificate
+        op.signature = Ops.entry(_built(), 0, 0, 2, "", h); // old tree, no certificate
         _expectFail();
         _send(op);
 
         // old certificate (master key 0): below nextMaster
-        op.signature = Ops.entry(_keys(), 0, 0, 2, Ops.certificate(val, address(acct), 0, _keys()), h);
+        op.signature = Ops.entry(_built(), 0, 0, 2, Ops.certificate(val, address(acct), 0, _keys()), h);
         _expectFail();
         _send(op);
     }
 
     /// A master index must grow on each chain, so a skipped index can't be used later either.
     function test_masterIndexMustGrow() public {
-        _send(_signed(_rotated(0, 2, 0), 0)); // master key 2 first
-        PackedUserOperation memory op = _signed(_rotated(1, 1, 1), 1); // then 1
+        _send(_signed(_rotated(2, 0), 0)); // master key 2 first
+        PackedUserOperation memory op = _signed(_rotated(1, 1), 1); // then 1
         _expectFail();
         _send(op);
     }
@@ -201,7 +261,7 @@ contract WinterlockCertificatesTest is Test {
     /// validateUserOp writes storage, and an account can call it outside the EntryPoint (a batch, an executor).
     /// Only a valid certificate is stored, so such a call can't install a tree the master key didn't sign.
     function test_directCallStoresOnlyValidCertificates() public {
-        MemberKeys memory mallory = Ops.keys(_p(), "mallory", H, H);
+        MemberKeys memory mallory = Ops.forAccount(val, address(acct), 0, Ops.keys(_p(), "mallory", H, H));
         PackedUserOperation memory op = _op(address(acct), 0);
         bytes32 h = ep.getUserOpHash(op);
         op.signature = Ops.entry(mallory, 0, 0, 0, Ops.certificateFor(mallory, bytes32(0)), h);
@@ -213,7 +273,7 @@ contract WinterlockCertificatesTest is Test {
         op.signature = Ops.wotsSignature(val, _keys(), 0, op, h);
         vm.prank(address(acct));
         assertEq(val.validateUserOp(op, h), 0);
-        assertEq(val.tree(address(acct), 0).root, _keys().ops.root);
+        assertEq(val.tree(address(acct), 0).root, _built().ops.root);
     }
 
     // --- gas ---

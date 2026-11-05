@@ -15,17 +15,17 @@ contract WotsSignerHelper {
     uint256 internal constant HEIGHT = 20;
     uint256 internal constant REAL = 2;
 
-    function _keys(WotsParams memory p, string memory tag, uint256 member, uint256 treeIndex)
+    /// A member's keys with operation tree `treeIndex`, built with the seed the target chain's validator derives
+    /// for it (WinterlockValidator.treeSeed)
+    function _keys(WotsParams memory p, string memory tag, uint256 member, uint256 treeIndex, uint128 seed)
         internal
         pure
         returns (MemberKeys memory k)
     {
         string memory label = string(abi.encode(tag, member));
         k = Ops.keys(p, label, HEIGHT, REAL);
-        if (treeIndex != 0) {
-            k.ops = Ops.opsTree(p, label, treeIndex, HEIGHT, REAL);
-            k.masterIndex = treeIndex;
-        }
+        k.masterIndex = treeIndex;
+        k.ops = Ops.opsTree(p, label, treeIndex, seed, HEIGHT, REAL);
     }
 
     /// Install data for an account whose members are derived from `tag`
@@ -36,38 +36,43 @@ contract WotsSignerHelper {
     {
         WotsKey[] memory masters = new WotsKey[](members);
         for (uint256 i; i < members; ++i) {
-            masters[i] = _keys(p, tag, i, 0).master;
+            masters[i] = Ops.master(p, string(abi.encode(tag, i)));
         }
         return Ops.installData(masters, threshold);
     }
 
     /// A member's operation tree and the first sequence it covers, for WinterlockValidator.certificateDigest
-    function tree(WotsParams memory p, string memory tag, uint256 member, uint256 treeIndex)
+    function tree(WotsParams memory p, string memory tag, uint256 member, uint256 treeIndex, uint128 seed)
         external
         pure
-        returns (bytes32 root, uint128 seed, uint8 height, uint64 start)
+        returns (bytes32 root, uint8 height, uint64 start)
     {
-        MemberKeys memory k = _keys(p, tag, member, treeIndex);
+        MemberKeys memory k = _keys(p, tag, member, treeIndex, seed);
         // forge-lint: disable-next-line(unsafe-typecast)
-        return (k.ops.root, k.ops.seed, uint8(k.ops.height), k.start);
+        return (k.ops.root, uint8(k.ops.height), k.start);
     }
 
     /// A member's certificate for its operation tree, given the digest from the target chain's validator
-    function certificate(WotsParams memory p, string memory tag, uint256 member, uint256 treeIndex, bytes32 digest)
-        external
-        pure
-        returns (bytes memory)
-    {
-        return Ops.certificateFor(_keys(p, tag, member, treeIndex), digest);
+    function certificate(
+        WotsParams memory p,
+        string memory tag,
+        uint256 member,
+        uint256 treeIndex,
+        uint128 seed,
+        bytes32 digest
+    ) external pure returns (bytes memory) {
+        return Ops.certificateFor(_keys(p, tag, member, treeIndex, seed), digest);
     }
 
     /// Signature entries of the given members (strictly increasing) for the operation at `sequence`;
-    /// certs[i] is member signers[i]'s certificate, or empty once its tree is enrolled on the target chain
+    /// seeds[i] is WinterlockValidator.treeSeed for member signers[i], and certs[i] its certificate, or empty once
+    /// its tree is enrolled on the target chain
     function sign(
         WotsParams memory p,
         string memory tag,
         uint256 treeIndex,
         uint256[] memory signers,
+        uint128[] memory seeds,
         uint256 slot,
         uint256 sequence,
         bytes[] memory certs,
@@ -75,7 +80,10 @@ contract WotsSignerHelper {
     ) external pure returns (bytes memory sig) {
         for (uint256 i; i < signers.length; ++i) {
             sig = bytes.concat(
-                sig, Ops.entry(_keys(p, tag, signers[i], treeIndex), signers[i], slot, sequence, certs[i], userOpHash)
+                sig,
+                Ops.entry(
+                    _keys(p, tag, signers[i], treeIndex, seeds[i]), signers[i], slot, sequence, certs[i], userOpHash
+                )
             );
         }
     }

@@ -59,7 +59,8 @@ abstract contract WinterlockValidatorTestBase is Test {
         WotsParams memory p = _p();
         assertTrue(val.isInitialized(address(acct)));
         assertTrue(val.isModuleType(1));
-        assertEq(val.member(address(acct), 0).height, Ops.MASTER_HEIGHT);
+        WotsKey memory m = _keys().master;
+        assertEq(val.member(address(acct), 0), val.masterCommitment(m.root, m.seed, uint8(Ops.MASTER_HEIGHT)));
         assertEq(val.tree(address(acct), 0).root, bytes32(0)); // enrolled by the first operation
         (, uint8 threshold, uint8 count) = val.settings(address(acct));
         assertEq(threshold, 1);
@@ -85,7 +86,7 @@ abstract contract WinterlockValidatorTestBase is Test {
         _send(_signed(0, 0, 1 ether)); // enrols the operation tree
         // The signature from nonce 2's key (index 4), submitted at nonce 1, claiming slot 0.
         PackedUserOperation memory op = _op(1, 1 ether);
-        op.signature = Ops.entry(_keys(), 0, 0, 2, "", ep.getUserOpHash(op));
+        op.signature = Ops.entry(Ops.forAccount(val, address(acct), 0, _keys()), 0, 0, 2, "", ep.getUserOpHash(op));
         _expectFail(AA24);
         _send(op);
     }

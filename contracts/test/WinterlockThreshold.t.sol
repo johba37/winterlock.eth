@@ -74,7 +74,8 @@ contract WinterlockThresholdTest is Test {
         assertEq(threshold, 2);
         assertEq(count, 3);
         for (uint256 i; i < 3; ++i) {
-            assertEq(val.member(address(team), i).root, _member(i).master.root);
+            WotsKey memory m = _member(i).master;
+            assertEq(val.member(address(team), i), val.masterCommitment(m.root, m.seed, uint8(m.height)));
         }
     }
 

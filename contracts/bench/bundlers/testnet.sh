@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Stage 2 bundler acceptance: hosted bundlers (Pimlico, Candide, Alchemy) on a public testnet (default Arbitrum
 # Sepolia; CHAIN_ID=11155111 for Ethereum Sepolia), against the canonical EntryPoint v0.7 and ZeroDev's deployed
-# Kernel v3.3. Only the Winterlock validators are ours. ONLY="name,name" limits the scenarios (driver.py).
+# Kernel v3.3. Only the Winterlock validators are ours. ONLY="name,name" limits the scenarios (driver.py);
+# RUN=label makes fresh test accounts.
 #
 # Needs bench/bundlers/.env (git-ignored): PIMLICO_API_KEY, ALCHEMY_API_KEY, DEPLOYER_PRIVATE_KEY of a funded
 # throwaway testnet key. WOTS signing runs on a local anvil: the signer helper derives keys from public tags
@@ -61,4 +62,4 @@ done
 
 python3 bench/bundlers/driver.py --rpc "$RPC" --deployment "$DEPLOYMENT" --funder "$DEPLOYER_PRIVATE_KEY" \
   --signer-rpc "$SIGNER_RPC" --signer-helper "$HELPER" --fund "${FUND:-0.003ether}" --transfer-wei 1000000000000 \
-  --fees bundler --out "bench/bundlers/results-$CHAIN_ID.json" ${ONLY:+--only "$ONLY"} "${ARGS[@]}"
+  --fees bundler --out "bench/bundlers/results-$CHAIN_ID.json" ${ONLY:+--only "$ONLY"} ${RUN:+--run "$RUN"} "${ARGS[@]}"

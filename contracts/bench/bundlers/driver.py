@@ -121,6 +121,7 @@ class Driver:
         self.tree_index = 0  # which of a member's operation trees (and master key) the helper signs with
         self.transfer_wei = 10**15
         self.fee_mode = "fixed"
+        self.run = ""  # appended to the account tags: a new label gives fresh accounts
 
     def helper_call(self, sig, *args):
         return cast("call", self.helper, sig, *args, "--rpc-url", self.signer_rpc)
@@ -167,39 +168,43 @@ class Driver:
         return self.call(self.ep, f"getUserOpHash({PACKED_OP})(bytes32)", tup)
 
     def certs(self, validator, account, params, tag, signers):
-        """Each signer's certificate, or "0x" if its operation tree is already enrolled on the target chain (D10)"""
+        """Each signer's operation-tree seed (derived by the validator on the target chain) and certificate, or
+        "0x" if its tree is already enrolled there (D10)"""
         if params is None:
-            return []
-        out = []
+            return [], []
+        certs, seeds = [], []
         p = "(%d,%d,%d,%d)" % params
         for m in signers:
-            root, seed, height, start = cast_values(
-                "call", self.helper, f"tree({PARAMS_TYPE},string,uint256,uint256)(bytes32,uint128,uint8,uint64)", p,
-                tag, m, self.tree_index, "--rpc-url", self.signer_rpc)
+            seed = self.call(validator, "treeSeed(address,uint256,uint256)(uint128)", account, m, self.tree_index)
+            seeds.append(seed)
+            root, height, start = cast_values(
+                "call", self.helper, f"tree({PARAMS_TYPE},string,uint256,uint256,uint128)(bytes32,uint8,uint64)", p,
+                tag, m, self.tree_index, seed, "--rpc-url", self.signer_rpc)
             enrolled = self.call(validator, "tree(address,uint256)(bytes32)", account, m)
             if enrolled.lower() == root.lower():
-                out.append("0x")
+                certs.append("0x")
                 continue
-            digest = self.call(validator, "certificateDigest(address,uint256,bytes32,uint128,uint8,uint64)(bytes32)",
-                               account, m, root, seed, height, start)
-            out.append(self.helper_call(f"certificate({PARAMS_TYPE},string,uint256,uint256,bytes32)(bytes)", p, tag, m,
-                                        self.tree_index, digest))
-        return out
+            digest = self.call(validator, "certificateDigest(address,uint256,bytes32,uint8,uint64)(bytes32)",
+                               account, m, root, height, start)
+            certs.append(self.helper_call(f"certificate({PARAMS_TYPE},string,uint256,uint256,uint128,bytes32)(bytes)",
+                                          p, tag, m, self.tree_index, seed, digest))
+        return certs, seeds
 
-    def sign(self, op, params, tag, signers, nonce, certs):
+    def sign(self, op, params, tag, signers, nonce, certs, seeds):
         digest = self.user_op_hash(op)
         if params is None:
             return cast("wallet", "sign", "--private-key", ECDSA_PK, digest)
         return self.helper_call(
-            f"sign({PARAMS_TYPE},string,uint256,uint256[],uint256,uint256,bytes[],bytes32)(bytes)", "(%d,%d,%d,%d)" % params,
-            tag, self.tree_index, "[%s]" % ",".join(map(str, signers)), 0, nonce, "[%s]" % ",".join(certs), digest)
+            f"sign({PARAMS_TYPE},string,uint256,uint256[],uint128[],uint256,uint256,bytes[],bytes32)(bytes)",
+            "(%d,%d,%d,%d)" % params, tag, self.tree_index, "[%s]" % ",".join(map(str, signers)),
+            "[%s]" % ",".join(seeds), 0, nonce, "[%s]" % ",".join(certs), digest)
 
     def run_scenario(self, bundler_name, bundler_url, scenario, counterfactual=False):
         """counterfactual: the first op deploys the account through initCode. Otherwise the account is
         deployed by an ordinary transaction first, and two transfers test signature acceptance alone."""
         name, vkey, params, members, threshold, signers, verifier_gas = scenario
         self.fees(bundler_url)  # fail before funding an account if the bundler isn't reachable
-        tag = f"{name} / {bundler_name} / {'cf' if counterfactual else 'pre'}"
+        tag = f"{name} / {bundler_name} / {'cf' if counterfactual else 'pre'}" + (f" / {self.run}" if self.run else "")
         init = self.init_data(self.d[vkey], params, tag, members, threshold)
         salt = cast("keccak", tag)
         sender = self.call(self.d["kernelFactory"], "getAddress(bytes,bytes32)(address)", init, salt)
@@ -223,7 +228,7 @@ class Driver:
                factory_data=None):
         """One UserOperation through a bundler: estimate (dummy signature), sign, send, wait for the receipt.
         factory_data: deploy the account through the meta factory (initCode) with this operation."""
-        certs = self.certs(validator, sender, params, tag, signers)
+        certs, seeds = self.certs(validator, sender, params, tag, signers)
         max_fee, prio = self.fees(bundler_url)
         op = {
             "sender": sender,
@@ -266,7 +271,7 @@ class Driver:
                    + 110_000 * row["certificates"])  # a certificate: master verification and storage
             op["verificationGasLimit"] = h(vgl * 12 // 10)
         row["vgl"] = int(op["verificationGasLimit"], 16)
-        op["signature"] = self.sign(op, params, tag, signers, nonce, certs)
+        op["signature"] = self.sign(op, params, tag, signers, nonce, certs, seeds)
         try:
             op_hash = rpc(bundler_url, "eth_sendUserOperation", [op, self.ep])
             row["send"] = "accepted"
@@ -300,13 +305,14 @@ def main():
     ap.add_argument("--fund", default="1ether", help="value sent to each test account")
     ap.add_argument("--transfer-wei", type=int, default=10**15, help="value each operation transfers")
     ap.add_argument("--only", help="comma-separated scenario names (default: all)")
+    ap.add_argument("--run", default="", help="label for fresh test accounts (accounts derive from tags)")
     ap.add_argument("--fees", choices=("fixed", "bundler"), default="fixed",
                     help="fixed: 50 gwei / 1 gwei; bundler: each bundler's gas price method")
     args = ap.parse_args()
 
     driver = Driver(args.rpc, json.load(open(args.deployment)), args.signer_rpc, args.signer_helper)
     driver.funder = args.funder
-    driver.fund, driver.transfer_wei, driver.fee_mode = args.fund, args.transfer_wei, args.fees
+    driver.fund, driver.transfer_wei, driver.fee_mode, driver.run = args.fund, args.transfer_wei, args.fees, args.run
     rows = []
     for spec in args.bundler:
         bname, burl = spec.split("=", 1)
