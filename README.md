@@ -77,6 +77,7 @@ cd signer && .venv/bin/python -m unittest discover -s tests -t .   # tests
 export WALLETCONNECT_PROJECT_ID=...      # from cloud.reown.com; Reown's relay requires one
 signer/winterlock-signer connect --chain sepolia --safe 0x...   # paste the dapp's wc: URI when asked (it isn't shown)
 signer/winterlock-signer message --chain sepolia --file safe-message-....json   # another member signs a message
+cd signer && .venv/bin/python -m winterlock_signer.collect --rpc $WINTERLOCK_RPC   # optional collection endpoint
 ```
 
 The design and its limits are described in [docs/notes/walletconnect.md](docs/notes/walletconnect.md).
