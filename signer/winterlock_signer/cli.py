@@ -1,13 +1,16 @@
 """winterlock-signer: a minimal signer for members of a Safe whose owners are WinterlockOwner contracts (D13).
 
-  init      create a signer (a new secret seed), or --restore one from a seed backup on a new device
+  init      create a signer (a new recovery phrase, checked), or --restore one from its phrase on a new device
+  backup    show and check the recovery phrase;  passphrase: change the seed file's passphrase
+  move      move to a new device while the old one works: start (new), export (old), import (new)
+  device    adopt, or retire the trees of, a key log that looks like a copy
   address   the member's owner address (the same on every chain) and stateless public key
   enroll    certify an operation tree for a Safe on a chain; creates your owner with it if needed
   propose   build, show and sign a Safe transaction, and post it to Safe's Transaction Service
   confirm   fetch a proposed transaction, decode and show it, sign it, and post the confirmation
   queue     the Safe's pending transactions, decoded here, with this member's key use at each nonce
   execute   send execTransaction with the collected signatures, from a gas-paying account
-  status    key usage and tree health
+  status    key usage and tree health, the device and backup state
 
 Chain access: --chain (name or id) and --rpc URL (or WINTERLOCK_RPC). Service: Safe's hosted Transaction Service
 for the chain (SAFE_API_KEY), --service URL, or --offline with --file for peer-to-peer proposal files. Gas: the
@@ -282,22 +285,9 @@ def add_file_signature(doc, owner_addr, sig_hex):
 # --- commands ---
 
 def cmd_init(args):
-    seed = None
-    if args.restore:
-        raw = abi.read_file(args.restore).strip() if args.restore != "-" else sys.stdin.readline().strip()
-        seed = h2b(raw)
-    t0 = time.time()
-    m = Member.init(args.home, seed)
-    out(f"{'Restored' if seed else 'Created'} a signer in {m.home} ({time.time() - t0:.1f} s)")
-    out(f"  owner address  {m.owner}  (the same on every chain)")
-    out(f"  stateless key  {b2h(m.key)}  (leanSphincs, kept subtree {STATELESS_B})")
-    if seed:
-        out("  The key log starts empty: this signer never uses the trees of the old device. Run `enroll` for each")
-        out("  Safe to certify a fresh tree from the current nonce; the old device's pending approvals stop counting.")
-    else:
-        out(f"  Back up {os.path.join(m.home, 'seed')} offline now: it is the only backup you need. Restoring it")
-        out("  later starts fresh trees (a fee per Safe and chain), never the old ones.")
-    m.close()
+    """New signers, restores and moves: cli_recovery.py"""
+    from . import cli_recovery
+    return cli_recovery.cmd_init(args)
 
 
 def shared_contracts():
@@ -656,6 +646,9 @@ def cmd_status(args):
     m = open_member(args, lock=False)
     out(f"Signer {m.home}")
     out(f"  owner {m.owner}, stateless key {b2h(m.key)}")
+    from . import cli_recovery
+    for line in cli_recovery.status_lines(m):
+        out(line)
     ident = m.log.identity()
     if ident and ident["t"] == "restore":
         out(f"  restored from the seed on {ident['at']}: trees of the old device are never used")
@@ -692,6 +685,8 @@ def cmd_status(args):
             if onchain is not None:
                 state = " ENROLLED" if onchain[0] is not None and b2h(onchain[0]) == r["root"] else \
                     (" not enrolled yet" if r is trees[-1] else " retired")
+            if m.log.retired(r):
+                state += " RETIRED HERE (never signs again: `enroll` certifies a fresh tree)"
             out(f"  tree {r['root'][:18]}… height {r['height']}, nonces {r['start']}–{r['start'] + cap - 1}{state}: "
                 f"{len(signs)} keys used ({spare} spare), last nonce signed {last}")
             if safe_nonce is not None and state == " ENROLLED":
@@ -731,8 +726,8 @@ def build_parser():
             sp.add_argument("--service", help="Transaction Service base URL (default: Safe's hosted one)")
             sp.add_argument("--offline", action="store_true", help="no Transaction Service: proposal files only")
 
-    sp = sub.add_parser("init", help="create a signer, or restore one from a seed backup")
-    sp.add_argument("--restore", metavar="FILE", help="seed backup file (hex), or - for stdin")
+    from . import cli_recovery  # init, backup, passphrase, move, device
+    cli_recovery.add_parsers(sub, chain_opts, COMMANDS)
     sp = sub.add_parser("address", help="owner address and stateless key")
     chain_opts(sp, service=False)
     sp = sub.add_parser("enroll", help="certify an operation tree for a Safe and send enroll")

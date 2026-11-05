@@ -49,7 +49,7 @@ class EndToEnd(unittest.TestCase):
         cls.release = devchain.safe_release(cls.rpc, cls.deployer)
         cls.homes = {n: os.path.join(cls.tmp.name, n) for n in ("m1", "m2", "m3")}
         for h in cls.homes.values():
-            cls.run_cli(["--home", h, "init"])
+            cls.run_cli(["--home", h, "init", "--insecure-plaintext-seed"])
         cls.owners = {}
         for n, h in cls.homes.items():
             m = Member(h, lock=False)
@@ -215,7 +215,8 @@ class EndToEnd(unittest.TestCase):
         backup = os.path.join(self.tmp.name, "m2-seed-backup")
         shutil.copy(os.path.join(self.homes["m2"], "seed"), backup)
         new_home = os.path.join(self.tmp.name, "m2-restored")
-        code, text = self.run_cli(["--home", new_home, "init", "--restore", backup])
+        code, text = self.run_cli(["--home", new_home, "init", "--restore", backup, "--lost",
+                                   "--insecure-plaintext-seed"])
         self.assertEqual(code, 0, text)
         self.assertIn(self.owners["m2"], text)  # same owner address
         # the restored signer has no log for the enrolled tree, so it won't sign with it

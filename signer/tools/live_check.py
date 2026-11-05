@@ -31,7 +31,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import devchain  # noqa: E402
 
-from winterlock_signer import abi, cli  # noqa: E402
+from winterlock_signer import abi, cli, phrase  # noqa: E402
 from winterlock_signer.ethtx import Account, send  # noqa: E402
 from winterlock_signer.member import Member  # noqa: E402
 from winterlock_signer.rpc import Rpc  # noqa: E402
@@ -56,7 +56,10 @@ class Redactor:
         for h in homes:
             p = os.path.join(h, "seed")
             if os.path.exists(p):
-                vals.append(abi.read_file(p).strip())
+                hexseed = abi.read_file(p).strip()
+                vals.append(hexseed)
+                if len(hexseed) == 64:  # and the same seed spelled as its recovery phrase
+                    vals.append(" ".join(phrase.to_phrase(bytes.fromhex(hexseed))))
         self.secrets = [v for v in vals if v and len(v) >= 8]
 
     def __call__(self, text):
@@ -153,7 +156,7 @@ def main():
             if step == "init":
                 for i, h in enumerate(homes):
                     if not os.path.exists(os.path.join(h, "seed")):
-                        run(i, "init")
+                        run(i, "init", "--insecure-plaintext-seed")  # throwaway testnet seeds: no phrase is printed
                 red.__init__(homes)  # redact the new seeds from here on
                 st["owners"] = []
                 for h in homes:

@@ -1,3 +1,5 @@
 # A C-backed keccak256: either works; safe-pysha3 is about 7x faster per hash
 safe-pysha3>=1.0.4
 pycryptodome>=3.20
+# BIP-39 recovery phrases (the reference implementation)
+mnemonic>=0.21

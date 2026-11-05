@@ -11,6 +11,12 @@ Records (field "t"):
                   tree: it must certify a fresh one (D11, D12).
   cert            the stateless key certified a tree (enrolment)
   sign            a one-time key signed: chain, safe, tree root, nonce, slot, key index, and the SafeTx hash
+  device          the device this log belongs to now (device.py): a random id and how it got the log (init, restore,
+                  move-in, adopt, fresh-trees, upgrade). With "retire": true, every tree recorded before it is retired:
+                  never signed with again, and enroll certifies a fresh one
+  backup          the recovery phrase was checked (at init, by `backup`, or typed in for a restore or a move)
+  move-out        this device handed its log to another (`move export`): the device is locked for good; nothing is
+                  appended after it
 Rules enforced here: a key signs one hash only (signing the same hash again is allowed: signatures are
 deterministic); slots are picked by the signer, never the user: slot 0 first, slot 1 for a second, different SafeTx
 at the same nonce (D4), and nothing after that.
@@ -37,6 +43,16 @@ def _chk(rec: dict) -> str:
     return keccak256(body.encode()).hex()[:16]
 
 
+def encode(rec: dict) -> bytes:
+    """A record's line in the log, without the newline"""
+    return json.dumps(rec, sort_keys=True, separators=(",", ":")).encode()
+
+
+def head(records: list) -> str:
+    """A commitment to a sequence of records (their lines, in order)"""
+    return "0x" + keccak256(b"".join(encode(r) + b"\n" for r in records)).hex()
+
+
 def _now():
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -50,6 +66,8 @@ class KeyLog:
         fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_APPEND, 0o600)
         self._f = os.fdopen(fd, "r+b", buffering=0)
         self.locked = lock
+        self.frozen = None  # a reason: the log takes no more records (but device records, set by the member)
+        self.on_append = None  # called with the log after each record is saved
         if lock:
             try:
                 fcntl.flock(self._f, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -58,7 +76,11 @@ class KeyLog:
                 raise Refused("another signer process holds the key log; wait for it to finish") from None
         if new:
             _fsync_dir(os.path.dirname(os.path.abspath(path)))
-        self._load()
+        try:
+            self._load()
+        except BaseException:
+            self.close()
+            raise
 
     def close(self):
         if self._f:
@@ -88,15 +110,19 @@ class KeyLog:
     def append(self, rec: dict) -> dict:
         if not self.locked:
             raise Refused("the key log is open read-only")
+        if self.frozen and rec.get("t") != "device":
+            raise Refused(self.frozen)
         rec = dict(rec)
         rec.setdefault("at", _now())
         rec["chk"] = _chk(rec)
-        line = json.dumps(rec, sort_keys=True, separators=(",", ":")).encode() + b"\n"
+        line = encode(rec) + b"\n"
         view = memoryview(line)
         while view:
             view = view[self._f.write(view):]
         os.fsync(self._f.fileno())
         self.records.append(rec)
+        if self.on_append:
+            self.on_append(self)
         return rec
 
     # --- queries ---
@@ -107,11 +133,31 @@ class KeyLog:
                 return r
         return None
 
+    def last(self, kind: str):
+        for r in reversed(self.records):
+            if r["t"] == kind:
+                return r
+        return None
+
+    def _live_from(self) -> int:
+        """Index of the latest device record that retired the trees before it (0 if none)"""
+        for i in range(len(self.records) - 1, -1, -1):
+            r = self.records[i]
+            if r["t"] == "device" and r.get("retire"):
+                return i
+        return 0
+
+    def retired(self, rec: dict) -> bool:
+        cut = self._live_from()
+        return any(r is rec for r in self.records[:cut])
+
     def trees(self, chain: int, safe: str) -> list:
-        return [r for r in self.records if r["t"] == "tree" and r["chain"] == chain
+        """The live trees for a Safe on a chain, oldest first; retired trees are left out"""
+        return [r for r in self.records[self._live_from():] if r["t"] == "tree" and r["chain"] == chain
                 and r["safe"].lower() == safe.lower()]
 
     def all_trees(self) -> list:
+        """Every tree, retired ones included"""
         return [r for r in self.records if r["t"] == "tree"]
 
     def tree_by_root(self, chain: int, safe: str, root_hex: str):

@@ -1,9 +1,11 @@
 """A member's signer state: the secret seed, the key log, and everything derived from them.
 
 Home directory (default ~/.winterlock-signer, or WINTERLOCK_HOME), mode 700:
-  seed         32 random bytes, hex, mode 600: the only secret, and the only backup a member needs
+  seed         the 32-byte secret, mode 600, encrypted with a passphrase (seedfile.py). Its backup is the recovery
+               phrase: 24 BIP-39 words that encode these 32 bytes (phrase.py). Removed when the device moves away.
   keylog.jsonl the key log (keylog.py), mode 600
   cache/       public values only, rebuilt when missing: the stateless key's kept leaves, operation tree leaves
+  move-request.json  only on a new device waiting for a move's bundle (move.py)
 
 Derivations (keccak256 of abi.encode(label, ...)):
   stateless seed   ("winterlock.signer.stateless.v1", seed) -> leanSphincs key, kept subtree of height 10.
@@ -12,18 +14,30 @@ Derivations (keccak256 of abi.encode(label, ...)):
                    recorded only in the key log. A lost log can't bring an old tree back; two restores never make
                    the same tree.
   WOTS secrets     wots.Prf.SIGNER over the tree secret seed
+
+Device states (state()): active; locked (a move was started and not finished, or this key log looks like a copy:
+device.py); moved (the log was handed to another device, which now signs instead). Only an active signer signs.
 """
 
 import os
 import secrets
 
-from . import leansphincs, owner, wots
+from . import device, leansphincs, owner, seedfile, wots
 from .abi import b2h, h2b, read_file, word
 from .keccak import keccak256
 from .keylog import KeyLog, Refused, _fsync_dir
 
 STATELESS_B = leansphincs.DEFAULT_B
 DEFAULT_HEIGHT = 10
+REQUEST = "move-request.json"
+COPY_REMEDY = ("If the original signer still works, move from it instead (`move export` there, `move import` here). "
+               "If it is gone for good, `device fresh-trees` makes this copy safe to use (fresh trees: a fee per Safe "
+               "and chain); `device adopt` trusts this copy as complete, which is only right if it was made after "
+               "the original's last signature.")
+
+# Asked for the seed's passphrase when neither the caller nor WINTERLOCK_PASSPHRASE gives one: f(prompt) -> str. The
+# command line sets it to a terminal prompt.
+ask_passphrase = None
 
 
 def default_home() -> str:
@@ -35,40 +49,73 @@ def _abi_label(label: bytes, *words) -> bytes:
     return keccak256(head + word(len(label)) + label + bytes((-len(label)) % 32))
 
 
-def _write_secret(path: str, text: str):
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "w") as f:
-        f.write(text)
-        f.flush()
-        os.fsync(f.fileno())
+def stateless_key(seed: bytes) -> leansphincs.Key:
+    return leansphincs.Key(_abi_label(b"winterlock.signer.stateless.v1", seed), STATELESS_B)
+
+
+def identity_of(seed: bytes):
+    """(stateless public key, owner address) that a seed gives, without a signer directory (about 0.1 s)"""
+    key = stateless_key(seed).public_key
+    return key, owner.owner_address(key)
 
 
 class Member:
-    def __init__(self, home: str = None, lock=True):
+    def __init__(self, home: str = None, lock=True, passphrase: str = None, _seed: bytes = None,
+                 _allow_request=False):
         self.home = home or default_home()
-        seed_path = os.path.join(self.home, "seed")
-        if not os.path.exists(seed_path):
+        self.seed_path = os.path.join(self.home, "seed")
+        log_path = os.path.join(self.home, "keylog.jsonl")
+        if os.path.exists(os.path.join(self.home, REQUEST)) and not _allow_request:
+            raise Refused(f"{self.home} is waiting for a move from your old device: run `move import BUNDLE` with "
+                          "the bundle it wrote, or `move cancel`")
+        has_seed = os.path.exists(self.seed_path)
+        if not has_seed and not os.path.exists(log_path):
             raise Refused(f"no signer at {self.home}: run `init` first")
-        st = os.stat(seed_path)
-        if st.st_mode & 0o077:
-            raise Refused(f"{seed_path} is readable by others (mode {oct(st.st_mode & 0o777)}): chmod 600 it")
-        self._seed = h2b(read_file(seed_path).strip())
-        if len(self._seed) != 32:
-            raise Refused("seed file must hold 32 bytes of hex")
-        self.log = KeyLog(os.path.join(self.home, "keylog.jsonl"), lock=lock)
+        if has_seed:
+            st = os.stat(self.seed_path)
+            if st.st_mode & 0o077:
+                raise Refused(f"{self.seed_path} is readable by others (mode {oct(st.st_mode & 0o777)}): chmod 600 it")
+        self._passphrase = passphrase
+        self._seed_value = _seed
         self._sk = None
+        self.log = KeyLog(log_path, lock=lock)
+        try:
+            self._open(lock, has_seed)
+        except BaseException:
+            self.log.close()
+            raise
+
+    def _open(self, lock, has_seed):
         ident = self.log.identity()
+        if ident is None and not has_seed:
+            raise Refused(f"{self.home} has neither a seed nor an identity in its key log")
         self.key = h2b(ident["key"]) if ident else self.stateless().public_key
         self.owner = owner.owner_address(self.key)
         if ident and ident["owner"] != self.owner:
             raise Refused(f"the owner address changed since init ({ident['owner']} -> {self.owner}): the pinned "
                           "owner contracts (implementation, factory or verifier) differ from the ones this signer was "
                           "set up with")
+        self.problems = []
+        dev = self.log.last("device")
+        if dev is None:
+            if lock and ident and not self.move_out():  # a key log from before device records: bind it here
+                self.add_device("upgrade")
+                self.log.warnings.append("this key log is now bound to this device (it predates device checks)")
+        else:
+            self.problems = device.check(dev["id"], self.log.path, self.log.records)
+            if lock and not self.problems:
+                self.log.on_append = self._advance
+        self._refreeze()
 
     # --- set-up ---
 
     @staticmethod
-    def init(home: str = None, restore_seed: bytes = None):
+    def init(home: str = None, restore_seed: bytes = None, passphrase: str = None, backup: str = None,
+             scrypt_n: int = seedfile.SCRYPT_N, new_seed: bytes = None):
+        """A new signer (a new random seed), or one restored from a seed (its phrase) with an empty key log. The seed
+        file is encrypted with `passphrase`; None writes it in plain hex (tests, and the command line's
+        --insecure-plaintext-seed). `backup` records how the phrase was checked. `new_seed`: a new signer's seed, when
+        the caller drew it (to show its phrase before anything is saved)."""
         home = home or default_home()
         os.makedirs(home, mode=0o700, exist_ok=True)
         os.chmod(home, 0o700)
@@ -76,16 +123,133 @@ class Member:
             raise Refused(f"{home} already has a seed; refusing to overwrite it")
         if os.path.exists(os.path.join(home, "keylog.jsonl")):
             raise Refused(f"{home} has a key log but no seed; move it away first")
-        seed = restore_seed if restore_seed is not None else secrets.token_bytes(32)
+        if os.path.exists(os.path.join(home, REQUEST)):
+            raise Refused(f"{home} is waiting for a move: `move import` or `move cancel` first")
+        seed = restore_seed if restore_seed is not None else new_seed or secrets.token_bytes(32)
         if len(seed) != 32:
             raise Refused("a seed is 32 bytes")
-        _write_secret(os.path.join(home, "seed"), seed.hex() + "\n")
+        seedfile.write(os.path.join(home, "seed"), seed, passphrase, n=scrypt_n)
         _fsync_dir(home)
-        m = Member(home)
-        m.log.append({"t": "restore" if restore_seed is not None else "init", "owner": m.owner,
-                      "key": b2h(m.key), "params": "D6", "stateless_b": STATELESS_B,
+        m = Member(home, passphrase=passphrase, _seed=seed)
+        how = "restore" if restore_seed is not None else "init"
+        m.log.append({"t": how, "owner": m.owner, "key": b2h(m.key), "params": "D6", "stateless_b": STATELESS_B,
                       "owner_code": owner.PINNED_COMMIT})
+        m.add_device(how)
+        if backup:
+            m.log.append({"t": "backup", "how": backup})
         return m
+
+    # --- the seed ---
+
+    @property
+    def _seed(self) -> bytes:
+        if self._seed_value is None:
+            self._seed_value = self._unlock()
+        return self._seed_value
+
+    def seed(self) -> bytes:
+        """The secret seed, unlocked with the passphrase if needed"""
+        return self._seed
+
+    def use_seed(self, seed: bytes):
+        """Takes the seed from the recovery phrase (on a device whose seed file is gone); refuses another signer's"""
+        if stateless_key(seed).public_key != self.key:
+            raise Refused("this recovery phrase belongs to another signer")
+        self._seed_value = seed
+
+    def _passphrase_for_unlock(self) -> str:
+        if self._passphrase is not None:
+            return self._passphrase
+        env = os.environ.get("WINTERLOCK_PASSPHRASE")
+        if env is not None:
+            return env
+        if ask_passphrase:
+            return ask_passphrase(f"Passphrase for {self.home}: ")
+        raise Refused("the seed is encrypted: run this in a terminal, or set WINTERLOCK_PASSPHRASE")
+
+    def _unlock(self) -> bytes:
+        if not os.path.exists(self.seed_path):
+            st, why = self.state()
+            raise Refused(why if st != "active" else f"{self.home} has no seed file")
+        for attempt in range(3):
+            try:
+                return seedfile.read(self.seed_path, self._passphrase_for_unlock)
+            except seedfile.WrongPassphrase:
+                if self._passphrase is not None or os.environ.get("WINTERLOCK_PASSPHRASE") is not None or attempt == 2:
+                    raise Refused("wrong passphrase for the seed file") from None
+            except seedfile.SeedFileError as e:
+                raise Refused(str(e)) from None
+
+    def set_passphrase(self, passphrase: str, scrypt_n: int = seedfile.SCRYPT_N):
+        """Re-encrypts the seed file under a new passphrase (or encrypts a plain one)"""
+        seed = self._seed
+        seedfile.write(self.seed_path, seed, passphrase, n=scrypt_n, replace=True)
+        self._passphrase = passphrase
+
+    # --- device ---
+
+    def device(self):
+        """The current device record, or None (a key log from before device records)"""
+        return self.log.last("device")
+
+    def move_out(self):
+        """The move-out record that locks this device: one after its latest device record"""
+        for r in reversed(self.log.records):
+            if r["t"] == "device":
+                return None
+            if r["t"] == "move-out":
+                return r
+        return None
+
+    def state(self):
+        """("active" | "locked" | "moved", why)"""
+        mo = self.move_out()
+        if mo:
+            if os.path.exists(self.seed_path):
+                return "locked", (f"this device started a move to another device (request {mo['request']}) on "
+                                  f"{mo['at']} and signs nothing more; run `move export --code {mo['request']}` "
+                                  "again to write the bundle and finish it")
+            return "moved", (f"this device moved its keys to another device on {mo['at']} (request "
+                             f"{mo['request']}) and never signs again")
+        if self.problems:
+            return "locked", ("this key log looks like a copy: " + "; ".join(p[1] for p in self.problems) + ". "
+                              + COPY_REMEDY)
+        return "active", ""
+
+    def require_active(self):
+        st, why = self.state()
+        if st != "active":
+            raise Refused(why)
+
+    def _refreeze(self):
+        st, why = self.state()
+        self.log.frozen = why if st != "active" else None
+
+    def _advance(self, log):
+        dev = log.last("device")
+        if dev:
+            try:
+                device.advance(dev["id"], len(log.records), log.records[-1]["chk"])
+            except OSError as e:
+                log.warnings.append(f"device anchor not updated ({e}): the copy check can't see this record")
+
+    def add_device(self, how: str, retire: bool = False, **extra) -> dict:
+        """Binds the key log to this device under a new device id (device.py). With retire, every tree recorded so
+        far is retired."""
+        prev = self.log.last("device")
+        rec = {"t": "device", "id": device.new_id(), "how": how, "gen": prev["gen"] + 1 if prev else 0, **extra}
+        if retire:
+            rec["retire"] = True
+        self.log.on_append = None
+        rec = self.log.append(rec)
+        try:
+            device.bind(rec["id"], self.log.path, len(self.log.records), rec["chk"])
+        except OSError as e:
+            self.log.warnings.append(f"device anchor not written ({e}): copies of this key log can't be detected")
+        self.problems = []
+        self.log.on_append = self._advance
+        self._refreeze()
+        return rec
 
     def close(self):
         self.log.close()
@@ -114,6 +278,7 @@ class Member:
         return self._sk
 
     def stateless_sign(self, digest: bytes) -> bytes:
+        self.require_active()
         sig = self.stateless().sign(digest)
         if not leansphincs.verify(self.key, digest, sig):
             raise RuntimeError("stateless signature failed its own verification: not released")
@@ -131,6 +296,7 @@ class Member:
 
     def new_tree(self, chain: int, safe: str, start: int, height: int = DEFAULT_HEIGHT) -> dict:
         """Generates a fresh tree (fresh random salt) and records it, fsynced, before it is certified"""
+        self.require_active()
         if not 1 <= height <= owner.MAX_HEIGHT or not 0 <= start <= owner.MAX_START:
             raise Refused("bad tree height or start")
         if height > 20:
@@ -173,6 +339,7 @@ class Member:
 
     def certificate(self, rec: dict) -> bytes:
         """The stateless key's signature of the tree's certificate digest; recorded before it is released"""
+        self.require_active()
         digest = owner.certificate_digest(rec["chain"], rec["owner"], rec["safe"], h2b(rec["root"]), rec["height"],
                                           rec["start"])
         self.log.append({"t": "cert", "chain": rec["chain"], "safe": rec["safe"], "root": rec["root"],
@@ -185,6 +352,9 @@ class Member:
         """WinterlockOwner transaction signature data for `safe_tx` with tree `rec`. The slot is picked from the key
         log unless given; the key's use is recorded and fsynced before the signature is computed or released.
         Returns (data, slot, key index, SafeTx hash)."""
+        self.require_active()
+        if self.log.retired(rec):
+            raise Refused(f"tree {rec['root']} is retired on this device: run `enroll` to certify a fresh one")
         h = safe_tx.hash(chain, safe)
         hx = b2h(h)
         nonce = safe_tx.nonce
