@@ -79,6 +79,19 @@ Open:
 - **The parameter set is leanSphincs** (5.7 KB, 52.8k gas, a proved signature budget that covers hardware signers), not leanSphincs-s.
 - **The security level stays category 1 for now.** The stateless key uses 16-byte hashes and can certify trees and sign messages, so it sets the account's security level. D6's 24-byte WOTS stays. On the backburner: a stateless scheme at category 3 (24-byte hashes) that would bring the whole account to D6's level.
 
+**D13. Teams use Winterlock as Safe owners; individuals keep the Kernel validator** (2026-11-05)
+- **Teams:** the primary path is a Safe whose owners are WinterlockOwner contracts (EIP-1271), one per member. Safe does the k-of-n.
+  - Teams keep Safe's contracts, its Transaction Service and its app for the queue, history and confirmations.
+  - An existing Safe can upgrade in place by swapping its ECDSA owners one at a time, keeping its address and funds.
+- **Individuals:** they keep the ERC-7579 validator on Kernel (ERC-4337).
+- **Both share the core (D1):** the WOTS verifier, the stateless key, certificates and nonce binding.
+- **Why:** the live test on Sepolia ("Safe owner, live on Sepolia" under Measurements) showed transactions working end to end, with no change to Safe's contracts, service or app. Winterlock's own pieces for teams shrink to the owner contracts and a signer that posts to Safe's service.
+- **Open for this path:**
+  - a cheap owner deployment (a minimal proxy)
+  - message signing within the Transaction Service's 5,000-byte limit
+  - a minimal signer
+  - whether Safe's app lets an account that isn't an owner execute
+
 ## Constraints that every design must respect
 
 - **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all. Under D12 the stateless key is shared by all chains and accounts; it signs their certificates and messages, up to its proved signature budget (D11).
@@ -617,6 +630,78 @@ The question: can Winterlock be a Safe owner, an EIP-1271 contract owner checked
 - **Safes before v1.3.0** use an EIP-712 domain without a chain id. Not supported.
 - **Forge's incremental build is stale for the owner:** after an edit to `WinterlockOwner.sol`, Forge recompiled that file alone ("Compiling 1 files"), and the tests, which embed its creation code through `SafeOwnerDeployment`, kept the old bytecode. A mutant then passed every test, while the same mutant, recompiled together with the tests, failed its test. A first mutation run was fooled this way. After changing the owner, run `forge build --force`.
 
+**2026-11-05: Safe owner, live on Sepolia** (`bench/safe/live.py`, `bench/safe/SafeSignerHelper.sol`; results in the git-ignored `bench/safe/results-sepolia.json`)
+
+The question: does the spike's design work with a real Safe and Safe's hosted Transaction Service (version 6.14.0)? For transactions, yes, unchanged: the service accepts proposals and confirmations from WinterlockOwners, shows them as contract signatures, and indexes their execution. Messages and delegates are refused, as the spike predicted.
+
+**Setup.**
+- **Safe v1.4.1 with the SafeL2 singleton** (`0x29fcB43b46531BcA003ddC8FCB67FFE91900C762`), created through the canonical factory (`0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67`), threshold 2, CompatibilityFallbackHandler `0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99`. Why SafeL2:
+  - Where the app's multi-chain creation feature is on, it creates a v1.4.1 Safe with the L1 singleton plus `SafeToL2Setup.setupToL2`, which switches the Safe to SafeL2 on every chain but mainnet (`createNewUndeployedSafeWithoutSalt` in the wallet's create logic). Elsewhere it takes SafeL2 when the chain is marked L2. Sepolia's flags come from Safe's config service and weren't checked.
+  - Starting from SafeL2 gives the same singleton without the setup call, and SafeL2's events let the service index it whether it traces calls or reads events. It reports the Safe as `1.4.1+L2`.
+- **Members:** parameter set D6; operation trees of height 10 whose first 16 keys are real, built like the integration tests' trees; leanSphincs stateless keys.
+  - The keys derive from a new secret seed in `bench/bundlers/.env`.
+  - Signing runs in Solidity on a local anvil that the driver starts and stops.
+  - The driver records each (member, nonce, slot) it signs with and refuses to sign a second SafeTx with the same key (D4).
+- **Rehearsal first:** the whole run went through on a local anvil fork of Sepolia without service calls. Its gas figures, under pre-Glamsterdam rules, are the second column below.
+- **Addresses** (all deterministic):
+  - Safe `0x5B81D3ce1Ca48be48F154D8AD060Cf9f883E86B2`
+  - owners `0x7141F0c30ABcF3Dc35d9409FFc3383009235c47d` (member 1), `0x2D3C9197237D1F1e1165b1EEE748BC9e1c3f1123` (member 2), `0xfaF53A0b16E45252a2F142B1C10Eecab4fE1Fa14` (member 3, not enrolled)
+  - stateless verifier `0x6Dc4DFBccDe0fbeC30b0a4078aB6f45496Fec254`, now deployed on Sepolia at its predicted address
+
+**On-chain steps** (gas used from receipts; all sent by the throwaway deployer, which is not an owner):
+
+| Step | Sepolia (Glamsterdam) | Pre-Glamsterdam (fork rehearsal) |
+|---|---|---|
+| Deploy the stateless verifier | 6,513,514 | 928,746 (7.0×) |
+| Deploy an owner (each of the three) | 11,225,240 | 1,604,182 (7.0×) |
+| Create the Safe | 1,483,393 | 305,847 (4.9×) |
+| Fund it with 0.001 ETH | 27,729 | 27,329 |
+| Enrol a member (members 1 and 2) | 392,088 | 251,460 |
+| `execTransaction`, 1 wei to the deployer, nonce 0 | 392,632 | 306,900 |
+| `execTransaction`, the replacement at nonce 1 | 287,593 | 284,909 |
+
+- **Transactions:**
+  - verifier `0x9847c894d13a911a51134c182377f152a2adadc7549e3b82546dddaa46190215`
+  - owners `0x842a4128d239a85fbf083fb9f9b0ea39322611c034e785a553071d73e0531e66`, `0xf08482c82dd5bd14fbfb164be2f8c5369586ffd4c177c2499fcc9f5c3ad67267`, `0xd5b36e4b6286df9688f858483cf1a0aab1218da9c7822078b72cf4fc5661c1eb`
+  - Safe `0x61139a01295c242e2df0f2e81f62153e4c47237a413e6f8b8e0588fd8b263c66`, funding `0xf6b4063e462c0df37d68e91823a14527e52c7dc768aa68b1fd174325dc7a7ca0`
+  - enrolments `0xff85dd254175fef440c5f68cbe543cf818a70144e22af633eca2cfd7cd418a4b`, `0xd149a39aba40ee7f6e7417c296df4b543b6068d171442539d530326bbd01333e`
+  - executions `0x7b70e656f865340c101f26cec8fd7558eb9ec68a02c7d044c891c4cfff1bbc4d` (nonce 0), `0x33b36753f78881530dfe8d08056ead5f8e2a396d5060b8baeec89d2f5fd63c2f` (nonce 1)
+- **Glamsterdam's surcharge falls on new state:**
+  - deployments cost seven times more, as predicted (about 11M per owner)
+  - the Safe's creation costs five times more; that applies to any Safe
+  - enrolment costs 141k more, and the first execution 86k more; each writes a new storage slot (the owner's tree, the Safe's nonce)
+  - the later execution costs only 2.7k more
+- **SafeL2 logs the signatures.** Its `SafeMultiSigTransaction` event carries all of `execTransaction`'s parameters: 4,256 bytes here, 3,708 of them the two owners' signatures. That's about 35k gas per execution, about 15k per WinterlockOwner signature, which the spike's 247k (L1 singleton, Forge) doesn't include. A 2-of-3 execution on this SafeL2 at a nonce above 0 cost 288k gas (a call without value), and 285k under the old rules.
+- **Spent:** 0.00142 ETH, including the 0.001 ETH in the Safe. Of the 0.00042 ETH of fees, 0.00029 is the last execution: `cast` picked a 1 gwei priority fee there, against 24 wei to 5 Mwei per gas for the rest.
+
+**Transaction Service calls**, in order (one call per step, except where noted):
+
+| Step | Call | Status | What the service returned |
+|---|---|---|---|
+| a | `GET /v1/safes/{safe}/` | 200 | already indexed at the first poll, 42 s after the creation block: three owners, threshold 2, nonce 0, master copy SafeL2, `1.4.1+L2` |
+| b | `POST /v2/safes/{safe}/multisig-transactions/` | 201 | proposal from member 1's owner as `sender`, with its 1,854-byte contract signature (slot 0) |
+| c | `POST /v1/multisig-transactions/{safeTxHash}/confirmations/` | 201 | member 2's 1,854-byte contract signature, echoed back |
+| d | `GET /v2/multisig-transactions/{safeTxHash}/` | 200 | two confirmations, both `CONTRACT_SIGNATURE`, `confirmationsRequired` 2, proposer member 1's owner, `trusted` true |
+| e | `GET` the same, about 75 s after execution | 200 | `isExecuted` and `isSuccessful` true; executor is the deployer; transaction hash, block, `gasUsed` 392,632 and fee filled in; the 3,708-byte signatures blob |
+| f | 2 proposals, 2 confirmations, 2 × `GET …/multisig-transactions/?nonce=1` | 201 × 4, 200 × 2 | both versions at nonce 1, each with two confirmations; after the replacement executed, it is `isExecuted` true and the original stays `isExecuted` false |
+| g | `POST /v1/safes/{safe}/messages/` | 400 | `{"signature": ["Ensure this field has no more than 5000 hexadecimal chars (not counting 0x)."]}` |
+| h | `POST /v2/delegates/` | 400 | `{"nonFieldErrors": ["No valid signature found for signer=0x7141F0c30ABcF3Dc35d9409FFc3383009235c47d"]}` |
+
+- **Transactions work unchanged.** The service checked each signature with an eth_call to the owner contract and stored it. The execution was built from the signatures as the service returned them; they matched the driver's own byte for byte.
+- **The replacement (D4) works.** The original sends 2 wei to the deployer, signed with slot 0. The replacement is an on-chain rejection as Safe's app builds one (a call to the Safe itself, no value, no data), signed with slot 1 by the same two members. The service accepts two proposals at one nonce and lists both. It knows nothing of slots, so it can't warn about a slot used twice; D8 puts that warning in Winterlock's own service.
+- **Messages:** refused by the field check, before any signature check. The 5,834-byte entry is over the cap.
+  - The error text says hexadecimal characters, but the field counts bytes (safe-eth-py `HexadecimalField` measures the decoded bytes, as its `min_length` of 65 shows), so the cap is 5,000 bytes as the spike assumed.
+  - On-chain the same message works: an eth_call of the Safe's `isValidSignature(EIP-191 hash, 2-of-3 signature)` returns `0x1626ba7e` for the 11,668-byte signature, through the fallback handler.
+- **Delegates are refused by the owner.** Member 1's owner can't approve the service's `Delegate` hash. The service checks a contract signature with an eth_call of the owner's `isValidSignature`; the same eth_call from the driver returned `0xffffffff`.
+  - The request carried a contract signature whose data names the hash without a stateless signature: no data the owner accepts exists, and a full stateless signature would exceed the cap.
+  - Proposals therefore have to come from a member's own owner contract, as in b and f.
+- **Member 3 isn't enrolled.** By design its owner refuses every transaction signature, so the service would too, until it enrols.
+- **Safe's app (app.safe.global), checked by hand after the run:** the Safe opens read-only with no changes on Safe's side.
+  - **History:** nonce 0 shows as sent, and nonce 1 as rejected, because the app recognises the slot-1 replacement as its own on-chain rejection. The unexecuted original at nonce 1 isn't shown, and the queue is empty.
+  - **Each entry:** two confirmations, from member 1's and member 2's owner contracts. The proposer is member 1's owner; the executor is the deployer, a plain account that isn't an owner.
+  - **Owners:** shown as plain addresses, like any owner without a name. Adding the Safe offers to put each signer in the address book, so a team can name its Winterlock owners there.
+- **So for transactions, the Safe route needs no change to Safe's contracts, its Transaction Service or its app.** Winterlock's own pieces are the owner contracts and a signer that posts proposals and confirmations through the service API. Not checked yet: whether the app lets a connected account that isn't an owner press "Execute". A Winterlock relayer or signer can always execute directly, as here.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
@@ -644,7 +729,7 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 1
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): built with the stateless key and an EIP-712 wrap (D11, above). Open: full ERC-7739 nested typed data, and on-chain pre-approval for high-value permits.
 - 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579, including whether they have an enable path like Kernel's and whether it asks with the account as the sender, so the same lock covers it; whether to refuse or support Kernel's replayable signatures for UserOperations; and the signer's confirmation flow for installing modules (Kernel's enable mode is refused by design). On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
-- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike). Open: messages against the Transaction Service's 5,000-byte cap, the per-member deployment cost, and a live test with Safe's app and Transaction Service.
+- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike), and works live on Sepolia with Safe's Transaction Service for transactions (see 2026-11-05, Safe owner, live on Sepolia). Open: messages against the Transaction Service's 5,000-byte cap, the per-member deployment cost (11.2M gas on Sepolia), and how Safe's app shows such a Safe.
 
 **Infrastructure**
 - Bundler acceptance: answered for the hosted bundlers. Pimlico, Candide and Alchemy accept and include WOTS operations from a production Kernel on Arbitrum Sepolia (stage 2, above). Still open:

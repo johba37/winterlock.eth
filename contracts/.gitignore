@@ -11,3 +11,5 @@ bench/bundlers/deployment-*.json
 bench/bundlers/results-*.json
 bench/bundlers/results-multichain.json
 bench/bundlers/__pycache__/
+bench/safe/results-*.json
+bench/safe/__pycache__/
