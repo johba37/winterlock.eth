@@ -59,6 +59,21 @@ SHA-256 support stays in the verifier, so the question can be reopened if hardwa
 
 It replaces the single key tree of D2, keeps D2's binding of keys to nonces, and resolves the open questions about one address per chain and about tree exhaustion. Per-chain trees can be small and are generated when a chain is first used, which also eases key generation on devices.
 
+**D11. Two signing paths: WOTS for speed, a stateless hash-based key as fallback** (2026-11-05)
+- **The fast path** stays WOTS one-time keys (D6, D10) for everyday operations. It has the smallest signatures (1.2–1.7 KB) and the cheapest verification.
+- **The fallback:** each member also holds a stateless hash-based key from the SPHINCS+/SLH-DSA family. It is used for:
+  - **off-chain messages (ERC-1271):** a stateless key needs no record of its use, so it fits a read-only `isValidSignature` check
+  - **recovery when the signer loses its state:** re-certify fresh trees instead of risking key reuse
+  - **a fallback** whenever the fast path is unavailable
+- **Use an existing verifier rather than write one.** The leading candidate is Nicolas Consigny's MIT-licensed SPHINCS- (keccak-based SLH-DSA variants, about 3.7 KB and 260–290k gas, unaudited).
+- **The same pattern as Blockstream's SHRINCS and Consigny's JARDÍN.** It answers the main gaps in the competitor analysis of 2026-11-05: message signing, recovery after state loss, and the cost of losing state with pure WOTS.
+
+Open:
+- The parameter set: the signature budget against size and gas.
+- Whether the stateless key should also sign D10's certificates. That would remove the log of used master keys, the most dangerous state in the system; certificates are rare, so the extra gas is paid seldom.
+- How ERC-1271 messages are bound to the chain and account (an ERC-7739 wrap).
+- Whether high-value permits should use on-chain pre-approval instead.
+
 ## Constraints that every design must respect
 
 - **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all. Under D10 the master tree is shared by all chains of one account, but each master key signs only one certificate.
@@ -364,10 +379,10 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 - One address on every chain, and tree rotation: decided in D10, built and shown live on two testnets (above). Still open:
   - the signer's log of used master keys: where it lives and how it is backed up
   - deploying on chains without Cancun opcodes, or with a different deterministic deployer
-- A recovery key: SPHINCS+, a cold WOTS tree, or none.
+- A recovery key: D11 makes a stateless SPHINCS-family key the recovery path. Open: social or time-delayed recovery on top, as a separate module.
 - Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum.
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
-- Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): support them with dedicated key slots, or refuse them.
+- Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): D11 signs them with the stateless key. Open: the ERC-7739 wrap, and on-chain pre-approval for high-value permits.
 - 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579; whether to refuse or support Kernel's replayable signatures; and the signer's confirmation flow for installing modules. On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
 - Classic Safes: whether to build the Safe-owner (EIP-1271) adapter from D1, for teams that don't use 4337.
 
