@@ -65,7 +65,22 @@ class Decision:
         for w in self.warnings:
             out.append(f"  WARNING: {w}")
         out.append(f"Path         {self.path.upper()}: {self.reason}")
-        return out
+        return [printable(line, 4000) for line in out]  # every line may carry the dapp's strings
+
+
+def printable(s, limit=200) -> str:
+    """A string from a dapp, safe to print: control and format characters (terminal escapes, bidi overrides)
+    escaped, and cut to `limit`"""
+    s = str(s)
+    if not s.isprintable():
+        s = s.encode("unicode_escape").decode()
+    return s if len(s) <= limit else s[:limit] + "…"
+
+
+def clean_metadata(md) -> dict:
+    """A dapp's self-description (name, url, description), printable"""
+    md = md if isinstance(md, dict) else {}
+    return {k: printable(md[k]) for k in ("name", "url", "description") if isinstance(md.get(k), str)}
 
 
 def message_hash(app_hash: bytes) -> bytes:
@@ -277,7 +292,7 @@ def _decide_typed(method, params, safe, chain_id, owners, now) -> Decision:
         lines += td.lines() if td.primary != "EIP712Domain" else []
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return _refuse(method, "typed data", f"the typed data doesn't decode: {e}")
-    name = str(td.domain.get("name", ""))
+    name = printable(td.domain.get("name", ""), 80)
     kind = f"typed data {td.primary}" + (f" for {name}" if name else "")
     if cid is not None and cid != chain_id:
         return _refuse(method, kind, f"the typed data names chain {cid}, not {chain_id}", lines)
@@ -330,7 +345,7 @@ def _decide_typed(method, params, safe, chain_id, owners, now) -> Decision:
 
 
 def _domain_line(td):
-    return ", ".join(f"{k} {td.domain[k]}" for k, _ in td.types["EIP712Domain"] if k in td.domain)
+    return ", ".join(f"{k} {printable(td.domain[k], 100)}" for k, _ in td.types["EIP712Domain"] if k in td.domain)
 
 
 def _uint(v):

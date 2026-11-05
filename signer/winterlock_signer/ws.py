@@ -161,8 +161,9 @@ class Connection:
         self.sock.close()
 
 
-def connect(url: str, timeout: float = 30) -> Connection:
-    """Opens ws:// or wss:// `url`. Errors name only the host: the query may carry credentials."""
+def connect(url: str, timeout: float = 30, idle_timeout: float = 75) -> Connection:
+    """Opens ws:// or wss:// `url`. Errors name only the host: the query may carry credentials. A read that waits
+    longer than `idle_timeout` ends the connection (the caller reconnects)."""
     u = urllib.parse.urlsplit(url)
     if u.scheme not in ("ws", "wss"):
         raise ValueError("relay URL must start with ws:// or wss://")
@@ -189,7 +190,8 @@ def connect(url: str, timeout: float = 30) -> Connection:
     if headers.get("sec-websocket-accept") != accept_key(key):
         sock.close()
         raise WsClosed("bad Sec-WebSocket-Accept from the relay")
-    sock.settimeout(None)
+    # the relay client pings every 20 s and the relay pongs: 75 s of silence means the connection is dead
+    sock.settimeout(idle_timeout)
     return Connection(sock, mask=True)
 
 

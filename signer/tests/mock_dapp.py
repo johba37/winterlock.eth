@@ -27,7 +27,7 @@ class DappError(Exception):
 class MockDapp:
     def __init__(self, relay_url, metadata=DAPP_METADATA, use_propose_session=False):
         self.conn = ws.connect(relay_url + "?" + "auth=" + wc.relay_jwt(os.urandom(32), os.urandom(32).hex(),
-                                                                       relay_url))
+                                                                       relay_url), idle_timeout=None)
         self.metadata = metadata
         self.use_propose_session = use_propose_session  # sign-client 2.21.6+: the relay publishes the proposal
         self.keys = {}

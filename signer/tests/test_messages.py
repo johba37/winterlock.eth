@@ -159,6 +159,24 @@ class Decisions(unittest.TestCase):
                                                              {"name": "Example", "chainId": CHAIN})])
         self.assertPath(d, messages.OFFCHAIN, "no verifying contract")
 
+    def test_nothing_from_the_dapp_reaches_the_terminal_raw(self):
+        evil = "App\x1b[2J\x1b[1;1Hall fine‮"
+        login = {"Login": [{"name": "user", "type": "address"}, {"name": "note", "type": "string"}]}
+        d = self.decide("eth_signTypedData_v4", [SAFE, typed("Login", login, {"user": SAFE, "note": evil},
+                                                             {"name": evil, "chainId": CHAIN})])
+        self.assertEqual(d.path, messages.OFFCHAIN)
+        shown = "\n".join(d.show())
+        self.assertNotIn("\x1b", shown)
+        self.assertNotIn("‮", shown)
+        self.assertIn("\\x1b[2J", shown)
+        md = messages.clean_metadata({"name": evil, "url": "https://app.example", "icons": [evil], "x": evil})
+        self.assertEqual(set(md), {"name", "url"})
+        self.assertNotIn("\x1b", md["name"])
+        bad_field = {"Login": [{"name": "user\x1b[2J", "type": "address"}]}
+        self.assertPath(self.decide("eth_signTypedData_v4", [SAFE, typed("Login", bad_field, {"user\x1b[2J": SAFE},
+                                                                         {"chainId": CHAIN})]), messages.REFUSE,
+                        "bad field name")
+
     def test_typed_data_refusals(self):
         dom = {"chainId": CHAIN, "verifyingContract": SAFE}
         safetx = {"SafeTx": [{"name": "to", "type": "address"}, {"name": "nonce", "type": "uint256"}]}

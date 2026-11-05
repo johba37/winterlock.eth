@@ -172,16 +172,18 @@ The flow:
 
 ## Tests
 
-40 new tests; the suite runs 86, and skips one unless Node and the SDK are available.
-- `test_walletconnect.py` (14):
+42 new tests; the suite runs 88, and skips one unless Node and the SDK are available.
+- `test_walletconnect.py` (15):
   - known answers
+  - WebSocket frames
   - the URI
   - session namespaces
   - the protocol against the scripted dapp: requests, rejection, `wc_proposeSession`, a dropped relay connection, forged messages, the project ID
   - the optional JS SDK dapp
-- `test_messages.py` (13):
+- `test_messages.py` (14):
   - EIP-712 and EIP-191 against ethers
   - the decision rules
+  - a dapp's strings escaped before they are shown (terminal escapes, bidi overrides)
   - message files
   - the pinned libraries, against the canonical code and the build
 - `test_bridge.py` (5): request handling and refusals, without a chain.

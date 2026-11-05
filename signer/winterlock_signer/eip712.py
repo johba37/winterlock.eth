@@ -48,6 +48,8 @@ class TypedData:
             for f in fields:
                 if not isinstance(f, dict) or not isinstance(f.get("name"), str) or not isinstance(f.get("type"), str):
                     raise ValueError(f"bad field in {name}")
+                if not _IDENT.match(f["name"]) or not re.fullmatch(r"[A-Za-z0-9_$\[\]]+", f["type"]):
+                    raise ValueError(f"bad field name or type in {name}")
                 if f["name"] in seen:
                     raise ValueError(f"field {f['name']} twice in {name}")
                 seen.add(f["name"])

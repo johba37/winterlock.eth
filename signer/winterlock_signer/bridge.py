@@ -505,7 +505,7 @@ def serve(wallet: Wallet, session, bridge: Bridge, ui: Ui, max_requests=None, st
             continue
         if kind != "request" or obj.topic != session.topic:
             continue
-        ui.show("", f"=== {obj.method} (request {obj.id})")
+        ui.show("", f"=== {messages.printable(obj.method, 80)} (request {messages.printable(obj.id, 40)})")
         try:
             result = bridge.handle(obj.method, obj.params, obj.chain_id, obj.expiry)
             wallet.respond(obj, result=result)
@@ -514,7 +514,7 @@ def serve(wallet: Wallet, session, bridge: Bridge, ui: Ui, max_requests=None, st
             ui.show(f"--> answered: {json.dumps(shown, ensure_ascii=False)[:300]}")
         except RpcFail as e:
             wallet.respond(obj, error=(e.code, e.message))
-            ui.show(f"--> error {e.code}: {e.message}")
+            ui.show(f"--> error {e.code}: {messages.printable(e.message, 2000)}")
         except RelayError as e:
             ui.show(f"--> couldn't answer: {e}")
         except Exception as e:  # the chain, the service or the key log failed: answer, and keep the session
@@ -584,20 +584,20 @@ def cmd_connect(args):
                 proposal = obj
         if proposal is None:
             raise cli.Abort("no session proposal from the app: the URI may be used or expired")
-        md = proposal.metadata
+        md = messages.clean_metadata(proposal.metadata)  # printable: a dapp's strings never reach the terminal raw
         cli.out(f"App          {md.get('name')!r} at {md.get('url')} (as it describes itself: WalletConnect doesn't "
                 "verify this)")
         if md.get("description"):
-            cli.out(f"             {str(md['description'])[:200]}")
+            cli.out(f"             {md['description']}")
         try:
             ns, notes = session_namespaces(proposal, ctx.chain, safe)
         except RpcFail as e:
             wallet.reject(proposal, e.code, e.message)
             raise cli.Abort(f"session refused: {e.message}") from None
         cli.out(f"Account      the Safe {safe} on {cli.chain_label(ctx.chain)}, {threshold} of {len(owners)}")
-        cli.out(f"Methods      {', '.join(ns['eip155']['methods'])}")
+        cli.out(f"Methods      {messages.printable(', '.join(ns['eip155']['methods']), 1000)}")
         for n in notes:
-            cli.out(f"  note: {n}")
+            cli.out(f"  note: {messages.printable(n, 500)}")
         if not ui.ask(f"Connect {md.get('name')!r} to the Safe?"):
             wallet.reject(proposal, USER_REJECTED, "rejected by the member")
             raise cli.Abort("not connected")
@@ -648,7 +648,7 @@ def cmd_message(args):
         d = messages.check_doc(doc, ctx.chain, owners)
     except ValueError as e:
         raise Refused(str(e)) from None
-    dapp = doc.get("dapp") or {}
+    dapp = messages.clean_metadata(doc.get("dapp"))
     cli.out(f"Safe         {safe} on {cli.chain_label(ctx.chain)}, {threshold} of {len(owners)}")
     cli.out(f"App          {dapp.get('name')!r} at {dapp.get('url')} (as the connected member's app described itself)")
     for line in d.show():

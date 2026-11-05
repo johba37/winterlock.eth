@@ -97,6 +97,33 @@ class KnownAnswers(unittest.TestCase):
             self.assertNotIn(sym.hex(), str(e.exception))  # errors never echo the key
 
 
+class WebSocketFrames(unittest.TestCase):
+    def test_lengths_masking_and_control_frames(self):
+        import socket
+        from winterlock_signer import ws
+        a, b = socket.socketpair()
+        client, server = ws.Connection(a, mask=True), ws.Connection(b, mask=False)
+        try:
+            for n in (0, 1, 125, 126, 65535, 65536, 70001):
+                text = "x" * n
+                for sender, receiver in ((client, server), (server, client)):
+                    t = threading.Thread(target=sender.send_text, args=(text,))  # large frames exceed the buffer
+                    t.start()
+                    self.assertEqual(receiver.recv(), text)
+                    t.join()
+            client.ping(b"hi")  # answered with a pong by the server's recv, skipped by the client's
+            server.send_text("after ping")
+            client.send_text("to server")
+            self.assertEqual(server.recv(), "to server")
+            self.assertEqual(client.recv(), "after ping")
+            server.close()
+            with self.assertRaises(ws.WsClosed):
+                client.recv()
+        finally:
+            a.close()
+            b.close()
+
+
 class Namespaces(unittest.TestCase):
     def prop(self, required=None, optional=None):
         return wc.Proposal(1, "t", {"requiredNamespaces": required or {}, "optionalNamespaces": optional or {},
