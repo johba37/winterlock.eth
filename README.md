@@ -84,10 +84,6 @@ python3 -m http.server 8000
 
 Every change produces a new CID, so repeat steps 1 and 2 for each update.
 
-## After posting the forum proposal
-
-The forum links currently point to the Safe forum's Initiatives category. Once the proposal thread is live, replace `https://forum.safefoundation.org/c/safe-ecosystem/initiatives/13` in `index.html` (three places) with the thread URL.
-
 ## Licenses
 
 Contracts: MIT (SPDX headers in each file). Vendored code keeps its own licence files (`contracts/src/vendor/`, `contracts/test/vendor/`).
