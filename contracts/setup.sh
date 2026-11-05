@@ -5,4 +5,4 @@ set -euo pipefail
 cd "$(dirname "$0")"
 export PATH="$HOME/.foundry/bin:$PATH"
 git submodule update --init --recursive
-(cd lib/kernel && FOUNDRY_PROFILE=deploy forge build src/Kernel.sol src/factory/KernelFactory.sol src/validator/ECDSAValidator.sol)
+(cd lib/kernel && FOUNDRY_PROFILE=deploy forge build src/Kernel.sol src/factory/KernelFactory.sol src/factory/FactoryStaker.sol src/validator/ECDSAValidator.sol)

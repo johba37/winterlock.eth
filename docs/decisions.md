@@ -147,6 +147,57 @@ The verifier now takes `w` (4, 16, 256) and the hash function (keccak, SHA-256) 
 - **EIP-7976 leaves D6 unaffected,** because enough execution gas sits on top of the calldata. It hits the calldata-heavy sets: 32-byte hashes, `w` = 4, and threshold accounts with more signatures on lean accounts.
 - **On Base, L1 data is about 1% of the cost today,** so the ratios match L1. Kernel + D6 costs about 1,300 gwei (0.0000013 ETH) per transfer, against about 800 for Kernel + ECDSA. If L1 data fees rose a hundredfold, smaller signatures would start to matter, which favours 16-byte hashes.
 
+**2026-11-04: bundler acceptance, stage 1 (local)** (`contracts/bench/bundlers/run.sh`)
+
+**Setup.**
+- **Chain:** geth v1.16.9 in dev mode, with the same fork rules as mainnet (Osaka).
+- **Contracts:** the canonical EntryPoint v0.7 and EntryPointSimulations, deployed through the deterministic deployer. Kernel v3.3 from its production build, with a FactoryStaker staked in the EntryPoint (1 ETH, one-day unstake delay).
+- **Bundlers:** Rundler v0.11.0 and Alto (latest image), both in Docker.
+- **Operations:** each Kernel account is deployed by an ordinary transaction, then sends two WOTS-signed transfers. Two extra probes deploy through initCode.
+
+| Parameter set | Rundler, full ERC-7562 checks | Alto, safe mode off |
+|---|---|---|
+| ECDSA (control) | accepted, included | accepted, included |
+| D6 (24-byte, target sum 431) | accepted, included | accepted, included |
+| D6 2-of-3 | accepted, included | accepted, included |
+| 16-byte, target sum 300 | accepted, included | accepted, included |
+| 32-byte, checksum | accepted, included | accepted, included |
+| D6 with SHA-256 | accepted, included | accepted, included |
+| w = 256 | tracer timeout on some operations | accepted, included |
+| Counterfactual deploy (ECDSA and D6) | rejected: CREATE2 rule | accepted, included |
+
+- **WOTS signatures pass a real ERC-7562 bundler.** Rundler traced validation and accepted every set we would use. It checks banned opcodes, associated storage only, stake and gas. Signature size is no problem: the largest operation is 3.5 KB, against Rundler's 128 KB limit.
+- **`w` = 256 is too slow to trace.** Its roughly 2,900 hash steps per signature run into Rundler's tracer timeout. That's one more reason to keep `w` = 16 (D9).
+- **Counterfactual deployment through Kernel's FactoryStaker fails Rundler's CREATE2 rule, for ECDSA and Winterlock alike.** Rundler requires the staked factory entity to run CREATE2 itself, but FactoryStaker delegates to KernelFactory. That's a factory question, not a signature question. Fixes: a staked factory that deploys directly, or deploying the account in a separate transaction.
+- **Gas estimation underestimated WOTS validation; fixed since.** Wallets estimate with a dummy signature. In the first run, a dummy made target-sum validation stop early, so Rundler's estimate missed the hash chains (about 57k per D6 signer). A threshold signature also stopped at its first invalid entry. The fix is below ("validation gas independent of the signature").
+- **Alto's ERC-7562 checks couldn't be tested locally.** In safe mode, Alto fails on a simulation-decoding error for every operation, ECDSA control included. Its estimation also returned zero verification gas for every Kernel account, ECDSA included. Both look like local-environment issues, not Winterlock ones; stage 2 with hosted Pimlico should settle them. With safe mode off and fixed gas limits, Alto accepted and included everything.
+- **Side finding:** geth 1.17's dev mode runs future forks (Amsterdam, Bogota) from genesis, and charges about 3× for writing a new storage slot. Kernel writes a new slot on every operation, so its costs need re-measuring once Glamsterdam pricing is final.
+
+**2026-11-05: validation gas independent of the signature**
+
+Bundlers estimate verification gas by running validation with the wallet's dummy signature, so the dummy has to cost at least as much as the real signature. Two changes:
+- **The verifier hashes every chain even when the digits miss the target sum.** It replaces the digits with a fixed vector that has the target sum (w − 1 as often as it fits, then the remainder, then zeros), hashes the same number of chain steps as a valid signature, climbs the tree, and returns 0.
+- **The validator verifies every entry of a threshold signature,** even after one fails. Malformed entries still stop validation at once (wrong length, slot out of range, exhausted tree), but those depend only on the signature's shape, which the dummy gets right.
+
+| Measurement (h = 20 for the verifier) | Valid signature | Dummy |
+|---|---|---|
+| Verifier, D6 | 56,545 | 59,530 |
+| Verifier, 16-byte target sum | 39,134 | 41,167 |
+| Validator, D6 2-of-3 (h = 4) | 124,621 | 126,109 |
+
+- **A valid signature costs nothing extra.** Only an invalid one runs the digit replacement, about 60 gas per message digit. Inside the validator the surplus is smaller: 0.7k per invalid entry.
+- **The surplus is free.** EntryPoint v0.7 charges for the verification gas actually used, and its 10% penalty applies only to unused execution gas. The surplus only raises the prefund a little.
+- **Checksum encoding can't be estimated exactly,** since its chain steps vary by about ±8k per signature. That's one more argument for the target sum (D6).
+- **Standard estimation now works.** We re-ran stage 1 on Rundler, with the driver submitting the bundler's estimates unchanged, as a wallet SDK would. Every set Rundler accepted before was accepted and included again, 2-of-3 included. The w = 256 timeout and the CREATE2 rejections are unchanged. Rundler's verification-gas estimates for the second transfer, ECDSA versus Winterlock:
+
+  | Parameter set | Estimate |
+  |---|---|
+  | ECDSA (control) | 112k |
+  | 16-byte | 151k |
+  | D6 | 179k |
+  | D6 SHA-256 | 251k |
+  | D6 2-of-3 | 269k |
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7 tests.
@@ -177,7 +228,10 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 - Classic Safes: whether to build the Safe-owner (EIP-1271) adapter from D1, for teams that don't use 4337.
 
 **Infrastructure**
-- Whether Rundler, Alto and the shared mempool accept these signatures (1.7 KB per signer with D6) and the verification gas measured above.
+- Bundler acceptance: Rundler accepts WOTS operations under full ERC-7562 checks (stage 1, above). Still open:
+  - Alto's ERC-7562 checks and the hosted providers (stage 2 on a testnet)
+  - the shared mempool
+  - a factory that supports counterfactual deployment under Rundler's CREATE2 rule
 - The collection service (D8): its API, who may post proposals (spam), how private pending proposals are, and whether to reuse code from Safe's transaction service.
 - Limits and abuse policy for the rescue bundler, how to fund it, and a legal check on sanctions screening (EU/Germany).
 - The signer: software first, key derivation from a seed, tracking used slots. Hardware comes later.

@@ -2,3 +2,7 @@ out/
 cache/
 broadcast/
 bench/labels.json
+bench/bundlers/deployment.json
+bench/bundlers/results.json
+bench/bundlers/rundler-chain.toml
+bench/bundlers/logs/

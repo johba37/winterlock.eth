@@ -176,6 +176,43 @@ abstract contract WotsVerifierTestBase is Test {
         assertEq(_root(2, m, sig, WotsTree.path(key, 2)), bytes32(0));
     }
 
+    /// Target sum only: a random dummy signature (what wallets send for gas estimation) costs at least as much
+    /// gas as a valid one, and only a little more, so an estimate made with the dummy covers the real signature.
+    function test_gas_dummyCostsAsMuchAsValid() public {
+        WotsParams memory p = _p();
+        if (p.targetSum == 0) vm.skip(true);
+        WotsKey memory key = WotsTree.create(p, SEED, SK, 20, 0);
+        bytes memory path = WotsTree.path(key, 0);
+        bytes32 m = keccak256("estimate");
+        (bytes32 root, uint256 valid) = v.computeRootGas(Ops.params(p), SEED, 0, m, _sign(0, m), path);
+        assertEq(root, key.root);
+        uint256 hi;
+        for (uint256 r; r < 8; ++r) {
+            bytes memory dummy = _noise(WotsVerifier.sigBytes(Ops.params(p)), r);
+            (bytes32 bad, uint256 g) = v.computeRootGas(Ops.params(p), SEED, 0, m, dummy, path);
+            assertEq(bad, bytes32(0));
+            assertGe(g, valid);
+            if (g > hi) hi = g;
+        }
+        // the digit replacement costs about 60 gas per message digit, paid only by invalid signatures
+        assertLe(hi, valid + 80 * WotsVerifier.messageDigits(Ops.params(p)));
+        console.log(
+            string.concat(
+                "verifier gas, h=20, ", _name(), ": valid ", vm.toString(valid), ", dummy up to ", vm.toString(hi)
+            )
+        );
+    }
+
+    function _noise(uint256 len, uint256 salt) internal pure returns (bytes memory out) {
+        out = new bytes(len);
+        for (uint256 i; i < len; i += 32) {
+            bytes32 x = keccak256(abi.encode("noise", salt, i));
+            for (uint256 j; j < 32 && i + j < len; ++j) {
+                out[i + j] = x[j];
+            }
+        }
+    }
+
     function test_revertsOnMalformedLengths() public {
         WotsParams memory p = _p();
         uint256 len = WotsVerifier.sigBytes(Ops.params(p));
@@ -203,8 +240,17 @@ abstract contract WotsVerifierTestBase is Test {
         }
         console.log(
             string.concat(
-                "verifier gas, h=20, ", _name(), ": avg ", vm.toString(total / 16), " (min ", vm.toString(lo),
-                ", max ", vm.toString(hi), "), sig ", vm.toString(WotsVerifier.sigBytes(Ops.params(p))), " B"
+                "verifier gas, h=20, ",
+                _name(),
+                ": avg ",
+                vm.toString(total / 16),
+                " (min ",
+                vm.toString(lo),
+                ", max ",
+                vm.toString(hi),
+                "), sig ",
+                vm.toString(WotsVerifier.sigBytes(Ops.params(p))),
+                " B"
             )
         );
     }

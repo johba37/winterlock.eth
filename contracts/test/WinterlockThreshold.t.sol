@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {EntryPoint} from "account-abstraction/core/EntryPoint.sol";
 import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
@@ -183,6 +183,56 @@ contract WinterlockThresholdTest is Test {
         _send(op);
     }
 
+    // --- gas estimation ---
+
+    /// Wallets estimate gas with a dummy signature of the right shape (member indices, slots, lengths). Every
+    /// entry is verified even after one fails, so the dummy costs at least as much as the real signature.
+    function test_gas_dummySignatureCoversRealOne() public {
+        ValidationProbe probe = new ValidationProbe();
+        probe.install(val, Ops.installData(_members(3), 2)); // the probe is an account with the team's config
+        PackedUserOperation memory op = _op(address(probe), 0);
+        bytes32 h = ep.getUserOpHash(op);
+        bytes memory real = bytes.concat(_entry(op, 0, 0), _entry(op, 1, 0));
+        uint256 half = real.length / 2;
+        _validate(probe, op, real, h); // warm the storage, so every measurement below pays the same
+
+        uint256 result;
+        uint256 realGas;
+        uint256 dummyGas;
+        uint256 firstBadGas;
+        (result, realGas) = _validate(probe, op, real, h);
+        assertEq(result, 0);
+
+        // Both entries garbage
+        (result, dummyGas) = _validate(probe, op, _garble(_garble(real, 2, half), half + 2, real.length), h);
+        assertEq(result, 1);
+        assertGe(dummyGas, realGas);
+        assertLe(dummyGas, realGas + 2 * 80 * 48); // the digit replacement, once per entry (WotsVerifier test)
+
+        // A's entry garbage, B's valid: still fails, and B's entry is still verified
+        (result, firstBadGas) = _validate(probe, op, _garble(real, 2, half), h);
+        assertEq(result, 1);
+        assertGe(firstBadGas, realGas);
+        assertLe(firstBadGas, realGas + 80 * 48);
+        console.log("2-of-3 validation gas: real", realGas, ", dummy", dummyGas);
+    }
+
+    function _garble(bytes memory sig, uint256 from, uint256 to) internal pure returns (bytes memory out) {
+        out = bytes.concat(sig);
+        for (uint256 i = from; i < to; ++i) {
+            out[i] = 0xab;
+        }
+    }
+
+    function _validate(ValidationProbe probe, PackedUserOperation memory op, bytes memory sig, bytes32 h)
+        internal
+        view
+        returns (uint256, uint256)
+    {
+        op.signature = sig;
+        return probe.measure(val, op, h);
+    }
+
     // --- private wallet and team account side by side ---
 
     /// A's private account (1-of-1) and the team account (2-of-3) share the validator contract but
@@ -235,5 +285,23 @@ contract WinterlockThresholdTest is Test {
         if (signers < 2) _expectFail();
         _send(op);
         if (signers >= 2) assertEq(recipient.balance, 1 ether);
+    }
+}
+
+/// Calls the validator as an account, from a fresh call frame, so gas measurements don't include the test
+/// contract's growing memory.
+contract ValidationProbe {
+    function install(WinterlockValidator val, bytes calldata data) external {
+        val.onInstall(data);
+    }
+
+    function measure(WinterlockValidator val, PackedUserOperation calldata op, bytes32 h)
+        external
+        view
+        returns (uint256 result, uint256 gasUsed)
+    {
+        gasUsed = gasleft();
+        result = val.validateUserOp(op, h);
+        gasUsed -= gasleft();
     }
 }

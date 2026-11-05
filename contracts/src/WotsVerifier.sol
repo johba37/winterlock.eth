@@ -5,6 +5,10 @@ pragma solidity ^0.8.24;
 /// @notice Verifies WOTS+ one-time signatures under a Merkle tree of one-time keys. Returns the root the
 ///         signature implies, or 0 if the encoding is invalid. The caller compares the result with the
 ///         root it stores.
+///         With target-sum encoding, verification gas does not depend on the signature: every valid signature
+///         hashes the same number of chain steps, and an invalid one hashes as many before it is rejected.
+///         Bundlers estimate gas with a dummy signature, so their estimates cover the real cost. With checksum
+///         encoding the number of steps varies from signature to signature.
 ///
 /// Parameter set, packed into one word (see encodeParams):
 ///   n          hash size in bytes: 16, 24 or 32 (roughly NIST category 1, 3, 5, by analogy to SLH-DSA)
@@ -41,7 +45,11 @@ library WotsVerifier {
 
     // --- parameters ---
 
-    function encodeParams(uint256 n, uint256 logW, uint256 hashFn, uint256 targetSum) internal pure returns (uint256 p) {
+    function encodeParams(uint256 n, uint256 logW, uint256 hashFn, uint256 targetSum)
+        internal
+        pure
+        returns (uint256 p)
+    {
         p = n | (logW << 8) | (hashFn << 16) | (targetSum << 32);
         checkParams(p);
     }
@@ -112,20 +120,36 @@ library WotsVerifier {
         view
         returns (bytes32)
     {
-        uint256[] memory a = _encode(p, len, base, message, sig);
-        if (a.length == 0) return bytes32(0); // digits miss the target sum
+        // Hash every chain and climb the tree even when the digits miss the target sum
+        (bytes32 leaf, bool hit) = _leafOf(p, len, base, message, sig);
+        bytes32 root = _climb(p, base, leaf, path);
+        return hit ? root : bytes32(0);
+    }
+
+    function _leafOf(uint256 p, uint256 len, uint256 base, bytes32 message, bytes calldata sig)
+        private
+        view
+        returns (bytes32 leaf, bool hit)
+    {
+        uint256[] memory a;
+        (a, hit) = _encode(p, len, base, message, sig);
         uint256 values;
         assembly ("memory-safe") {
             values := add(sig.offset, and(p, 0xff)) // chain values start after R
         }
-        return _climb(p, base, _leaf(p, base, a, values), path);
+        leaf = _leaf(p, base, a, values);
     }
 
-    /// Digest and digits. Returns an empty array if a target sum is set and the digits miss it.
+    /// Digest and digits.
+    /// @return a   the digits, message digits first
+    /// @return hit false if a target sum is set and the digits miss it. The digits are then replaced by a fixed
+    ///             vector with the target sum, so that the caller hashes exactly as many chain steps as for a
+    ///             valid signature. An invalid signature then costs as much gas as a valid one (slightly more:
+    ///             the replacement loop), and gas estimation with a dummy signature covers the real cost.
     function _encode(uint256 p, uint256 len, uint256 base, bytes32 message, bytes calldata sig)
         private
         view
-        returns (uint256[] memory a)
+        returns (uint256[] memory a, bool hit)
     {
         uint256 sum;
         assembly ("memory-safe") {
@@ -175,9 +199,22 @@ library WotsVerifier {
                     mstore(ptr, and(shr(sh, csum), wm1))
                 }
             }
+
+            hit := 1
+            let target := and(shr(32, p), 0xffffffff)
+            if and(iszero(iszero(target)), iszero(eq(sum, target))) {
+                hit := 0
+                // w - 1 as often as it fits, then the remainder, then zeros (checkParams: target <= len1 * (w - 1))
+                ptr := add(a, 0x20)
+                end := add(ptr, shl(5, len1))
+                let mid := add(ptr, shl(5, div(target, wm1)))
+                for {} lt(ptr, mid) { ptr := add(ptr, 0x20) } { mstore(ptr, wm1) }
+                if lt(ptr, end) {
+                    mstore(ptr, mod(target, wm1))
+                    for { ptr := add(ptr, 0x20) } lt(ptr, end) { ptr := add(ptr, 0x20) } { mstore(ptr, 0) }
+                }
+            }
         }
-        uint256 targetSum = (p >> 32) & 0xffffffff;
-        if (targetSum != 0 && sum != targetSum) return new uint256[](0);
     }
 
     /// Hashes every chain from its revealed position to w - 1 and compresses the ends into the leaf.

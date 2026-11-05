@@ -16,7 +16,9 @@ import {WotsVerifier} from "./WotsVerifier.sol";
 /// Signature: one entry per signing member, in strictly increasing member index order (proves the
 ///            signers are distinct):
 ///              [member index: 1][slot: 1][WOTS signature: WotsVerifier.sigBytes][path: height * n]
-///            Valid when at least `threshold` entries verify and no bytes are left over.
+///            Valid when every entry verifies, there are at least `threshold` of them, and no bytes are left
+///            over. Every well-formed entry is verified even after one fails, so a dummy signature (used for
+///            gas estimation) costs as much gas as a real one with the same signers.
 ///
 /// Storage:   all per-account data sits in the account's own mapping entry (fixed-size member array),
 ///            so validation only touches storage associated with the account (ERC-7562).
@@ -113,16 +115,11 @@ contract WinterlockValidator is IValidator {
 
     // --- validation ---
 
-    function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash)
-        external
-        view
-        returns (uint256)
-    {
+    function validateUserOp(PackedUserOperation calldata userOp, bytes32 userOpHash) external view returns (uint256) {
         Config storage c = _config[msg.sender];
-        uint256 memberCount = c.memberCount;
         // nonce = key (192 bits) || sequence (64 bits); both casts split it exactly
         // forge-lint: disable-next-line(unsafe-typecast)
-        if (memberCount == 0 || uint192(userOp.nonce >> 64) != c.nonceKey) return VALIDATION_FAILED;
+        if (c.memberCount == 0 || uint192(userOp.nonce >> 64) != c.nonceKey) return VALIDATION_FAILED;
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 sequence = uint64(userOp.nonce);
 
@@ -130,21 +127,25 @@ contract WinterlockValidator is IValidator {
         uint256 offset;
         uint256 nextIndex; // entries must name members in strictly increasing order
         uint256 valid;
+        bool invalid; // a well-formed entry failed: keep verifying the rest, so the gas matches a valid signature
         while (offset < s.length) {
             uint256 index = uint8(s[offset]);
-            if (index < nextIndex || index >= memberCount) return VALIDATION_FAILED;
+            if (index < nextIndex || index >= c.memberCount) return VALIDATION_FAILED;
             (bool ok, uint256 used) = _verifyMember(c.members[index], sequence, userOpHash, s[offset + 1:]);
-            if (!ok) return VALIDATION_FAILED;
+            if (used == 0) return VALIDATION_FAILED; // malformed entry
             offset += 1 + used;
             nextIndex = index + 1;
-            ++valid;
+            if (ok) ++valid;
+            else invalid = true;
         }
-        return valid >= c.threshold ? VALIDATION_SUCCESS : VALIDATION_FAILED;
+        return !invalid && valid >= c.threshold ? VALIDATION_SUCCESS : VALIDATION_FAILED;
     }
 
     /// @param entry starts at the slot byte: [slot][WOTS signature][path], possibly followed by more entries
     /// @return ok   whether this member's signature verifies
-    /// @return used bytes of `entry` that belong to this member
+    /// @return used bytes of `entry` that belong to this member, 0 if the entry is malformed (too short, slot
+    ///              out of range, tree exhausted). Shape errors stop validation at once; they do not depend on
+    ///              the signature's validity, so a dummy signature of the right shape avoids them.
     function _verifyMember(Member storage m, uint256 sequence, bytes32 userOpHash, bytes calldata entry)
         internal
         view
@@ -169,8 +170,9 @@ contract WinterlockValidator is IValidator {
         view
         returns (bool)
     {
-        bytes32 root =
-            WotsVerifier.computeRoot(PARAMS, m.seed, keyIndex, userOpHash, sigAndPath[:SIG_LEN], sigAndPath[SIG_LEN:]);
+        bytes32 root = WotsVerifier.computeRoot(
+            PARAMS, m.seed, keyIndex, userOpHash, sigAndPath[:SIG_LEN], sigAndPath[SIG_LEN:]
+        );
         return root != bytes32(0) && root == m.root;
     }
 
