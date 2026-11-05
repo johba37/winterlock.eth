@@ -59,6 +59,8 @@ SHA-256 support stays in the verifier, so the question can be reopened if hardwa
 
 It replaces the single key tree of D2, keeps D2's binding of keys to nonces, and resolves the open questions about one address per chain and about tree exhaustion. Per-chain trees can be small and are generated when a chain is first used, which also eases key generation on devices.
 
+**Since D12, the stateless key signs every certificate and the master tree is gone.** The rest of D10 stands: one address on every chain, a certified operation tree per chain, enrolment by the first operation, rotation. Certificates on a chain are ordered by their start sequence alone, and there is no log of used master keys to keep.
+
 **D11. Two signing paths: WOTS for speed, a stateless hash-based key as fallback** (2026-11-05)
 - **The fast path** stays WOTS one-time keys (D6, D10) for everyday operations. It has the smallest signatures (1.2–1.7 KB) and the cheapest verification.
 - **The fallback:** each member also holds a stateless hash-based key from the SPHINCS+/SLH-DSA family. It is used for:
@@ -73,13 +75,13 @@ Open:
 - Whether high-value permits should use on-chain pre-approval instead.
 
 **D12. The stateless key is the only certificate signer; leanSphincs; category 3 later** (2026-11-05)
-- **Drop the master tree.** Every certificate is signed by the member's stateless key. It removes the log of used master keys, the most dangerous state in the system. Keeping the master tree next to the stateless key would add no security, since an attacker can use the weaker path. It costs about 4.4 KB more calldata per certificate, once per chain and per rotation. Implementation pending.
+- **Drop the master tree.** Every certificate is signed by the member's stateless key. It removes the log of used master keys, the most dangerous state in the system. Keeping the master tree next to the stateless key would add no security, since an attacker can use the weaker path. It costs about 4.4 KB more calldata per certificate, once per chain and per rotation. Done on 2026-11-05 (measured below: 4.3 KB).
 - **The parameter set is leanSphincs** (5.7 KB, 52.8k gas, a proved signature budget that covers hardware signers), not leanSphincs-s.
 - **The security level stays category 1 for now.** The stateless key uses 16-byte hashes and can certify trees and sign messages, so it sets the account's security level. D6's 24-byte WOTS stays. On the backburner: a stateless scheme at category 3 (24-byte hashes) that would bring the whole account to D6's level.
 
 ## Constraints that every design must respect
 
-- **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all. Under D10 the master tree is shared by all chains of one account, but each master key signs only one certificate.
+- **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all. Under D12 the stateless key is shared by all chains and accounts; it signs their certificates and messages, up to its proved signature budget (D11).
 - **One nonce lane per validator.** EntryPoint nonces are a 192-bit key plus a 64-bit sequence. The validator only accepts its configured key. If it accepted more than one, sequence numbers would repeat across lanes.
 - **No ECDSA path left over.** An account is only as strong as its weakest way in: other validators, executors, fallback handlers, hooks, owners.
 
@@ -438,14 +440,84 @@ Each member now has a stateless leanSphincs key next to its master tree. It cert
 - **Deterministic deployment:** `ValidatorDeployment` now deploys the verifier first, at its own deterministic address, shared by every parameter set.
 - **New addresses:** the bytecode changed, so the validator's address changed too. Nothing was redeployed: the addresses above, and `bench/bundlers/multichain.py`, still name the old validator.
 
+**2026-11-05: D12, the stateless key signs every certificate; Kernel's enable mode locked** (`src/WinterlockValidator.sol`, `test/WinterlockCertificates.t.sol`, `test/WinterlockMessages.t.sol`, `test/integration/`)
+
+The master tree is gone. A member is its stateless leanSphincs key and nothing else.
+
+**What changed.**
+- **Install data:** `abi.encode(nonceKey, threshold, bytes32[] keys)`, each member's 32-byte stateless public key (root ‖ P). Both halves must be nonzero, and no two members may share a key. Still nothing chain-specific, so the address is the same on every chain.
+- **Storage:** a member's slot holds the key itself, no commitment. An operation tree is still one slot (D6): the root, then start (40 bits) and height (8 bits).
+- **Certificate:** flag bit 7 marks one; any flag bit other than the slot and bit 7 makes the entry malformed. It carries `[root][height][start][stateless signature]`, 5,725 bytes; the validator takes the key from storage. That is 64 bytes less than D11's stateless certificate and 4.3 KB more than a master certificate (1,412 bytes).
+- **ERC-1271 entries:** `[member index][stateless signature]`, 5,685 bytes.
+- **Removed:** master trees, master commitments, master indices and their bits in the packed tree, the master certificate's domain and tree seed, the master height limit, the stateless flag bit.
+
+**Tests.** `WinterlockStateless.t.sol` is merged into `WinterlockCertificates.t.sol`. Tests that only made sense for master trees are gone (master index bounds and order, master seed and commitment checks, mixed kinds). The properties they protected are kept on the stateless certificate:
+- binding to the chain, the validator, the account and the member, one by one; another key's signature is refused
+- start sequences strictly increase on a chain: no rollback, no skipped start used later, no second tree for one start
+- the start isn't in the future and fits in 40 bits (the largest start that fits is accepted)
+- the root is high-aligned
+- only valid certificates are stored, also on direct calls to `validateUserOp`
+- a dummy carrying the real certificate costs at least as much gas as the real signature
+- the tree seed is derived from the chain, the validator, the account, the member and the start (checked against the formula)
+
+Every member now needs a real stateless key, so tests keep it in storage after one keygen (about 0.25 s in Forge).
+
+**Gas and size** (D6, height-3 operation tree, validator and verifier cold, Foundry, old pricing). "Before" is the previous commit, measured again with the same Foundry; it is 10–20 gas above the D11 tables.
+
+| Measurement | Before (D11) | After (D12) |
+|---|---|---|
+| Validation, steady state | 65,335 | 65,170 |
+| Validation, first operation with certificate | 147,768 | 146,701 |
+| Its dummy, carrying the real certificate | 150,544 | 149,477 |
+| Certificate | 5,789 B | 5,725 B |
+| ERC-1271 at the validator, 1-of-1 | 69,062 (5,749 B) | 68,137 (5,685 B) |
+| ERC-1271 at the validator, 2-of-3 | 127,920 (11,498 B) | 126,038 (11,370 B) |
+| `Kernel.isValidSignature`, 1-of-1 (Kernel's frame) | 81,652 (5,750 B) | 80,699 (5,686 B) |
+| `Kernel.isValidSignature`, 2-of-3 (Kernel's frame) | not measured | 139,787 (11,371 B) |
+| Validator runtime code | 12,577 B | 9,933 B |
+
+- **Slightly cheaper everywhere.** The key comes from storage, so the validator no longer hashes a commitment or copies 64 more bytes per entry. The simpler tree slot saves 165 gas per operation.
+- **Against the master certificate it replaces:** 2.3k more validation gas (146.7k against 144.4k) and 4.3 KB more calldata. That's about 69k gas at 16 gas per byte, or up to 173k where a bundler prices preverification at the EIP-7623 floor. It's paid once per chain, per rotation and per signing member.
+- **The validator is a fifth smaller,** so it also costs less to deploy.
+
+**Kernel's enable mode is refused by design.**
+- **The risk:** Kernel v3.3's enable mode installs a validator inside a UserOperation once the root validator approves Kernel's EIP-712 "Enable" digest through `isValidSignatureWithSender`. Kernel asks with the account itself as the sender (`ValidationManager._verifyEnableSig`). The new validator then validates the rest of the operation. Members' message signatures involve no WOTS key, so a quorum of them could install a module and act through it: a phished "sign this message" would become a takeover.
+- **The lock:** `isValidSignatureWithSender` fails when `sender == msg.sender`, that is, when the account asks on its own behalf. Apps are unaffected, since `Kernel.isValidSignature` names the app that asks.
+- **Test** (`test_enableModeRefused`, on Kernel v3.3): a 2-of-3 team account and a real enable-mode operation. The nonce is in Kernel's enable mode and names Kernel's ECDSA validator, to be installed with an attacker's key and the `execute` selector. Two members sign Kernel's enable digest through Winterlock's message wrap, and the ECDSA key signs the rest: a 5 ETH transfer. The validator accepts the same quorum signature when an app asks. The operation is refused (AA23, `EnableNotApproved`), nothing is installed and no funds move.
+- **Mutation check:** with the lock removed, the same test fails. Kernel installs the ECDSA validator with the attacker's key, it validates the operation, and the 5 ETH leave the account. With the lock restored, the test passes.
+- **Message signing for apps still works:** through `Kernel.isValidSignature`, 1-of-1 and 2-of-3 (tested). A unit test refuses the account as the sender for both.
+
+**Bundlers** (`bench/bundlers/run.sh`, local Rundler v0.11.0 with full ERC-7562 checks, the bundler's own estimates).
+- **Rundler accepts stateless certificates.** Every first operation, which carries the certificates, was accepted and included, single and 2-of-3, for all five parameter sets. The call to the verifier and the storage write pass its tracing.
+- **Counterfactual deploys:** rejected by the CREATE2 rule, for ECDSA too (unchanged, see stage 1).
+- **w = 256** passed this time; it hit the tracer timeout in stage 1, which depends on local resources.
+- **Signing:** the test signer needs about 50M gas for a stateless keygen and 55M per signature. So geth now runs without an eth_call time limit, and the driver calls the signer helper with a 2-billion gas limit.
+
+| Rundler (local), gas used | First transfer, with certificate | Second transfer | Difference |
+|---|---|---|---|
+| ECDSA (control) | 192,925 | 124,690 | 68k: what any first operation costs |
+| D6 | 566,712 (7,383 B signature) | 209,356 (1,658 B) | 357k |
+| D6 2-of-3 | 1,009,285 (14,766 B) | 339,017 (3,316 B) | 670k |
+
+- **A chain's first D6 operation costs about 289k gas more than the next,** after subtracting the 68k any first operation costs. With master certificates it was about 130k (D10, step 1). Most of the difference is calldata: Rundler prices preverification at the EIP-7623 floor, 40 gas per byte, so the 5.7 KB certificate costs about 229k of preverification gas. A 2-of-3 team pays it per signing member: about 600k for two.
+- **The steady state is as before:** 209.4k gas per D6 transfer, with Rundler's verification estimate at 180k (271k for 2-of-3).
+
+**Deployment.**
+- **New addresses:** the bytecode changed, and builds are now reproducible (next point). The deterministic D6 validator moves to `0xE8bE004Eae7A744a0e626b4bdeDD8b506547ACE0`, and the stateless verifier to `0x6Dc4DFBccDe0fbeC30b0a4078aB6f45496Fec254`. Neither is deployed anywhere yet. `bench/bundlers/multichain.py` names the validator, so the live multichain run needs a deployment first.
+- **Fixed: the address depended on the checkout's path.**
+  - Forge passes the compiler remappings for nested libraries with absolute paths. They ended up in the contract metadata, whose hash was part of the bytecode, so building the same commit from another directory gave other addresses, for the verifier too.
+  - `foundry.toml` now sets `bytecode_hash = "none"`.
+  - Checked: a copy of the repository built at another path predicts the same two addresses.
+
 ## Integration notes: Kernel v3.3
 
-These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 11 tests.
+These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
 
 - **Root validator, including counterfactual deployment.** The first operation deploys the account through the factory and is signed with WOTS. There's no ECDSA step anywhere.
 - **Nonce lanes.** Kernel's nonce key is mode (1 byte), type (1), validator (20) and a parallel key (2). Kernel accepts any parallel key for the root validator. Winterlock accepts only its configured lane, so sequence numbers can't repeat across lanes (tested).
 - **Replayable signatures.** If a signature starts with Kernel's magic value, Kernel hands the validator a hash without the chain ID, so one signature is valid on every chain. That conflicts with keeping key trees separate per chain. For ERC-1271 it no longer matters: Winterlock's own wrap binds the chain id (D11, tested).
-- **ERC-1271 works with the stateless keys (D11).** That also enables Kernel's "enable mode", where a validator is installed inside a UserOperation on the strength of a root ERC-1271 signature. So the members' stateless keys can now install modules without a WOTS-signed `installModule`. That matches the stateless key's power, since it can certify operation trees anyway, but the signer must show an enable digest as a module install. Not tested yet.
+- **ERC-1271 works with the stateless keys (D11), for apps.** `Kernel.isValidSignature` names the app that asks as the sender; 1-of-1 and 2-of-3 are tested.
+- **Kernel's "enable mode" is refused by design.** It installs a validator inside a UserOperation once the root validator approves an "Enable" digest through ERC-1271, and Kernel asks with the account itself as the sender. Winterlock refuses that sender, so members' message signatures can't install a module and act through it. Modules are installed only by a WOTS-signed `installModule` (tested, with a mutation check: see 2026-11-05, D12).
 - **Each installed module is a second way in.** A Winterlock-signed operation can install an ECDSA validator, and from then on that ECDSA key can move funds on its own nonce lane (tested). The signer and the wallet have to show module installs clearly and require explicit confirmation.
 - **Threshold accounts work on Kernel.** A 2-of-3 team account is deployed by its first operation, signed by two members. One member alone is refused (tested).
 - **Kernel's EIP-7702 mode.** Validation type 0x00 falls back to ECDSA over the account's own address. That is only reachable for EIP-7702-delegated EOAs, not for accounts deployed as contracts.
@@ -458,14 +530,12 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 1
 - An independent reference implementation and test vectors, in Python or Rust. So far the tests only cross-check against a Solidity signer.
 
 **Accounts and chains**
-- One address on every chain, and tree rotation: decided in D10, built and shown live on two testnets (above). Still open:
-  - the signer's log of used master keys: where it lives and how it is backed up
-  - deploying on chains without Cancun opcodes, or with a different deterministic deployer
+- One address on every chain, and tree rotation: decided in D10, built and shown live on two testnets (above). D12 removed the log of used master keys. Still open: deploying on chains without Cancun opcodes, or with a different deterministic deployer; and bytecode that doesn't depend on the build directory (see 2026-11-05, D12, "Deployment").
 - A recovery key: D11's stateless key is the recovery path, built and tested (above). Open: social or time-delayed recovery on top, as a separate module.
 - Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum.
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): built with the stateless key and an EIP-712 wrap (D11, above). Open: full ERC-7739 nested typed data, and on-chain pre-approval for high-value permits.
-- 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579; whether to refuse or support Kernel's replayable signatures for UserOperations; and the signer's confirmation flow for installing modules, now including Kernel's enable mode. On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
+- 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579, including whether they have an enable path like Kernel's and whether it asks with the account as the sender, so the same lock covers it; whether to refuse or support Kernel's replayable signatures for UserOperations; and the signer's confirmation flow for installing modules (Kernel's enable mode is refused by design). On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
 - Classic Safes: whether to build the Safe-owner (EIP-1271) adapter from D1, for teams that don't use 4337.
 
 **Infrastructure**

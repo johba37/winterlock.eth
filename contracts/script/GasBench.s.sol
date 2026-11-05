@@ -98,11 +98,12 @@ contract GasBench is Script {
             WotsParams memory p = sets[t];
             MemberKeys memory key = _key(p, "single", t, 4);
             WinterlockValidator v = new WinterlockValidator(Ops.params(p), Ops.deployStatelessVerifier());
-            MiniAccount wa = new MiniAccount{value: 1 ether}(ep, v, Ops.installData(key.master));
+            MiniAccount wa = new MiniAccount{value: 1 ether}(ep, v, Ops.installData(key));
+            key = Ops.forAccount(v, address(wa), 0, key);
             string memory name = string.concat("Winterlock ", _setName(p));
             for (uint256 n; n < ROUNDS; ++n) {
                 PackedUserOperation memory op = Ops.build(address(wa), n, _callData(), 700_000);
-                op.signature = Ops.wotsSignature(v, key, 0, op, ep.getUserOpHash(op));
+                op.signature = _entry(v, address(wa), key, 0, n, ep.getUserOpHash(op));
                 _submit(op, name, MINI_ECDSA, n);
             }
         }
@@ -125,11 +126,12 @@ contract GasBench is Script {
             WotsParams memory p = kSets[t];
             MemberKeys memory key = _key(p, "kernel", t, 4);
             WinterlockValidator v = new WinterlockValidator(Ops.params(p), Ops.deployStatelessVerifier());
-            address kw = _kernel(address(v), Ops.installData(key.master));
+            address kw = _kernel(address(v), Ops.installData(key));
+            key = Ops.forAccount(v, kw, 0, key);
             string memory name = string.concat("Kernel + Winterlock ", _setName(p));
             for (uint256 n; n < ROUNDS; ++n) {
                 PackedUserOperation memory op = Ops.build(kw, n, _kernelCallData(), 500_000);
-                op.signature = Ops.wotsSignature(v, key, 0, op, ep.getUserOpHash(op));
+                op.signature = _entry(v, kw, key, 0, n, ep.getUserOpHash(op));
                 _submit(op, name, KERNEL_ECDSA, n);
             }
         }
@@ -155,11 +157,11 @@ contract GasBench is Script {
 
         // each account gets its own member trees (one tree per member, account and chain)
         MemberKeys[] memory miniKeys = _team(p, "team mini");
-        MiniAccount mw = new MiniAccount{value: 1 ether}(ep, wv, Ops.installData(Ops.masters(miniKeys), 2));
+        MiniAccount mw = new MiniAccount{value: 1 ether}(ep, wv, Ops.installData(miniKeys, 2));
         _wotsTeamOps(wv, address(mw), _callData(), miniKeys, "Winterlock 2-of-3 24-byte target 431", MINI_ECDSA_2OF3);
 
         MemberKeys[] memory kernelKeys = _team(p, "team kernel");
-        address kw = _kernel(address(wv), Ops.installData(Ops.masters(kernelKeys), 2));
+        address kw = _kernel(address(wv), Ops.installData(kernelKeys, 2));
         _wotsTeamOps(
             wv, kw, _kernelCallData(), kernelKeys, "Kernel + Winterlock 2-of-3 24-byte target 431", KERNEL_ECDSA_2OF3
         );
@@ -177,8 +179,8 @@ contract GasBench is Script {
         );
     }
 
-    /// Master tree (height 6) and an operation tree of height 20 with 2^k real keys; the first operation
-    /// carries the certificate (D10), so nonce 0 includes the enrolment.
+    /// The stateless key and an operation tree of height 20 with 2^k real keys; the first operation carries the
+    /// certificate (D10, D12), so nonce 0 includes the enrolment.
     function _key(WotsParams memory p, string memory tag, uint256 i, uint256 k)
         internal
         pure
@@ -203,15 +205,31 @@ contract GasBench is Script {
         string memory name,
         string memory base
     ) internal {
+        keys[0] = Ops.forAccount(v, account, 0, keys[0]);
+        keys[1] = Ops.forAccount(v, account, 1, keys[1]);
         for (uint256 n; n < ROUNDS; ++n) {
             PackedUserOperation memory op = Ops.build(account, n, callData, 800_000);
             bytes32 h = ep.getUserOpHash(op);
-            op.signature = bytes.concat(
-                Ops.memberSignature(v, account, keys[0], 0, 0, n, h),
-                Ops.memberSignature(v, account, keys[1], 1, 0, n, h)
-            );
+            op.signature = bytes.concat(_entry(v, account, keys[0], 0, n, h), _entry(v, account, keys[1], 1, n, h));
             _submit(op, name, base, n);
         }
+    }
+
+    /// Member `index`'s entry at nonce n, slot 0, with the certificate on the first operation (D10, D12). k.ops must
+    /// be built for the account: building a tree of height 20 once per account, not per operation, keeps the script
+    /// under Forge's memory limit (it runs in one call frame, and Solidity never frees memory).
+    function _entry(WinterlockValidator v, address account, MemberKeys memory k, uint256 index, uint256 n, bytes32 h)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes memory cert;
+        if (n == 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes32 digest = v.statelessCertificateDigest(account, index, k.ops.root, uint8(k.ops.height), k.start);
+            cert = Ops.certificateFor(k, digest);
+        }
+        return Ops.entry(k, index, 0, n, cert, h);
     }
 
     /// Three ECDSA owners sorted by address; the first two sign.

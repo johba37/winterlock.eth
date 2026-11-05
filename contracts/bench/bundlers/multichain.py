@@ -3,8 +3,8 @@
 
 The same Kernel v3.3 account (same install data, so the same address) is deployed on every chain by its first
 WOTS-signed operation, which also enrols that chain's operation tree with a certificate. A second operation
-then uses the enrolled tree. Each chain gets its own operation tree, certified by its own master key: the
-tree index is the chain's position in --chain.
+then uses the enrolled tree. Each chain gets its own operation tree, certified by the member's stateless key
+(D12): the tree index, which picks the tree's secrets, is the chain's position in --chain.
 
 The signer helper derives keys from --tag. Use a secret tag (multichain.sh keeps one in .env): with a public
 one, anyone could sign for the account. The helper has keys for nonces 0 and 1 only, so a tag serves one run.
@@ -22,7 +22,8 @@ DEPLOYMENT = {
     "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
     "kernelFactory": "0x2577507b78c2008Ff367261CB6285d44ba5eF2E9",
     "factoryStaker": "0xd703aaE79538628d27099B8c4f621bE4CCd142d5",
-    "winterlockD6": "0x05326803001b3FD4875005aACe351f3E3Ecc685E",  # script/DeployValidator.s.sol, D6
+    # script/DeployValidator.s.sol, D6, as predicted for this source (D12); not deployed yet
+    "winterlockD6": "0xE8bE004Eae7A744a0e626b4bdeDD8b506547ACE0",
 }
 D6 = (24, 431, 4, 0)
 SALT = "0x" + "00" * 32
@@ -50,7 +51,7 @@ def main():
             raise SystemExit(f"{name}: no validator at {validator}; run script/DeployValidator.s.sol there first")
         chains.append((name, d, bundler))
 
-    # Install data comes from the master tree alone, so it is the same on every chain, and so is the address
+    # Install data is the stateless public key alone, so it is the same on every chain, and so is the address
     init = chains[0][1].init_data(validator, D6, args.tag, 1, 1)
     addresses = {name: d.call(DEPLOYMENT["kernelFactory"], "getAddress(bytes,bytes32)(address)", init, SALT)
                  for name, d, _ in chains}
@@ -81,11 +82,11 @@ def main():
             if row.get("included") != "yes":
                 break
             deployed, nonce = True, nonce + 1
-        root, seed, height, start, next_master = cast_values(
-            "call", validator, "tree(address,uint256)(bytes32,uint128,uint8,uint64,uint32)", account, 0,
-            "--rpc-url", d.rpc)
-        trees[name] = dict(root=root, height=height, start=start, master_index=int(next_master) - 1)
-        print(f"{name:18} operation tree {root[:18]}… height {height}, certified by master key {int(next_master) - 1}")
+        root, seed, height, start = cast_values(
+            "call", validator, "tree(address,uint256)(bytes32,uint128,uint8,uint64)", account, 0, "--rpc-url", d.rpc)
+        trees[name] = dict(root=root, seed=seed, height=height, start=start, tree_index=d.tree_index)
+        print(f"{name:18} operation tree {root[:18]}… height {height}, from sequence {start}, "
+              f"certified by the stateless key")
 
     json.dump(dict(account=account, validator=validator, trees=trees, operations=rows), open(args.out, "w"),
               indent=1)

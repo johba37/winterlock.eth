@@ -7,16 +7,18 @@ import {IEntryPoint} from "account-abstraction/interfaces/IEntryPoint.sol";
 import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOperation.sol";
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
 import {MiniAccount, ValidationProbe} from "./utils/Harness.sol";
-import {WotsParams, WotsKey, MemberKeys, Ops} from "./utils/WotsSigner.sol";
+import {WotsParams, MemberKeys, Ops} from "./utils/WotsSigner.sol";
+import {StatelessKey, StatelessSigner} from "./utils/StatelessSigner.sol";
 
 /// Threshold mode through EntryPoint v0.7, parameter set D6 (24-byte hashes, target sum 431).
-/// A team account with members A, B, C and threshold 2; each member has their own key tree.
+/// A team account with members A, B, C and threshold 2; each member has their own stateless key and key trees.
 contract WinterlockThresholdTest is Test {
     EntryPoint internal ep;
     WinterlockValidator internal val;
     MiniAccount internal team;
     address payable internal bundler = payable(makeAddr("bundler"));
     address internal recipient = makeAddr("recipient");
+    StatelessKey[4] internal sks; // stateless keys of A, B, C, D, kept: their keygen is costly
 
     uint256 internal constant H = 4;
     uint256 internal constant K = 3; // real leaves for nonces 0..3
@@ -27,22 +29,29 @@ contract WinterlockThresholdTest is Test {
         return WotsParams(24, 431, 4, 0);
     }
 
-    /// Member i's keys for the team account (A = 0, B = 1, C = 2, ...)
-    function _member(uint256 i) internal pure returns (MemberKeys memory) {
-        return Ops.keys(_p(), string(abi.encode("team member", i)), H, K);
+    function _label(uint256 i) internal pure returns (string memory) {
+        return string(abi.encode("team member", i));
     }
 
-    /// The first `count` members' master trees, for install data
-    function _members(uint256 count) internal pure returns (WotsKey[] memory masters) {
-        masters = new WotsKey[](count);
+    /// Member i's keys for the team account (A = 0, B = 1, C = 2, D = 3)
+    function _member(uint256 i) internal view returns (MemberKeys memory) {
+        return Ops.keys(_p(), _label(i), H, K, sks[i]);
+    }
+
+    /// The first `count` members' keys
+    function _members(uint256 count) internal view returns (MemberKeys[] memory ks) {
+        ks = new MemberKeys[](count);
         for (uint256 i; i < count; ++i) {
-            masters[i] = _member(i).master;
+            ks[i] = _member(i);
         }
     }
 
     function setUp() public {
         ep = new EntryPoint();
         val = new WinterlockValidator(Ops.params(_p()), Ops.deployStatelessVerifier());
+        for (uint256 i; i < 4; ++i) {
+            sks[i] = StatelessSigner.testKey(_label(i));
+        }
         team = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_members(3), 2));
     }
 
@@ -74,18 +83,12 @@ contract WinterlockThresholdTest is Test {
         assertEq(threshold, 2);
         assertEq(count, 3);
         for (uint256 i; i < 3; ++i) {
-            WotsKey memory m = _member(i).master;
-            assertEq(
-                val.member(address(team), i),
-                val.memberCommitment(
-                    val.masterCommitment(m.root, m.seed, uint8(m.height)), Ops.placeholderStatelessKey(m)
-                )
-            );
+            assertEq(val.member(address(team), i), StatelessSigner.publicKey(sks[i]), "the stateless public key");
         }
     }
 
     function test_installRejectsBadConfigs() public {
-        WotsKey[] memory keys = _members(2);
+        bytes32[] memory keys = Ops.publicKeys(_members(2));
         address acct = makeAddr("fresh account");
         vm.startPrank(acct);
 
@@ -97,14 +100,17 @@ contract WinterlockThresholdTest is Test {
 
         keys[1] = keys[0];
         vm.expectRevert(WinterlockValidator.InvalidConfig.selector);
-        val.onInstall(Ops.installData(keys, 1)); // same tree twice
+        val.onInstall(Ops.installData(keys, 1)); // same key twice
 
-        WinterlockValidator.Member[] memory many = new WinterlockValidator.Member[](17);
+        bytes32[] memory many = new bytes32[](17);
         for (uint256 i; i < 17; ++i) {
-            many[i] = WinterlockValidator.Member(bytes32(i + 1), 1, 4, bytes32(type(uint256).max - i));
+            many[i] = bytes32(type(uint256).max - i); // both halves nonzero, all distinct
         }
         vm.expectRevert(WinterlockValidator.InvalidConfig.selector);
-        val.onInstall(abi.encode(uint192(0), uint8(1), many)); // more than MAX_MEMBERS
+        val.onInstall(Ops.installData(many, 1)); // more than MAX_MEMBERS
+        many = new bytes32[](0);
+        vm.expectRevert(WinterlockValidator.InvalidConfig.selector);
+        val.onInstall(Ops.installData(many, 1)); // no member
 
         val.onInstall(Ops.installData(_members(2), 2));
         vm.expectRevert(WinterlockValidator.AlreadyInitialized.selector);
@@ -242,22 +248,28 @@ contract WinterlockThresholdTest is Test {
     // --- private wallet and team account side by side ---
 
     /// A's private account (1-of-1) and the team account (2-of-3) share the validator contract but
-    /// not their rules or keys. A's private tree is a different tree from A's team tree.
+    /// not their rules or trees. A uses one stateless key in both, but A's private tree is a different tree from
+    /// A's team tree, and its certificate names the private account.
     function test_privateAndTeamAccountsAreIsolated() public {
-        MemberKeys memory aPrivate = Ops.keys(_p(), "A private", H, K);
-        MiniAccount mine = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(aPrivate.master));
+        MemberKeys memory aPrivate = Ops.keys(_p(), "A private", H, K, sks[0]);
+        MiniAccount mine = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(aPrivate));
 
         // A alone controls the private account.
         PackedUserOperation memory op = _op(address(mine), 0);
         op.signature = Ops.wotsSignature(val, aPrivate, 0, op, ep.getUserOpHash(op));
+        bytes memory privateCertificate = Ops.certificate(val, address(mine), 0, aPrivate);
         _send(op);
         assertEq(recipient.balance, 1 ether);
 
-        // A's private-tree signature counts for nothing in the team account, even with B's.
+        // A's private-tree signature counts for nothing in the team account, even with B's: neither with the
+        // private account's certificate nor without one.
         op = _op(address(team), 0);
-        op.signature = bytes.concat(
-            Ops.memberSignature(val, address(team), aPrivate, 0, 0, 0, ep.getUserOpHash(op)), _entry(op, 1, 0)
-        );
+        bytes32 h = ep.getUserOpHash(op);
+        aPrivate = Ops.forAccount(val, address(mine), 0, aPrivate);
+        op.signature = bytes.concat(Ops.entry(aPrivate, 0, 0, 0, privateCertificate, h), _entry(op, 1, 0));
+        _expectFail();
+        _send(op);
+        op.signature = bytes.concat(Ops.entry(aPrivate, 0, 0, 0, "", h), _entry(op, 1, 0));
         _expectFail();
         _send(op);
 
@@ -275,9 +287,9 @@ contract WinterlockThresholdTest is Test {
         mask &= 0x0f;
         MemberKeys[] memory keys = new MemberKeys[](4);
         for (uint256 i; i < 4; ++i) {
-            keys[i] = Ops.keys(_p(), string(abi.encode("fuzz member", i)), H, 0);
+            keys[i] = Ops.keys(_p(), string(abi.encode("fuzz member", i)), H, 0, sks[i]);
         }
-        MiniAccount acct = new MiniAccount{value: 2 ether}(ep, val, Ops.installData(Ops.masters(keys), 2)); // transfer + gas
+        MiniAccount acct = new MiniAccount{value: 2 ether}(ep, val, Ops.installData(keys, 2)); // transfer + gas
         PackedUserOperation memory op = _op(address(acct), 0);
         bytes32 h = ep.getUserOpHash(op);
         uint256 signers;

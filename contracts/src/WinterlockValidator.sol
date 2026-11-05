@@ -11,17 +11,17 @@ import {WotsVerifier} from "./WotsVerifier.sol";
 ///         one or more members and a threshold. A private wallet is the 1-of-1 case.
 ///
 ///         Keys of a member:
-///         - A master tree of WOTS keys (decision D10). Master keys sign nothing but certificates.
-///         - A stateless hash-based key (decision D11): leanSphincs over keccak256, checked by a shared verifier
-///           contract (STATELESS_VERIFIER). It signs certificates too, and off-chain messages (ERC-1271). Being
-///           stateless, it needs no record of its use, so it also recovers a signer that lost its state.
-///         - Per chain, an operation tree of WOTS keys that signs UserOperations. A certificate, signed by a master
-///           key or by the stateless key, binds it to this chain, this validator, the account and the member. The
-///           first operation a member signs on a chain carries the certificate; the validator stores the tree in
-///           the account's storage on that chain and verifies later operations against it. The same mechanism
-///           replaces an exhausted tree, and after a loss of signer state certifies a fresh one.
-///         The install data holds only the master trees and stateless public keys, so it is identical on every
-///         chain, and so is the account's address.
+///         - A stateless hash-based key (decisions D11, D12): leanSphincs over keccak256, checked by a shared verifier
+///           contract (STATELESS_VERIFIER). It is the member's only long-term key and its whole install data. It
+///           certifies operation trees and signs off-chain messages (ERC-1271). Being stateless, it needs no record
+///           of its use, so it also recovers a signer that lost its state.
+///         - Per chain, an operation tree of WOTS keys that signs UserOperations. A certificate, signed by the
+///           stateless key, binds it to this chain, this validator, the account and the member. The first operation
+///           a member signs on a chain carries the certificate; the validator stores the tree in the account's
+///           storage on that chain and verifies later operations against it. The same mechanism replaces an
+///           exhausted tree, and after a loss of signer state certifies a fresh one.
+///         The install data holds only the stateless public keys, so it is identical on every chain, and so is the
+///         account's address (D10).
 ///         Every operation key is bound to one nonce: keyIndex = (sequence - start) * SLOTS + slot, where
 ///         `start` is the first sequence number the certificate covers (decisions D2, D4).
 ///         Each deployment fixes one WOTS parameter set (hash size, w, hash function, encoding; see WotsVerifier).
@@ -29,43 +29,39 @@ import {WotsVerifier} from "./WotsVerifier.sol";
 /// Signature: one entry per signing member, in strictly increasing member index order (proves the
 ///            signers are distinct):
 ///              [member index: 1][flags: 1][certificate, if flagged][WOTS signature][path: tree height * n]
-///            flags: bit 0 = slot, bit 7 = a master certificate follows, bit 6 = a stateless certificate follows
-///            (at most one of the two).
-///            Master certificate:
-///              [master index: 2][root: 32][height: 1][start: 8][master seed: 16][master height: 1]
-///              [stateless key: 32][master WOTS signature][master path: master height * n]
-///            Stateless certificate:
-///              [root: 32][height: 1][start: 8][master commitment: 32][stateless key: 32]
-///              [stateless signature: 5,684]
-///            A certificate carries the member's other key material (stateless key or master commitment), so the
-///            validator can check the member commitment.
+///            flags: bit 0 = slot, bit 7 = a certificate follows; the other bits must be zero.
+///            Certificate, 5,725 bytes:
+///              [root: 32][height: 1][start: 8][stateless signature: 5,684]
+///            The member's stateless key signs statelessCertificateDigest(account, member, root, height, start).
+///            The validator takes the key from storage, so the certificate doesn't carry it.
 ///            Valid when every entry verifies, there are at least `threshold` of them, and no bytes are left
 ///            over. Every well-formed entry is verified even after one fails, so a dummy signature (used for
 ///            gas estimation) costs as much gas as a real one with the same signers. For an operation that
 ///            carries a certificate, the dummy must carry the real certificate too: it does not depend on
-///            the operation, and only a valid certificate stores its tree (and the stateless verifier stops early
-///            on some invalid signatures).
+///            the operation, only a valid certificate stores its tree, and the stateless verifier stops early
+///            on some invalid signatures.
 ///
 /// Rotation:  certificates on a chain are ordered by their start sequence: a new one must start after the stored
-///            tree's start, whichever key signed either. A master certificate must also use a master index above
-///            every master index used on this chain before (D10). So an old certificate of either kind can never
-///            bring back a tree it was replaced by.
+///            tree's start, and not after the operation's sequence. So an old certificate can never bring back a
+///            tree it was replaced by.
 ///
 /// Messages:  isValidSignatureWithSender checks members' stateless signatures of a typed wrap of the hash (EIP-712,
 ///            domain "Winterlock" version 1 with this chain id and this validator, message
 ///            WinterlockMessage(address account, bytes32 hash)), so a signature counts for one account on one chain
 ///            under one validator. Signature: one entry per signing member, strictly increasing member index:
-///              [member index: 1][master commitment: 32][stateless key: 32][stateless signature: 5,684]
-///            Valid when every entry verifies and there are at least `threshold` of them.
+///              [member index: 1][stateless signature: 5,684]
+///            Valid when every entry verifies and there are at least `threshold` of them. Refused when the account
+///            asks on its own behalf (sender == account), as Kernel's enable mode does: see
+///            isValidSignatureWithSender.
 ///
 /// Storage:   all per-account data sits in the account's own mapping entry (fixed-size arrays), so
 ///            validation only touches storage associated with the account (ERC-7562). New storage is costly
 ///            (more so under Glamsterdam's pricing), so it is packed:
-///            - a member is one slot, a commitment to its master tree (root, seed, height) and its stateless key;
-///            - an operation tree is one slot for hash sizes up to 24 bytes: the root in the high bytes, then
-///              start (40 bits), next master index (17 bits), a stateless flag (1 bit) and height (6 bits). With
-///              32-byte hashes the root fills its slot and the rest takes a second one. An operation tree's public
-///              seed is derived (treeSeed or statelessTreeSeed), not stored.
+///            - a member is one slot: its stateless public key;
+///            - an operation tree is one slot for hash sizes up to 24 bytes: the root in the high bytes, then start
+///              (40 bits) and height (8 bits) in the lowest 48 bits. With 32-byte hashes the root fills its slot and
+///              start and height take a second one. An operation tree's public seed is derived (statelessTreeSeed),
+///              not stored.
 ///
 /// @dev Status: research prototype. Unaudited. Not for real funds.
 contract WinterlockValidator is IValidator {
@@ -74,17 +70,11 @@ contract WinterlockValidator is IValidator {
     uint256 public constant MAX_MEMBERS = 16;
     /// Largest operation tree.
     uint256 public constant MAX_HEIGHT = 40;
-    /// Largest master tree: master indices are 16 bits in the certificate.
-    uint256 public constant MAX_MASTER_HEIGHT = 16;
     /// A certificate's start sequence must fit in 40 bits.
     uint256 public constant MAX_START = (1 << 40) - 1;
-    /// Domain of the message a master key signs.
-    bytes32 public constant CERTIFICATE_DOMAIN = keccak256("Winterlock.certificate.v3");
     /// Domain of the message a stateless key signs to certify an operation tree.
     bytes32 public constant STATELESS_CERTIFICATE_DOMAIN = keccak256("Winterlock.stateless-certificate.v1");
-    /// Domain of a master-certified operation tree's public seed.
-    bytes32 public constant TREE_SEED_DOMAIN = keccak256("Winterlock.tree-seed.v1");
-    /// Domain of a stateless-certified operation tree's public seed.
+    /// Domain of an operation tree's public seed.
     bytes32 public constant STATELESS_TREE_SEED_DOMAIN = keccak256("Winterlock.stateless-tree-seed.v1");
     /// Length of a stateless signature (leanSphincs: n = 16, h = 26, FORS k = 24, a = 10).
     uint256 public constant STATELESS_SIG_LEN = 5684;
@@ -101,18 +91,15 @@ contract WinterlockValidator is IValidator {
     bytes4 internal constant ERC1271_SUCCESS = 0x1626ba7e;
     bytes4 internal constant ERC1271_FAILED = 0xffffffff;
     uint256 internal constant FLAG_SLOT = 0x01;
-    uint256 internal constant FLAG_STATELESS_CERTIFICATE = 0x40;
     uint256 internal constant FLAG_CERTIFICATE = 0x80;
-    /// Master certificate fields before the master signature: master index, root, height, start, master seed,
-    /// master height, stateless key.
-    uint256 internal constant CERTIFICATE_HEADER = 2 + 32 + 1 + 8 + 16 + 1 + 32;
-    /// Stateless certificate fields before its signature: root, height, start, master commitment, stateless key.
-    uint256 internal constant STATELESS_CERTIFICATE_HEADER = 32 + 1 + 8 + 32 + 32;
-    /// A message signature entry: member index, master commitment, stateless key, stateless signature.
-    uint256 internal constant MESSAGE_ENTRY = 1 + 32 + 32 + STATELESS_SIG_LEN;
-    /// Low 64 bits of a packed operation tree: start << 24 | next master << 7 | stateless << 6 | height
+    /// Certificate fields before its signature: root, height, start.
+    uint256 internal constant CERTIFICATE_HEADER = 32 + 1 + 8;
+    /// A certificate: its fields and the stateless signature.
+    uint256 internal constant CERTIFICATE_LEN = CERTIFICATE_HEADER + STATELESS_SIG_LEN;
+    /// A message signature entry: member index, stateless signature.
+    uint256 internal constant MESSAGE_ENTRY = 1 + STATELESS_SIG_LEN;
+    /// Low 64 bits of a packed operation tree: start << 8 | height (the bits above are zero).
     uint256 internal constant META_MASK = (1 << 64) - 1;
-    uint256 internal constant META_STATELESS = 1 << 6;
     uint256 internal constant HIGH_128 = 0xffffffffffffffffffffffffffffffff00000000000000000000000000000000;
 
     /// Packed parameter set (WotsVerifier.encodeParams): hash size, w, hash function, encoding.
@@ -128,31 +115,19 @@ contract WinterlockValidator is IValidator {
     /// Verifier of the members' stateless keys, shared by all accounts.
     IStatelessVerifier public immutable STATELESS_VERIFIER;
 
-    /// A member's keys, as given in the install data: the master tree and the stateless public key.
-    /// Stored as memberCommitment(masterCommitment(root, seed, height), statelessKey).
-    struct Member {
-        bytes32 root;
-        uint128 seed;
-        uint8 height;
-        bytes32 statelessKey; // leanSphincs public key: root (16 bytes) ‖ public parameter P (16 bytes)
-    }
-
-    /// A member's operation tree on this chain, as certified by a master key or the stateless key (view and
-    /// memory form).
+    /// A member's operation tree on this chain, as certified by its stateless key (view and memory form).
     struct Tree {
         bytes32 root;
-        uint128 seed; // derived: treeSeed(account, member, master index) or statelessTreeSeed(account, member, start)
+        uint128 seed; // derived: statelessTreeSeed(account, member, start)
         uint8 height;
         uint64 start; // first sequence number the tree signs for
-        uint32 nextMaster; // a later master certificate on this chain must use at least this master index
-        bool stateless; // certified by the stateless key
     }
 
     struct Config {
         uint192 nonceKey; // the only EntryPoint nonce lane this validator signs on
         uint8 threshold;
         uint8 memberCount;
-        bytes32[MAX_MEMBERS] members; // memberCommitment of each member
+        bytes32[MAX_MEMBERS] members; // each member's stateless public key: root ‖ public parameter P
         uint256[2][MAX_MEMBERS] trees; // packed operation trees on this chain; word 1 only for 32-byte hashes
     }
 
@@ -174,24 +149,23 @@ contract WinterlockValidator is IValidator {
 
     // --- ERC-7579 module ---
 
-    /// @param data abi.encode(uint192 nonceKey, uint8 threshold, Member[] members): each member's master tree and
-    ///             stateless public key
+    /// @param data abi.encode(uint192 nonceKey, uint8 threshold, bytes32[] keys): each member's stateless public key,
+    ///             leanSphincs root (16 bytes) ‖ public parameter P (16 bytes). Both halves must be nonzero, and no
+    ///             two members may share a key.
     function onInstall(bytes calldata data) external {
-        (uint192 nonceKey, uint8 threshold, Member[] memory members) = abi.decode(data, (uint192, uint8, Member[]));
+        (uint192 nonceKey, uint8 threshold, bytes32[] memory keys) = abi.decode(data, (uint192, uint8, bytes32[]));
         Config storage c = _config[msg.sender];
         if (c.memberCount != 0) revert AlreadyInitialized();
-        uint256 count = members.length;
+        uint256 count = keys.length;
         if (count == 0 || count > MAX_MEMBERS || threshold == 0 || threshold > count) revert InvalidConfig();
         for (uint256 i; i < count; ++i) {
-            Member memory m = members[i];
-            if (m.root == bytes32(0) || m.height == 0 || m.height > MAX_MASTER_HEIGHT) revert InvalidConfig();
-            // both halves of the stateless key set: a root and a public parameter
-            if (uint256(m.statelessKey) >> 128 == 0 || uint128(uint256(m.statelessKey)) == 0) revert InvalidConfig();
+            bytes32 key = keys[i];
+            // both halves set: a root and a public parameter
+            if (uint256(key) >> 128 == 0 || uint128(uint256(key)) == 0) revert InvalidConfig();
             for (uint256 j; j < i; ++j) {
-                // one key, one vote
-                if (members[j].root == m.root || members[j].statelessKey == m.statelessKey) revert InvalidConfig();
+                if (keys[j] == key) revert InvalidConfig(); // one key, one vote
             }
-            c.members[i] = memberCommitment(masterCommitment(m.root, m.seed, m.height), m.statelessKey);
+            c.members[i] = key;
         }
         c.nonceKey = nonceKey;
         c.threshold = threshold;
@@ -217,7 +191,7 @@ contract WinterlockValidator is IValidator {
         return (c.nonceKey, c.threshold, c.memberCount);
     }
 
-    /// The commitment to a member's keys.
+    /// A member's stateless public key.
     function member(address account, uint256 index) external view returns (bytes32) {
         return _config[account].members[index];
     }
@@ -227,24 +201,6 @@ contract WinterlockValidator is IValidator {
         return _loadTree(_config[account], account, index);
     }
 
-    /// The commitment to a master tree.
-    function masterCommitment(bytes32 root, uint128 seed, uint8 height) public pure returns (bytes32) {
-        return keccak256(abi.encode(root, seed, height));
-    }
-
-    /// What the validator stores for a member: its master tree's commitment and its stateless key.
-    function memberCommitment(bytes32 master, bytes32 statelessKey) public pure returns (bytes32) {
-        return keccak256(abi.encode(master, statelessKey));
-    }
-
-    /// The public seed of the operation tree that master key `masterIndex` certifies for `account` on this chain.
-    /// Unique per tree, because a master key certifies only one tree; the signer generates the tree with it.
-    function treeSeed(address account, uint256 index, uint256 masterIndex) public view returns (uint128) {
-        return uint128(
-            bytes16(keccak256(abi.encode(TREE_SEED_DOMAIN, block.chainid, address(this), account, index, masterIndex)))
-        );
-    }
-
     /// The public seed of the operation tree that the stateless key certifies from `start` for `account` on this
     /// chain. Unique per stored tree, because start sequences on a chain only grow.
     function statelessTreeSeed(address account, uint256 index, uint64 start) public view returns (uint128) {
@@ -252,17 +208,6 @@ contract WinterlockValidator is IValidator {
             bytes16(
                 keccak256(abi.encode(STATELESS_TREE_SEED_DOMAIN, block.chainid, address(this), account, index, start))
             )
-        );
-    }
-
-    /// The message a member's master key signs to certify an operation tree for `account` on this chain.
-    function certificateDigest(address account, uint256 index, bytes32 root, uint8 height, uint64 start)
-        public
-        view
-        returns (bytes32)
-    {
-        return keccak256(
-            abi.encode(CERTIFICATE_DOMAIN, block.chainid, address(this), account, index, root, height, start)
         );
     }
 
@@ -335,22 +280,15 @@ contract WinterlockValidator is IValidator {
         if (e.length == 0) return (false, 0);
         Config storage c = _config[msg.sender];
         uint256 flags = uint8(e[0]);
-        if (flags & ~(FLAG_SLOT | FLAG_CERTIFICATE | FLAG_STATELESS_CERTIFICATE) != 0) return (false, 0);
-        uint256 kind = flags & (FLAG_CERTIFICATE | FLAG_STATELESS_CERTIFICATE);
+        if (flags & ~(FLAG_SLOT | FLAG_CERTIFICATE) != 0) return (false, 0);
         Tree memory t;
         bool certified = true;
-        if (kind == 0) {
+        if (flags & FLAG_CERTIFICATE == 0) {
             t = _loadTree(c, msg.sender, index);
             if (t.root == bytes32(0)) return (false, 0); // no tree enrolled on this chain
             used = 1;
         } else {
-            if (kind == FLAG_CERTIFICATE) {
-                (certified, used, t) = _certificate(c, index, sequence, e);
-            } else if (kind == FLAG_STATELESS_CERTIFICATE) {
-                (certified, used, t) = _statelessCertificate(c, index, sequence, e);
-            } else {
-                return (false, 0); // both kinds
-            }
+            (certified, used, t) = _certificate(c, index, sequence, e);
             if (used == 0) return (false, 0);
             if (certified) _storeTree(c, index, t);
         }
@@ -358,8 +296,9 @@ contract WinterlockValidator is IValidator {
         ok = ok && certified;
     }
 
-    /// Parses and checks a master certificate.
-    /// @return certified whether the member's master key signed it
+    /// Parses and checks a certificate.
+    /// @param e starts at the flags byte: [flags][root][height][start][stateless signature]
+    /// @return certified whether the member's stateless key signed it
     /// @return used      bytes of `e` up to the end of the certificate (flags byte included), 0 if malformed
     /// @return t         the operation tree it certifies
     function _certificate(Config storage c, uint256 index, uint256 sequence, bytes calldata e)
@@ -367,73 +306,16 @@ contract WinterlockValidator is IValidator {
         view
         returns (bool certified, uint256 used, Tree memory t)
     {
-        if (e.length < 1 + CERTIFICATE_HEADER) return (false, 0, t);
-        uint256 masterHeight = uint8(e[60]);
-        used = 1 + CERTIFICATE_HEADER + SIG_LEN + N * masterHeight;
+        used = 1 + CERTIFICATE_LEN;
         if (e.length < used) return (false, 0, t);
-        Tree memory stored = _loadTree(c, msg.sender, index);
-        t = _parseCertificate(e);
-        uint256 masterIndex = t.nextMaster - 1;
-        if (
-            masterHeight == 0 || masterHeight > MAX_MASTER_HEIGHT || masterIndex >> masterHeight != 0
-                || masterIndex < stored.nextMaster || !_follows(t, stored, sequence)
-        ) return (false, 0, t);
-        t.seed = treeSeed(msg.sender, index, masterIndex);
-        bytes32 digest = certificateDigest(msg.sender, index, t.root, t.height, t.start);
-        certified = _masterSigned(c.members[index], masterIndex, digest, e[44:93], e[93:used]);
-    }
-
-    /// @param e starts at the flags byte, followed by [master index][root][height][start]
-    /// @return t the certified tree, with nextMaster = master index + 1 and no seed yet
-    function _parseCertificate(bytes calldata e) internal pure returns (Tree memory t) {
-        t.root = bytes32(e[3:35]);
-        t.height = uint8(e[35]);
-        t.start = uint64(bytes8(e[36:44]));
-        t.nextMaster = uint32(uint16(bytes2(e[1:3]))) + 1;
-    }
-
-    /// @param commitment the member's commitment
-    /// @param keys       [master seed: 16][master height: 1][stateless key: 32]
-    /// @param sigAndPath [master WOTS signature][master path]
-    function _masterSigned(
-        bytes32 commitment,
-        uint256 masterIndex,
-        bytes32 digest,
-        bytes calldata keys,
-        bytes calldata sigAndPath
-    ) internal view returns (bool) {
-        uint128 seed = uint128(bytes16(keys[:16]));
-        bytes32 root =
-            WotsVerifier.computeRoot(PARAMS, seed, masterIndex, digest, sigAndPath[:SIG_LEN], sigAndPath[SIG_LEN:]);
-        return root != bytes32(0)
-            && memberCommitment(masterCommitment(root, seed, uint8(keys[16])), bytes32(keys[17:49])) == commitment;
-    }
-
-    /// Parses and checks a stateless certificate.
-    /// @param e starts at the flags byte: [flags][root][height][start][master commitment][stateless key][signature]
-    /// @return certified whether the member's stateless key signed it
-    /// @return used      bytes of `e` up to the end of the certificate (flags byte included), 0 if malformed
-    /// @return t         the operation tree it certifies
-    function _statelessCertificate(Config storage c, uint256 index, uint256 sequence, bytes calldata e)
-        internal
-        view
-        returns (bool certified, uint256 used, Tree memory t)
-    {
-        used = 1 + STATELESS_CERTIFICATE_HEADER + STATELESS_SIG_LEN;
-        if (e.length < used) return (false, 0, t);
-        Tree memory stored = _loadTree(c, msg.sender, index);
         t.root = bytes32(e[1:33]);
         t.height = uint8(e[33]);
         t.start = uint64(bytes8(e[34:42]));
-        t.nextMaster = stored.nextMaster; // master keys used on this chain stay used
-        t.stateless = true;
-        if (!_follows(t, stored, sequence)) return (false, 0, t);
+        if (!_follows(t, _unpackTree(c, index), sequence)) return (false, 0, t);
         t.seed = statelessTreeSeed(msg.sender, index, t.start);
-        bytes32 key = bytes32(e[74:106]);
-        certified = memberCommitment(bytes32(e[42:74]), key) == c.members[index]
-            && _statelessSigned(
-                key, statelessCertificateDigest(msg.sender, index, t.root, t.height, t.start), e[106:used]
-            );
+        certified = _statelessSigned(
+            c.members[index], statelessCertificateDigest(msg.sender, index, t.root, t.height, t.start), e[42:used]
+        );
     }
 
     /// Whether `t` is a well-formed tree that may replace `stored` at `sequence`: the root is n bytes, high-aligned
@@ -494,8 +376,7 @@ contract WinterlockValidator is IValidator {
     // --- packed operation trees ---
 
     function _storeTree(Config storage c, uint256 index, Tree memory t) internal {
-        uint256 meta =
-            (uint256(t.start) << 24) | (uint256(t.nextMaster) << 7) | (t.stateless ? META_STATELESS : 0) | t.height;
+        uint256 meta = (uint256(t.start) << 8) | t.height;
         if (PACKED) {
             c.trees[index][0] = uint256(t.root) | meta; // the root's low 8 or more bytes are zero
         } else {
@@ -504,8 +385,8 @@ contract WinterlockValidator is IValidator {
         }
     }
 
-    /// @return t the stored tree with its derived seed; all zero if none is enrolled
-    function _loadTree(Config storage c, address account, uint256 index) internal view returns (Tree memory t) {
+    /// @return t the stored tree without its seed; all zero if none is enrolled
+    function _unpackTree(Config storage c, uint256 index) internal view returns (Tree memory t) {
         uint256 word = c.trees[index][0];
         if (word == 0) return t;
         uint256 meta;
@@ -516,21 +397,36 @@ contract WinterlockValidator is IValidator {
             t.root = bytes32(word);
             meta = c.trees[index][1];
         }
-        t.height = uint8(meta & 0x3f);
         // forge-lint: disable-next-line(unsafe-typecast)
-        t.start = uint64(meta >> 24);
+        t.height = uint8(meta);
         // forge-lint: disable-next-line(unsafe-typecast)
-        t.nextMaster = uint32((meta >> 7) & 0x1ffff);
-        t.stateless = meta & META_STATELESS != 0;
-        t.seed = t.stateless ? statelessTreeSeed(account, index, t.start) : treeSeed(account, index, t.nextMaster - 1);
+        t.start = uint64(meta >> 8);
+    }
+
+    /// @return t the stored tree with its derived seed; all zero if none is enrolled
+    function _loadTree(Config storage c, address account, uint256 index) internal view returns (Tree memory t) {
+        t = _unpackTree(c, index);
+        if (t.root != bytes32(0)) t.seed = statelessTreeSeed(account, index, t.start);
     }
 
     // --- off-chain messages ---
 
     /// ERC-1271 for the account (msg.sender): members' stateless signatures of messageDigest(account, hash).
-    /// @param data one entry per signing member, strictly increasing member index:
-    ///             [member index: 1][master commitment: 32][stateless key: 32][stateless signature: 5,684]
-    function isValidSignatureWithSender(address, bytes32 hash, bytes calldata data) external view returns (bytes4) {
+    /// Refused when `sender` is the account itself. Kernel v3.3 asks that way in its enable mode: it installs a new
+    /// validator inside a UserOperation once the root validator approves an "Enable" digest, and that validator then
+    /// validates the rest of the same operation. Members' message signatures carry no WOTS signature, so without
+    /// this check a quorum of them could install a module and act through it, and a phished "sign this message"
+    /// could take over the account. Modules are installed by a WOTS-signed operation (installModule) instead. Apps
+    /// keep message signing: Kernel.isValidSignature names the app that asks as `sender`.
+    /// @param sender who asks the account to check the signature
+    /// @param data   one entry per signing member, strictly increasing member index:
+    ///               [member index: 1][stateless signature: 5,684]
+    function isValidSignatureWithSender(address sender, bytes32 hash, bytes calldata data)
+        external
+        view
+        returns (bytes4)
+    {
+        if (sender == msg.sender) return ERC1271_FAILED; // the account asks on its own behalf: enable mode
         Config storage c = _config[msg.sender];
         if (c.memberCount == 0 || data.length == 0 || data.length % MESSAGE_ENTRY != 0) return ERC1271_FAILED;
         bytes32 digest = messageDigest(msg.sender, hash);
@@ -538,11 +434,9 @@ contract WinterlockValidator is IValidator {
         for (uint256 offset; offset < data.length; offset += MESSAGE_ENTRY) {
             uint256 index = uint8(data[offset]);
             if (index < nextIndex || index >= c.memberCount) return ERC1271_FAILED;
-            bytes32 key = bytes32(data[offset + 33:offset + 65]);
-            if (memberCommitment(bytes32(data[offset + 1:offset + 33]), key) != c.members[index]) {
+            if (!_statelessSigned(c.members[index], digest, data[offset + 1:offset + MESSAGE_ENTRY])) {
                 return ERC1271_FAILED;
             }
-            if (!_statelessSigned(key, digest, data[offset + 65:offset + MESSAGE_ENTRY])) return ERC1271_FAILED;
             nextIndex = index + 1;
         }
         return data.length / MESSAGE_ENTRY >= c.threshold ? ERC1271_SUCCESS : ERC1271_FAILED;

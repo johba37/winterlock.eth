@@ -33,10 +33,11 @@ cleanup
 [ -f lib/kernel/out/FactoryStaker.sol/FactoryStaker.json ] || ./setup.sh
 
 echo "starting geth --dev"
+# no eth_call gas cap or time limit: the signer helper's stateless keygen and signing take 50-150M gas per call
 docker run -d --name wl-geth --network host "$GETH_IMAGE" \
   --dev --dev.period 1 --dev.gaslimit 30000000 \
   --http --http.addr 127.0.0.1 --http.port "$GETH_PORT" --http.api eth,net,web3,debug,txpool \
-  --rpc.gascap 0 --rpc.txfeecap 0 --rpc.allow-unprotected-txs \
+  --rpc.gascap 0 --rpc.evmtimeout 0 --rpc.txfeecap 0 --rpc.allow-unprotected-txs \
   --nodiscover --maxpeers 0 --port 30399 --authrpc.port 8561 >/dev/null
 timeout 60 bash -c "until cast chain-id --rpc-url $RPC >/dev/null 2>&1; do :; done"
 

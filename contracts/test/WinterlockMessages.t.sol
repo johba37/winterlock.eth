@@ -10,13 +10,14 @@ import {WotsParams, MemberKeys, Ops} from "./utils/WotsSigner.sol";
 import {StatelessKey, StatelessSigner} from "./utils/StatelessSigner.sol";
 
 /// D11: off-chain messages (ERC-1271, isValidSignatureWithSender) signed with members' stateless keys over a typed
-/// wrap that binds the chain, the account and the validator; k-of-n in team accounts.
+/// wrap that binds the chain, the account and the validator; k-of-n in team accounts. The key comes from storage, and
+/// the account asking on its own behalf (Kernel's enable mode) is refused.
 contract WinterlockMessagesTest is Test {
     EntryPoint internal ep;
     WinterlockValidator internal val;
     MiniAccount internal solo; // 1-of-1: member 0
     MiniAccount internal team; // 2-of-3: members 0, 1, 2
-    bytes32[3] internal pubs; // stateless public keys, cached
+    StatelessKey[3] internal sks; // stateless keys, kept: their keygen is costly
     address internal app = makeAddr("app"); // the contract asking the account (Permit2, a marketplace)
 
     uint256 internal constant H = 3;
@@ -32,19 +33,18 @@ contract WinterlockMessagesTest is Test {
         ep = new EntryPoint();
         val = new WinterlockValidator(Ops.params(_p()), Ops.deployStatelessVerifier());
         for (uint256 i; i < 3; ++i) {
-            pubs[i] = StatelessSigner.publicKey(_sk(i));
+            sks[i] = StatelessSigner.testKey(_label(i));
         }
         solo = new MiniAccount{value: 1 ether}(ep, val, Ops.installData(_member(0)));
         team = new MiniAccount{value: 1 ether}(ep, val, Ops.installData(_members(), 2));
     }
 
-    function _sk(uint256 i) internal pure returns (StatelessKey memory) {
-        return StatelessSigner.testKey(string(abi.encode("message member", i)));
+    function _label(uint256 i) internal pure returns (string memory) {
+        return string(abi.encode("message member", i));
     }
 
-    function _member(uint256 i) internal view returns (MemberKeys memory k) {
-        k = Ops.keys(_p(), string(abi.encode("message member", i)), H, H);
-        k.statelessKey = pubs[i];
+    function _member(uint256 i) internal view returns (MemberKeys memory) {
+        return Ops.keys(_p(), _label(i), H, H, sks[i]);
     }
 
     function _members() internal view returns (MemberKeys[] memory ks) {
@@ -56,7 +56,7 @@ contract WinterlockMessagesTest is Test {
 
     /// Member i's entry for `hash` checked by `account` (member index = i)
     function _entry(address account, uint256 i, bytes32 hash) internal view returns (bytes memory) {
-        return Ops.messageEntry(val, account, _member(i), _sk(i), i, hash);
+        return Ops.messageEntry(val, account, _member(i), i, hash);
     }
 
     function _check(address account, bytes32 hash, bytes memory sig) internal returns (bytes4) {
@@ -67,7 +67,23 @@ contract WinterlockMessagesTest is Test {
     // --- 1-of-1 ---
 
     function test_messageSignatureAccepted() public {
-        assertEq(_check(address(solo), HASH, _entry(address(solo), 0, HASH)), OK);
+        bytes memory sig = _entry(address(solo), 0, HASH);
+        assertEq(sig.length, 1 + StatelessSigner.SIG_BYTES, "[member index][stateless signature]");
+        assertEq(_check(address(solo), HASH, sig), OK);
+    }
+
+    /// The account asking on its own behalf (sender = the account) is refused, whatever the signature: that is how
+    /// Kernel's enable mode asks before installing a module (test/integration/KernelWinterlock.t.sol). Any other
+    /// sender is an app asking, and gets an answer.
+    function test_accountAskingForItselfRefused() public {
+        bytes memory sig = _entry(address(solo), 0, HASH);
+        vm.prank(address(solo));
+        assertEq(val.isValidSignatureWithSender(address(solo), HASH, sig), NO, "the account itself");
+        assertEq(_check(address(solo), HASH, sig), OK, "an app");
+        bytes memory both = bytes.concat(_entry(address(team), 0, HASH), _entry(address(team), 1, HASH));
+        vm.prank(address(team));
+        assertEq(val.isValidSignatureWithSender(address(team), HASH, both), NO, "a team quorum, the account itself");
+        assertEq(_check(address(team), HASH, both), OK, "a team quorum, an app");
     }
 
     /// The wrap is EIP-712: domain Winterlock v1 with chain id and validator, WinterlockMessage(account, hash).
@@ -127,24 +143,17 @@ contract WinterlockMessagesTest is Test {
         bytes memory wrongIndex = bytes.concat(sig);
         wrongIndex[0] = 0x01;
         assertEq(_check(address(solo), HASH, wrongIndex), NO, "no member 1");
-        bytes memory wrongMaster = bytes.concat(sig);
-        wrongMaster[1] ^= 0x01;
-        assertEq(_check(address(solo), HASH, wrongMaster), NO, "master commitment");
         bytes memory flipped = bytes.concat(sig);
         flipped[1000] ^= 0x01;
         assertEq(_check(address(solo), HASH, flipped), NO, "signature byte");
         assertEq(_check(makeAddr("not installed"), HASH, sig), NO, "account without config");
     }
 
-    /// Another key, presented with its own public key: the commitment check refuses it.
+    /// Another key's signature under member 0: checked against member 0's stored key, so refused.
     function test_foreignKeyRejected() public {
         StatelessKey memory mallory = StatelessSigner.testKey("mallory");
-        bytes memory sig = abi.encodePacked(
-            uint8(0),
-            Ops.masterCommitment(_member(0)),
-            StatelessSigner.publicKey(mallory),
-            StatelessSigner.sign(mallory, val.messageDigest(address(solo), HASH))
-        );
+        bytes memory sig =
+            abi.encodePacked(uint8(0), StatelessSigner.sign(mallory, val.messageDigest(address(solo), HASH)));
         assertEq(_check(address(solo), HASH, sig), NO);
     }
 
@@ -152,22 +161,16 @@ contract WinterlockMessagesTest is Test {
     /// over the typed wrap, never over a raw hash, so an app that asks the member to sign a certificate digest as a
     /// "message" gets nothing it can use as a certificate; and a certificate's signature is not a message signature.
     function test_messagesAndCertificatesDontMix() public {
-        MemberKeys memory attacker =
-            Ops.forAccount(val, address(solo), 0, Ops.statelessTree(Ops.keys(_p(), "attacker tree", H, H), 0));
+        StatelessKey memory none;
+        MemberKeys memory attacker = Ops.forAccount(val, address(solo), 0, Ops.keys(_p(), "attacker tree", H, H, none));
         bytes32 certDigest = val.statelessCertificateDigest(address(solo), 0, attacker.ops.root, uint8(H), 0);
 
         // the member signs certDigest as an ERC-1271 message (valid as a message)
         bytes memory msgSig = _entry(address(solo), 0, certDigest);
         assertEq(_check(address(solo), certDigest, msgSig), OK);
         // ... which doesn't certify the attacker's tree
-        bytes memory cert = abi.encodePacked(
-            attacker.ops.root,
-            uint8(H),
-            uint64(0),
-            Ops.masterCommitment(_member(0)),
-            pubs[0],
-            _slice(msgSig, 65, StatelessSigner.SIG_BYTES)
-        );
+        bytes memory cert =
+            abi.encodePacked(attacker.ops.root, uint8(H), uint64(0), _slice(msgSig, 1, StatelessSigner.SIG_BYTES));
         PackedUserOperation memory op = Ops.build(address(solo), 0, "", 900_000);
         bytes32 h = ep.getUserOpHash(op);
         op.signature = Ops.entry(attacker, 0, 0, 0, cert, h);
@@ -176,13 +179,15 @@ contract WinterlockMessagesTest is Test {
         assertEq(val.tree(address(solo), 0).root, bytes32(0));
 
         // and a certificate's signature is no message signature for its digest
-        MemberKeys memory own = Ops.forAccount(val, address(solo), 0, Ops.statelessTree(_member(0), 0));
-        bytes memory ownCert = Ops.statelessCertificate(val, address(solo), 0, own, _sk(0));
+        MemberKeys memory own = Ops.forAccount(val, address(solo), 0, _member(0));
+        bytes memory ownCert = Ops.certificate(val, address(solo), 0, own);
         bytes32 ownDigest = val.statelessCertificateDigest(address(solo), 0, own.ops.root, uint8(H), 0);
-        bytes memory asMessage = abi.encodePacked(
-            uint8(0), Ops.masterCommitment(own), pubs[0], _slice(ownCert, 105, StatelessSigner.SIG_BYTES)
-        );
+        bytes memory asMessage = abi.encodePacked(uint8(0), _slice(ownCert, 41, StatelessSigner.SIG_BYTES));
         assertEq(_check(address(solo), ownDigest, asMessage), NO);
+        // control: the same certificate enrols the member's own tree
+        op.signature = Ops.entry(own, 0, 0, 0, ownCert, h);
+        vm.prank(address(solo));
+        assertEq(val.validateUserOp(op, h), 0);
     }
 
     function _slice(bytes memory b, uint256 from, uint256 len) internal pure returns (bytes memory out) {
@@ -210,7 +215,7 @@ contract WinterlockMessagesTest is Test {
         assertEq(_check(address(team), HASH, bytes.concat(a, badB, c)), NO, "A, forged B, C");
     }
 
-    /// A member's key under another member's index: the commitment for that index doesn't match.
+    /// A member's signature under another member's index: checked against that member's stored key.
     function test_teamEntryUnderWrongIndexRejected() public {
         bytes memory a = _entry(address(team), 0, HASH);
         bytes memory aAsB = bytes.concat(a);
@@ -227,10 +232,10 @@ contract WinterlockMessagesTest is Test {
         solo1.install(val, Ops.installData(_member(0)));
         ValidationProbe team2 = new ValidationProbe();
         team2.install(val, Ops.installData(_members(), 2));
-        bytes memory one = Ops.messageEntry(val, address(solo1), _member(0), _sk(0), 0, HASH);
+        bytes memory one = Ops.messageEntry(val, address(solo1), _member(0), 0, HASH);
         bytes memory two = bytes.concat(
-            Ops.messageEntry(val, address(team2), _member(0), _sk(0), 0, HASH),
-            Ops.messageEntry(val, address(team2), _member(2), _sk(2), 2, HASH)
+            Ops.messageEntry(val, address(team2), _member(0), 0, HASH),
+            Ops.messageEntry(val, address(team2), _member(2), 2, HASH)
         );
         (bytes4 r1, uint256 g1) = _measure(solo1, one);
         (bytes4 r2, uint256 g2) = _measure(team2, two);

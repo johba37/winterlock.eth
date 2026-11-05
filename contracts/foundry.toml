@@ -8,6 +8,9 @@ solc_version = "0.8.28"
 evm_version = "prague"
 optimizer = true
 optimizer_runs = 1000000
+# No metadata hash in the bytecode: the metadata records absolute build paths, so with a hash the bytecode, and the
+# CREATE2 addresses of the deterministic deployment (D10), would depend on where the repository is checked out
+bytecode_hash = "none"
 # scripts and tests generate WOTS keys in Solidity, which uses a lot of memory
 gas_limit = "max"
 remappings = [

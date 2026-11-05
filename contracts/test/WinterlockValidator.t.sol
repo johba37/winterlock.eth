@@ -8,7 +8,8 @@ import {PackedUserOperation} from "account-abstraction/interfaces/PackedUserOper
 import {WinterlockValidator} from "../src/WinterlockValidator.sol";
 import {WotsVerifier} from "../src/WotsVerifier.sol";
 import {MiniAccount} from "./utils/Harness.sol";
-import {WotsParams, WotsKey, WotsTree, MemberKeys, Ops} from "./utils/WotsSigner.sol";
+import {WotsParams, MemberKeys, Ops} from "./utils/WotsSigner.sol";
+import {StatelessKey, StatelessSigner} from "./utils/StatelessSigner.sol";
 
 /// End-to-end through EntryPoint v0.7: nonce binding, slots, lanes, exhaustion. Runs once per parameter set.
 abstract contract WinterlockValidatorTestBase is Test {
@@ -17,8 +18,10 @@ abstract contract WinterlockValidatorTestBase is Test {
     MiniAccount internal acct;
     address payable internal bundler = payable(makeAddr("bundler"));
     address internal recipient = makeAddr("recipient");
+    StatelessKey internal sk; // the member's stateless key, kept: its keygen is costly
 
     uint256 internal constant H = 4; // operation tree: 16 keys = 8 nonces x 2 slots
+    string internal constant LABEL = "winterlock.test.validator";
 
     bytes internal constant AA24 = "AA24 signature error";
 
@@ -28,11 +31,14 @@ abstract contract WinterlockValidatorTestBase is Test {
         WotsParams memory p = _p();
         ep = new EntryPoint();
         val = new WinterlockValidator(Ops.params(p), Ops.deployStatelessVerifier());
-        acct = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_keys().master));
+        sk = StatelessSigner.testKey(LABEL);
+        acct = new MiniAccount{value: 10 ether}(ep, val, Ops.installData(_keys()));
     }
 
-    function _keys() internal pure returns (MemberKeys memory) {
-        return Ops.keys(_p(), "winterlock.test.validator", H, H);
+    /// The member's keys: its stateless key, and operation tree 0 from sequence 0, which the first operation
+    /// certifies
+    function _keys() internal view returns (MemberKeys memory) {
+        return Ops.keys(_p(), LABEL, H, H, sk);
     }
 
     function _op(uint256 nonce, uint256 value) internal view returns (PackedUserOperation memory) {
@@ -59,13 +65,7 @@ abstract contract WinterlockValidatorTestBase is Test {
         WotsParams memory p = _p();
         assertTrue(val.isInitialized(address(acct)));
         assertTrue(val.isModuleType(1));
-        WotsKey memory m = _keys().master;
-        assertEq(
-            val.member(address(acct), 0),
-            val.memberCommitment(
-                val.masterCommitment(m.root, m.seed, uint8(Ops.MASTER_HEIGHT)), Ops.placeholderStatelessKey(m)
-            )
-        );
+        assertEq(val.member(address(acct), 0), StatelessSigner.publicKey(sk), "the stateless public key");
         assertEq(val.tree(address(acct), 0).root, bytes32(0)); // enrolled by the first operation
         (, uint8 threshold, uint8 count) = val.settings(address(acct));
         assertEq(threshold, 1);
@@ -98,7 +98,7 @@ abstract contract WinterlockValidatorTestBase is Test {
 
     function test_rejectsSlotOutOfRange() public {
         PackedUserOperation memory op = _signed(0, 1, 1 ether);
-        op.signature[1] = bytes1(uint8(2)); // [member][flags]...: bit 1 is no flag
+        op.signature[1] |= bytes1(uint8(2)); // [member][flags]...: slot 2, but bit 1 is no flag
         _expectFail(AA24);
         _send(op);
     }
@@ -138,8 +138,8 @@ abstract contract WinterlockValidatorTestBase is Test {
     function test_treeExhaustion() public {
         WotsParams memory p = _p();
         // operation tree of height 1: two keys, i.e. exactly one nonce
-        MemberKeys memory small = Ops.keys(p, "winterlock.test.small", 1, 1);
-        MiniAccount tiny = new MiniAccount{value: 1 ether}(ep, val, Ops.installData(small.master));
+        MemberKeys memory small = Ops.keys(p, "winterlock.test.small", 1, 1, sk);
+        MiniAccount tiny = new MiniAccount{value: 1 ether}(ep, val, Ops.installData(small));
         PackedUserOperation memory op =
             Ops.build(address(tiny), 0, abi.encodeCall(MiniAccount.execute, (recipient, 1, "")), 400_000);
         op.signature = Ops.wotsSignature(val, small, 0, op, ep.getUserOpHash(op));

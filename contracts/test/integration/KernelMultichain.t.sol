@@ -18,8 +18,8 @@ import {ValidatorDeployment} from "../../script/DeployValidator.s.sol";
 import {WotsParams, MemberKeys, Ops} from "../utils/WotsSigner.sol";
 import {StatelessKey, StatelessSigner} from "../utils/StatelessSigner.sol";
 
-/// D10 on Kernel v3.3: one account address on two chains, with a separate operation tree on each, both
-/// certified by the same master tree. Each chain is the same deployment from a state snapshot, with its own
+/// D10 and D12 on Kernel v3.3: one account address on two chains, with a separate operation tree on each, both
+/// certified by the member's stateless key. Each chain is the same deployment from a state snapshot, with its own
 /// chain id. The validator comes from the deterministic deployment (script/DeployValidator.s.sol).
 contract KernelMultichainTest is Test {
     uint256 internal constant SEPOLIA = 11155111;
@@ -32,6 +32,7 @@ contract KernelMultichainTest is Test {
     WinterlockValidator internal val;
     address payable internal bundler = payable(makeAddr("bundler"));
     address internal recipient = makeAddr("recipient");
+    StatelessKey internal sk; // the member's stateless key, kept: its keygen is costly
 
     bytes internal constant AA24 = "AA24 signature error";
 
@@ -49,15 +50,16 @@ contract KernelMultichainTest is Test {
             vm.etch(ValidatorDeployment.DEPLOYER, ValidatorDeployment.DEPLOYER_CODE);
         }
         val = WinterlockValidator(ValidatorDeployment.deploy(Ops.params(_p())));
+        sk = StatelessSigner.testKey(LABEL);
     }
 
     // --- helpers ---
 
-    /// The member's keys on one chain: the same master tree everywhere, operation tree `t` certified by
-    /// master key `t` (the signer gives every chain its own master key and tree)
-    function _keysOn(uint256 t) internal pure returns (MemberKeys memory k) {
-        k = Ops.keys(_p(), LABEL, H, H);
-        k.masterIndex = t;
+    /// The member's keys on one chain: the same stateless key everywhere, and operation tree `t` from sequence 0
+    /// (the signer gives every chain its own tree)
+    function _keysOn(uint256 t) internal view returns (MemberKeys memory k) {
+        k = Ops.keys(_p(), LABEL, H, H, sk);
+        k.tree = t;
     }
 
     /// The root of operation tree t for `account` on the current chain
@@ -65,13 +67,14 @@ contract KernelMultichainTest is Test {
         return Ops.forAccount(val, account, 0, _keysOn(t)).ops.root;
     }
 
+    /// The install data holds only the stateless public key, so it is the same on every chain
     function _initData() internal view returns (bytes memory) {
         return abi.encodeCall(
             Kernel.initialize,
             (
                 ValidatorLib.validatorToIdentifier(KernelValidator(address(val))),
                 IHook(address(0)),
-                Ops.installData(_keysOn(0).master),
+                Ops.installData(_keysOn(0)),
                 hex"",
                 new bytes[](0)
             )
@@ -128,7 +131,7 @@ contract KernelMultichainTest is Test {
         assertTrue(ValidatorDeployment.predict(Ops.params(WotsParams(16, 300, 4, 0))) != address(val));
     }
 
-    /// The same account on two chains, each with its own operation tree, certified by different master keys.
+    /// The same account on two chains, each with its own operation tree, both certified by the stateless key.
     function test_sameAccountOnTwoChainsWithSeparateTrees() public {
         uint256 snap = vm.snapshotState();
         vm.chainId(SEPOLIA);
@@ -145,8 +148,11 @@ contract KernelMultichainTest is Test {
 
         assertEq(onSepolia, onArbitrum, "same address");
         assertTrue(treeSepolia.root != treeArbitrum.root, "separate trees");
-        assertEq(treeSepolia.nextMaster, 1);
-        assertEq(treeArbitrum.nextMaster, 2);
+        assertEq(treeSepolia.start, 0);
+        assertEq(treeArbitrum.start, 0);
+        // the tree seed binds the chain, so even one tree's secrets would give each chain its own tree
+        assertTrue(treeSepolia.seed != treeArbitrum.seed, "seeds bind the chain");
+        assertTrue(_rootOn(0, onArbitrum) != treeSepolia.root, "tree 0 differs on Arbitrum");
     }
 
     /// Anyone can read a certificate from one chain's history; it is worthless on another chain.
@@ -156,20 +162,25 @@ contract KernelMultichainTest is Test {
         MemberKeys memory k = _keysOn(0);
         vm.chainId(SEPOLIA);
         bytes memory sepoliaCertificate = Ops.certificate(val, op.sender, 0, k);
+        MemberKeys memory sepoliaKeys = Ops.forAccount(val, op.sender, 0, k);
 
         vm.chainId(ARBITRUM_SEPOLIA);
-        op.signature = Ops.entry(k, 0, 0, 0, sepoliaCertificate, ep.getUserOpHash(op));
+        bytes32 h = ep.getUserOpHash(op);
+        op.signature = Ops.entry(sepoliaKeys, 0, 0, 0, sepoliaCertificate, h); // Sepolia's tree and certificate
         _expectFail();
+        _send(op);
+        op.signature = Ops.wotsSignature(val, _keysOn(0), 0, op, h); // control: this chain's own certificate
         _send(op);
     }
 
-    /// Once a chain has its tree, another chain's tree doesn't sign there, with or without its certificate.
+    /// Once a chain has its tree, another chain's tree doesn't sign there, with or without a certificate.
     function test_treeOfOtherChainRejected() public {
         vm.chainId(ARBITRUM_SEPOLIA);
         address account = _useAccount(_keysOn(1));
 
         vm.chainId(SEPOLIA);
         MemberKeys memory sepoliaKeys = Ops.forAccount(val, account, 0, _keysOn(0)); // Sepolia's tree
+        bytes memory sepoliaCertificate = Ops.certificate(val, account, 0, _keysOn(0));
         vm.chainId(ARBITRUM_SEPOLIA);
 
         PackedUserOperation memory op = Ops.build(account, 2, _transfer(), 600_000);
@@ -177,60 +188,15 @@ contract KernelMultichainTest is Test {
         op.signature = Ops.entry(sepoliaKeys, 0, 0, 2, "", h); // no certificate
         _expectFail();
         _send(op);
+        op.signature = Ops.entry(sepoliaKeys, 0, 0, 2, sepoliaCertificate, h); // Sepolia's certificate
+        _expectFail();
+        _send(op);
 
-        // Sepolia's tree with a certificate for this chain: master key 0 is below this chain's next index (2).
-        // A signer must never certify a second tree with one master key; this shows the chain refuses the
-        // older index even so.
+        // Sepolia's tree secrets certified for this chain from start 0: this chain's tree starts at 0 too, and a
+        // new certificate must start after it. A signer must never certify a second tree for one start; this shows
+        // the chain refuses it even so.
         op.signature = Ops.memberSignature(val, account, _keysOn(0), 0, 0, 2, h);
         _expectFail();
         _send(op);
-    }
-
-    // --- D11: stateless certificates on two chains ---
-
-    /// One account on two chains whose trees are both certified by the stateless key: no master key is spent on
-    /// either chain. The install data (master tree and stateless public key) is the same on both, and so is the
-    /// address; each chain's certificate is refused on the other.
-    function test_statelessCertificatesOnTwoChains() public {
-        StatelessKey memory sk = StatelessSigner.testKey(LABEL);
-        MemberKeys memory k = Ops.statelessTree(_keysOn(0), 0);
-        k.statelessKey = StatelessSigner.publicKey(sk);
-        bytes memory init = abi.encodeCall(
-            Kernel.initialize,
-            (
-                ValidatorLib.validatorToIdentifier(KernelValidator(address(val))),
-                IHook(address(0)),
-                Ops.installData(k),
-                hex"",
-                new bytes[](0)
-            )
-        );
-        address account = factory.getAddress(init, bytes32(0));
-        PackedUserOperation memory op = Ops.build(account, 0, _transfer(), 1_000_000);
-        op.initCode =
-            abi.encodePacked(address(factory), abi.encodeCall(KernelFactory.createAccount, (init, bytes32(0))));
-        vm.deal(account, 10 ether);
-
-        uint256 snap = vm.snapshotState();
-        vm.chainId(SEPOLIA);
-        bytes memory sepoliaCertificate = Ops.statelessCertificate(val, account, 0, k, sk);
-        op.signature = Ops.statelessMemberSignature(val, account, k, sk, 0, 0, 0, ep.getUserOpHash(op));
-        _send(op);
-        WinterlockValidator.Tree memory onSepolia = val.tree(account, 0);
-        assertTrue(onSepolia.stateless);
-        assertEq(onSepolia.nextMaster, 0, "no master key spent");
-
-        vm.revertToState(snap);
-        vm.chainId(ARBITRUM_SEPOLIA);
-        bytes32 h = ep.getUserOpHash(op);
-        op.signature = Ops.entry(Ops.forAccount(val, account, 0, k), 0, 0, 0, sepoliaCertificate, h);
-        _expectFail();
-        _send(op);
-        op.signature = Ops.statelessMemberSignature(val, account, k, sk, 0, 0, 0, h);
-        _send(op);
-        WinterlockValidator.Tree memory onArbitrum = val.tree(account, 0);
-        assertTrue(onArbitrum.stateless);
-        assertTrue(onArbitrum.root != onSepolia.root, "separate trees: the seed binds the chain");
-        assertGt(account.code.length, 0);
     }
 }

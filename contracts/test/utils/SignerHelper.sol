@@ -1,55 +1,64 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {WotsParams, WotsKey, MemberKeys, Ops} from "./WotsSigner.sol";
+import {WotsParams, WotsKey, Ops} from "./WotsSigner.sol";
+import {StatelessKey, StatelessSigner} from "./StatelessSigner.sol";
 
-/// @notice Test only. Exposes the reference signer through eth_call, so tools outside Foundry (the bundler
-///         acceptance driver) can produce WOTS signatures and install data. Keys are derived from a PUBLIC
-///         tag, so anyone can sign with them: tests only, never real funds.
-///         Each member has a master tree (height 6) and operation trees of height 20 with real leaves for key
-///         indices 0..3 (nonces 0 and 1, both slots). Operation tree t is certified by master key t from
-///         sequence 0: give every chain its own t (D10).
-///         The helper can run on any node: the certificate digest comes from the validator on the target chain
-///         (WinterlockValidator.certificateDigest), passed in by the caller.
+/// @notice Test only. Exposes the reference signers through eth_call, so tools outside Foundry (the bundler
+///         acceptance driver) can produce WOTS signatures, certificates and install data. Keys are derived from a
+///         PUBLIC tag, so anyone can sign with them: tests only, never real funds.
+///         Each member has a stateless leanSphincs key (its install data, D12) and operation trees of height 20 with
+///         real leaves for key indices 0..3 (nonces 0 and 1, both slots). Operation tree t is certified by the
+///         stateless key from sequence 0: give every chain its own t, so that no two chains share tree secrets.
+///         The helper can run on any node: the tree seed and the certificate digest come from the validator on the
+///         target chain (WinterlockValidator.statelessTreeSeed with start 0, statelessCertificateDigest), passed in
+///         by the caller.
+/// @dev    The stateless key is costly in gas: keygen about 50M, a signature about 55M. Call installData and
+///         certificate with a high gas limit, on a node without an eth_call gas cap or time limit.
 contract WotsSignerHelper {
     uint256 internal constant HEIGHT = 20;
     uint256 internal constant REAL = 2;
 
-    /// A member's keys with operation tree `treeIndex`, built with the seed the target chain's validator derives
-    /// for it (WinterlockValidator.treeSeed)
-    function _keys(WotsParams memory p, string memory tag, uint256 member, uint256 treeIndex, uint128 seed)
-        internal
-        pure
-        returns (MemberKeys memory k)
-    {
-        string memory label = string(abi.encode(tag, member));
-        k = Ops.keys(p, label, HEIGHT, REAL);
-        k.masterIndex = treeIndex;
-        k.ops = Ops.opsTree(p, label, treeIndex, seed, HEIGHT, REAL);
+    function _label(string memory tag, uint256 member) internal pure returns (string memory) {
+        return string(abi.encode(tag, member));
     }
 
-    /// Install data for an account whose members are derived from `tag`
-    function installData(WotsParams memory p, string memory tag, uint256 members, uint8 threshold)
+    /// A member's operation tree `treeIndex` from sequence 0, built with the seed the target chain's validator
+    /// derives for it
+    function _tree(WotsParams memory p, string memory tag, uint256 member, uint256 treeIndex, uint128 seed)
+        internal
+        pure
+        returns (WotsKey memory)
+    {
+        return Ops.opsTree(p, _label(tag, member), treeIndex, 0, seed, HEIGHT, REAL);
+    }
+
+    function _statelessKey(string memory tag, uint256 member) internal pure returns (StatelessKey memory) {
+        return StatelessSigner.testKey(_label(tag, member));
+    }
+
+    /// Install data for an account whose members are derived from `tag`: their stateless public keys
+    function installData(WotsParams memory, string memory tag, uint256 members, uint8 threshold)
         external
         pure
         returns (bytes memory)
     {
-        WotsKey[] memory masters = new WotsKey[](members);
+        bytes32[] memory keys = new bytes32[](members);
         for (uint256 i; i < members; ++i) {
-            masters[i] = Ops.master(p, string(abi.encode(tag, i)));
+            keys[i] = StatelessSigner.publicKey(_statelessKey(tag, i));
         }
-        return Ops.installData(masters, threshold);
+        return Ops.installData(keys, threshold);
     }
 
-    /// A member's operation tree and the first sequence it covers, for WinterlockValidator.certificateDigest
+    /// A member's operation tree and the first sequence it covers, for WinterlockValidator.statelessCertificateDigest
     function tree(WotsParams memory p, string memory tag, uint256 member, uint256 treeIndex, uint128 seed)
         external
         pure
         returns (bytes32 root, uint8 height, uint64 start)
     {
-        MemberKeys memory k = _keys(p, tag, member, treeIndex, seed);
+        WotsKey memory ops = _tree(p, tag, member, treeIndex, seed);
         // forge-lint: disable-next-line(unsafe-typecast)
-        return (k.ops.root, uint8(k.ops.height), k.start);
+        return (ops.root, uint8(ops.height), 0);
     }
 
     /// A member's certificate for its operation tree, given the digest from the target chain's validator
@@ -61,12 +70,12 @@ contract WotsSignerHelper {
         uint128 seed,
         bytes32 digest
     ) external pure returns (bytes memory) {
-        return Ops.certificateFor(_keys(p, tag, member, treeIndex, seed), digest);
+        return Ops.certificateFor(_tree(p, tag, member, treeIndex, seed), 0, _statelessKey(tag, member), digest);
     }
 
     /// Signature entries of the given members (strictly increasing) for the operation at `sequence`;
-    /// seeds[i] is WinterlockValidator.treeSeed for member signers[i], and certs[i] its certificate, or empty once
-    /// its tree is enrolled on the target chain
+    /// seeds[i] is WinterlockValidator.statelessTreeSeed (start 0) for member signers[i], and certs[i] its
+    /// certificate, or empty once its tree is enrolled on the target chain
     function sign(
         WotsParams memory p,
         string memory tag,
@@ -82,7 +91,7 @@ contract WotsSignerHelper {
             sig = bytes.concat(
                 sig,
                 Ops.entry(
-                    _keys(p, tag, signers[i], treeIndex, seeds[i]), signers[i], slot, sequence, certs[i], userOpHash
+                    _tree(p, tag, signers[i], treeIndex, seeds[i]), 0, signers[i], slot, sequence, certs[i], userOpHash
                 )
             );
         }

@@ -9,8 +9,10 @@ Each operation goes through eth_estimateUserOperationGas (with a dummy signature
 eth_sendUserOperation, and eth_getUserOperationReceipt, using the bundler's estimates unchanged, as a wallet
 SDK would. The table records what each bundler accepted.
 
-WOTS signatures come from the WotsSignerHelper contract via eth_call. Its keys derive from public tags:
-local tests only.
+WOTS signatures, certificates (signed by each member's stateless leanSphincs key, D12) and install data come from
+the WotsSignerHelper contract via eth_call. Its keys derive from public tags: local tests only. The stateless key
+costs about 50M gas to generate and 55M to sign with, so the helper is called with a high gas limit, on a node
+without an eth_call gas cap or time limit.
 
 usage: driver.py --rpc URL --deployment FILE --funder KEY --bundler name=URL [--bundler name=URL ...]
        [--signer-rpc URL --signer-helper ADDRESS] [--fund AMOUNT] [--transfer-wei N] [--fees fixed|bundler]
@@ -29,6 +31,7 @@ GWEI = 10**9
 RECIPIENT = "0x000000000000000000000000000000000000bEEF"
 ECDSA_PK = "0x00000000000000000000000000000000000000000000000000000000000a11ce"
 PARAMS_TYPE = "(uint256,uint256,uint256,uint256)"
+HELPER_GAS = 2_000_000_000  # eth_call gas for the signer helper: stateless keygen and signing are costly
 PACKED_OP = "(address,uint256,bytes,bytes,bytes32,uint256,bytes32,bytes,bytes)"
 
 # name, deployment key, parameter set (n, targetSum, logW, hashFn) or None for ECDSA, members, threshold,
@@ -118,13 +121,13 @@ class Driver:
         self.signer_rpc = signer_rpc or rpc_url
         self.helper = signer_helper or deployment["signerHelper"]
         self.fund = "1ether"
-        self.tree_index = 0  # which of a member's operation trees (and master key) the helper signs with
+        self.tree_index = 0  # which of a member's operation trees the helper signs with: one per chain
         self.transfer_wei = 10**15
         self.fee_mode = "fixed"
         self.run = ""  # appended to the account tags: a new label gives fresh accounts
 
     def helper_call(self, sig, *args):
-        return cast("call", self.helper, sig, *args, "--rpc-url", self.signer_rpc)
+        return cast("call", self.helper, sig, *args, "--gas-limit", HELPER_GAS, "--rpc-url", self.signer_rpc)
 
     def fees(self, bundler_url):
         """(maxFeePerGas, maxPriorityFeePerGas) as a wallet would pick them for this bundler"""
@@ -168,14 +171,14 @@ class Driver:
         return self.call(self.ep, f"getUserOpHash({PACKED_OP})(bytes32)", tup)
 
     def certs(self, validator, account, params, tag, signers):
-        """Each signer's operation-tree seed (derived by the validator on the target chain) and certificate, or
-        "0x" if its tree is already enrolled there (D10)"""
+        """Each signer's operation-tree seed (derived by the validator on the target chain, for start 0) and
+        certificate signed by its stateless key, or "0x" if its tree is already enrolled there (D10, D12)"""
         if params is None:
             return [], []
         certs, seeds = [], []
         p = "(%d,%d,%d,%d)" % params
         for m in signers:
-            seed = self.call(validator, "treeSeed(address,uint256,uint256)(uint128)", account, m, self.tree_index)
+            seed = self.call(validator, "statelessTreeSeed(address,uint256,uint64)(uint128)", account, m, 0)
             seeds.append(seed)
             root, height, start = cast_values(
                 "call", self.helper, f"tree({PARAMS_TYPE},string,uint256,uint256,uint128)(bytes32,uint8,uint64)", p,
@@ -184,7 +187,8 @@ class Driver:
             if enrolled.lower() == root.lower():
                 certs.append("0x")
                 continue
-            digest = self.call(validator, "certificateDigest(address,uint256,bytes32,uint8,uint64)(bytes32)",
+            digest = self.call(validator,
+                               "statelessCertificateDigest(address,uint256,bytes32,uint8,uint64)(bytes32)",
                                account, m, root, height, start)
             certs.append(self.helper_call(f"certificate({PARAMS_TYPE},string,uint256,uint256,uint128,bytes32)(bytes)",
                                           p, tag, m, self.tree_index, seed, digest))
@@ -268,7 +272,7 @@ class Driver:
             op["callGasLimit"] = h(100_000)
             op["preVerificationGas"] = h(100_000 + 20 * row["sig_bytes"])
             vgl = ((600_000 if factory_data else 150_000) + verifier_gas * len(signers)
-                   + 110_000 * row["certificates"])  # a certificate: master verification and storage
+                   + 110_000 * row["certificates"])  # a certificate: stateless verification and storage
             op["verificationGasLimit"] = h(vgl * 12 // 10)
         row["vgl"] = int(op["verificationGasLimit"], 16)
         op["signature"] = self.sign(op, params, tag, signers, nonce, certs, seeds)
