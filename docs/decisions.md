@@ -87,10 +87,22 @@ Open:
 - **Both share the core (D1):** the WOTS verifier, the stateless key, certificates and nonce binding.
 - **Why:** the live test on Sepolia ("Safe owner, live on Sepolia" under Measurements) showed transactions working end to end, with no change to Safe's contracts, service or app. Winterlock's own pieces for teams shrink to the owner contracts and a signer that posts to Safe's service.
 - **Open for this path:**
-  - a cheap owner deployment (a minimal proxy)
-  - message signing within the Transaction Service's 5,000-byte limit
-  - a minimal signer
-  - whether Safe's app lets an account that isn't an owner execute
+  - **Built:** a cheap owner deployment (proxy owners, about 0.34M gas per member under Glamsterdam) and a minimal signer (see Measurements, 2026-11-05).
+  - **Decided:** messages follow D14 (on-chain approval for on-chain checks, collection outside Safe's service for off-chain checks).
+  - **To build:** the signer's port to proxy owners, and its WalletConnect support.
+  - **To check:** whether Safe's app lets an account that isn't an owner execute.
+
+**D14. Safe messages: on-chain approval for on-chain checks, collection outside Safe's service for off-chain checks** (2026-11-05)
+- **Keep leanSphincs as the stateless key** (D12 stands). leanSphincs-s would fit Safe's 5,000-byte cap, but its signature budget is only estimated, and switching means new keys, owners and validators for everyone.
+- **Messages that apps check on-chain** (permits, Permit2): the team approves the message in an ordinary WOTS-signed Safe transaction through SignMessageLib. The app then checks it with an empty signature.
+- **Messages that apps check off-chain** (sign-in with Ethereum): members sign with their stateless keys; Winterlock's collection service (D8) gathers and serves the signatures. They verify on-chain through the Safe's `isValidSignature`.
+- **Both need the signer to answer apps itself, over WalletConnect,** because Safe's app doesn't reliably pass message results back.
+- **To build:**
+  - the WalletConnect bridge
+  - an owner signature kind that defers to the Safe's own approval, because viem refuses empty signatures
+  - building SignMessageLib with Safe's release settings
+  - a revocation library, if the team wants to withdraw approvals
+- **Not covered:** EIP-2612 permits that accept only ECDSA, which no smart account can sign.
 
 ## Constraints that every design must respect
 
@@ -702,6 +714,77 @@ The question: does the spike's design work with a real Safe and Safe's hosted Tr
   - **Owners:** shown as plain addresses, like any owner without a name. Adding the Safe offers to put each signer in the address book, so a team can name its Winterlock owners there.
 - **So for transactions, the Safe route needs no change to Safe's contracts, its Transaction Service or its app.** Winterlock's own pieces are the owner contracts and a signer that posts proposals and confirmations through the service API. Not checked yet: whether the app lets a connected account that isn't an owner press "Execute". A Winterlock relayer or signer can always execute directly, as here.
 
+**2026-11-05: proxy owners for the Safe route** (`src/safe/WinterlockOwner.sol`, `src/safe/WinterlockOwnerFactory.sol`, `script/DeploySafeOwner.s.sol`)
+
+- **The design:** a member's owner is a 77-byte proxy, Solady's ERC-1167 clone with immutable arguments, that carries the member's stateless key.
+  - It delegates to one WinterlockOwner implementation per chain and parameter set, made by a factory with CREATE2 and the key as the salt.
+  - The proxy reads the key from its own code, never from calldata.
+  - Digests, tree seeds and trees stay bound to the proxy's address and storage.
+  - The implementation, factory and stateless verifier come from the deterministic deployment proxy with fixed salts, so an owner's address depends only on their code and the key: the same on every chain (tested, and a mutant that puts the chain id into the salt is caught).
+- **The bare implementation is harmless:** its key reads as zero, so no certificate or message verifies there, no tree can be stored, and every transaction signature is refused. Proxies with a zero key or none are refused the same way.
+- **Factory:** `deployAndEnroll` creates an owner and enrols its first tree in one transaction; the certificate is signed for the predicted address.
+- **Gas, old pricing:** a member's owner costs 74k to deploy (was 1.6M), or 255k together with its first tree. Each owner check costs about 3k more the first time in a transaction (a cold account), 0.5k after. A 2-of-3 `execTransaction` costs about 3.5k more.
+- **Gas under Glamsterdam pricing:** estimated with EIP-8037's state charges, calibrated against the Sepolia receipts to within 6k and cross-checked with read-only `eth_estimateGas` on Sepolia.
+  - A member's owner: about 0.34M (was 11.2M).
+  - Owner plus first tree: about 0.61M.
+  - Once per chain for all teams: about 11.6M for the implementation and 2.7M for the factory.
+- **Deploying on Glamsterdam chains:** use `--broadcast --skip-simulation --slow`. Otherwise Forge sets gas limits from its own old-price simulation, and the transactions run out of gas.
+- **Tests:** 7 mutants caught. One survives by design: removing the zero-key check in signature verification, which the verifier already refuses.
+- **A test bug fixed:** in `test_constructorChecks`, Forge 1.8.3 turns `new` in test files into its `deployCode` cheatcode, and an expected revert from that cheatcode ended the test as passed. So only its first check had ever run. It now deploys with plain CREATE, and a mutation run confirms every check executes.
+- **Out of date:** `bench/safe/live.py` still builds owners with the old full-contract constructor; the signer (below) replaces it.
+
+**2026-11-05: Safe messages within the Transaction Service's cap** (`docs/notes/safe-messages.md`, `test/integration/SafeMessages.t.sol`, `test/StatelessVerifierS.t.sol`)
+
+Three options, measured. The full comparison is in the note.
+- **A. leanSphincs-s as the stateless key:**
+  - Fits the cap: 4,314 bytes per owner. Verifies for 38.9k gas (42.6k without via-IR), against 52.8k.
+  - Its signature budget is estimated, not proved: 20k / 2.1M / 67M per signer tier, against leanSphincs' proved 210k / 22M / 1.15B. Hardware signing takes twice as long.
+  - Switching needs new seeds, owners, verifier and Kernel validator for every member.
+  - A later 24-byte version would no longer fit the cap.
+- **B. On-chain approval through Safe's SignMessageLib:**
+  - The members' WOTS keys approve the message in a Safe transaction: 265–267k gas, against 85–86k with ECDSA owners. An app's check then costs 19–22k, with an empty signature.
+  - Works with Permit2 and the `siwe` library. Doesn't work with viem: its ERC-6492 validator reverts on signatures under 32 bytes, and an ERC-6492 wrap then fails Permit2.
+  - Safe's Transaction Service ignores these approvals, and nothing in Safe can revoke one; a custom delegatecall library can (tested).
+  - One member alone can't approve, and a phished stateless signature of the approval's hash is refused.
+- **C. Stateless signatures collected outside Safe's service:** the 2-of-3 signature (11.7 KB) already verifies on-chain through the Safe. Winterlock's collection service (D8) would store and serve it.
+- **Every option:** EIP-2612 permits with OpenZeppelin's `ERC20Permit` accept only ECDSA, so no smart account works with them.
+- **Safe's app:** its "always use on-chain signatures" setting answers apps too early or not at all (read from its source). So both B and C need a Winterlock signer that answers apps itself, over WalletConnect.
+- **Decided as D14:** keep leanSphincs (D12 stands). Use B for messages that apps check on-chain, such as permits, and C for messages checked off-chain, such as sign-in.
+- **Proposed, not built:**
+  - a WinterlockOwner signature kind that defers to the Safe's own approval, so a wallet can return a short signature viem accepts
+  - building SignMessageLib with the release settings in `setup.sh`
+
+**2026-11-05: minimal signer** (`signer/`)
+
+A Python command-line signer for the Safe route.
+- **Crypto:** WOTS (D6) and leanSphincs implemented natively (C-backed keccak).
+- **Checked against the Solidity signers byte for byte:** leaves, signatures, trees, keys and the owner formats. All upstream leanSphincs known answers match.
+- **Checked against the real contracts on a local chain:** both owner entry points, the verifier, `enroll`, and a Safe v1.4.1 SafeL2 execution.
+- **Safety rails:**
+  - One seed file. Operation trees mix in randomness kept only in the key log, so a signer that lost its log can't rebuild an old tree, and a restore always certifies a fresh one.
+  - An append-only, checksummed key log, written and fsynced before a signature leaves the signer.
+  - One hash per key. Slot 0 first, slot 1 for a replacement, a third version refused.
+  - It builds the SafeTx itself and compares the hash with the Safe's.
+  - It checks the owner, the nonce and the enrolled tree before signing, and verifies each signature with the owner contract before posting.
+  - It refuses to sign if the service shows a signature from its current tree that its log doesn't know.
+- **Commands:** init (and restore), address, enroll (deploy, rotate), propose (and cancel), confirm, queue, execute, status, plus an offline file mode for peer-to-peer use.
+- **Tests:** 43, including an end-to-end run of a 2-of-3 Safe against a mock Transaction Service.
+- **Speed, on 12 cores:**
+  - a WOTS signature in 4 ms
+  - a leanSphincs signature in 0.24 s and its key in 0.13 s
+  - a height-10 tree in 0.3 s, height 12 in 1.2 s
+- **Live on Sepolia:** a 2-of-2 Safe `0x60361563278E85da267C1198f8fBdc2cf43e38ED` with new seeds. The owners were full contracts, from before the proxy change.
+  - Proposal and confirmation through the hosted service: 201 and 201.
+  - Execution: `0x88de9dfee61300fa0ffe4b441cc52ee130a02992f6e7652b1ed032708e9f5313`, 384,803 gas.
+  - The service shows both confirmations as contract signatures.
+- **Gaps before real use:**
+  - a hardware signer, a recovery phrase with a backup check, and a passphrase on the seed
+  - moving to another device; a VM snapshot can still reuse keys, and the online check catches that only when it's online
+  - a hard stop at the stateless key's budget
+  - WalletConnect and message signing
+  - the port to proxy owners
+  - an audit
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
@@ -729,7 +812,7 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 1
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): built with the stateless key and an EIP-712 wrap (D11, above). Open: full ERC-7739 nested typed data, and on-chain pre-approval for high-value permits.
 - 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579, including whether they have an enable path like Kernel's and whether it asks with the account as the sender, so the same lock covers it; whether to refuse or support Kernel's replayable signatures for UserOperations; and the signer's confirmation flow for installing modules (Kernel's enable mode is refused by design). On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
-- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike), and works live on Sepolia with Safe's Transaction Service for transactions (see 2026-11-05, Safe owner, live on Sepolia). Open: messages against the Transaction Service's 5,000-byte cap, the per-member deployment cost (11.2M gas on Sepolia), and how Safe's app shows such a Safe.
+- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike), and works live on Sepolia with Safe's Transaction Service for transactions (see 2026-11-05, Safe owner, live on Sepolia). Safe's app shows such a Safe with no change (checked by hand). Members' owners are now cheap proxies (above). Open: messages (options measured, recommendation above) and the signer's WalletConnect support.
 
 **Infrastructure**
 - Bundler acceptance: answered for the hosted bundlers. Pimlico, Candide and Alchemy accept and include WOTS operations from a production Kernel on Arbitrum Sepolia (stage 2, above). Still open:

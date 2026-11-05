@@ -37,9 +37,9 @@ python3 -m http.server 8000
 
 ## Publish to winterlock.eth
 
-1. **Pin the folder to IPFS.** Upload this folder (with `index.html` and `fonts/`) to a pinning service such as Fleek, Pinata, Filebase or 4EVERLAND, or with a local node:
+1. **Pin the site to IPFS.** Upload only `index.html` and `fonts/` to a pinning service such as Fleek, Pinata, Filebase or 4EVERLAND, or with a local node. Copy those two into an empty folder first, so nothing else in the repository (the contracts, the signer, local tool folders) is published:
    ```sh
-   ipfs add -r --cid-version 1 --ignore .git --ignore .gitmodules --ignore README.md --ignore contracts --ignore docs .
+   site=$(mktemp -d) && cp -r index.html fonts "$site"/ && ipfs add -r --cid-version 1 "$site"
    ```
    Note the CID of the folder (it starts with `bafy…`). Pinning with two services keeps the page up if one of them drops it.
 2. **Point the name at it.** On [app.ens.domains](https://app.ens.domains), open `winterlock.eth` → Profile → Edit profile → Other → Content Hash, enter `ipfs://<CID>` and sign with the Manager wallet. This needs a little mainnet ETH for gas.

@@ -2,7 +2,9 @@
 pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {LibClone} from "solady/utils/LibClone.sol";
 import {WinterlockOwner} from "../src/safe/WinterlockOwner.sol";
+import {WinterlockOwnerFactory} from "../src/safe/WinterlockOwnerFactory.sol";
 import {IStatelessVerifier} from "../src/interfaces/IStatelessVerifier.sol";
 import {ValidatorDeployment} from "../script/DeployValidator.s.sol";
 import {SafeOwnerDeployment} from "../script/DeploySafeOwner.s.sol";
@@ -10,16 +12,22 @@ import {WotsParams, WotsKey, Ops} from "./utils/WotsSigner.sol";
 import {StatelessKey, StatelessSigner} from "./utils/StatelessSigner.sol";
 import {Member, OwnerSigner} from "./utils/SafeHarness.sol";
 
-/// WinterlockOwner on its own: enrolment (D12's certificate properties, per Safe and chain), malformed signatures,
-/// and the deterministic address. The Safe integration is in test/integration/SafeWinterlockOwner.t.sol.
+/// WinterlockOwner on its own: the member's owner as a proxy of the shared implementation (its key, its storage, the
+/// implementation harmless on its own), the factory, enrolment (D12's certificate properties, per Safe and chain),
+/// malformed signatures, and the deterministic addresses. The Safe integration is in
+/// test/integration/SafeWinterlockOwner.t.sol.
 contract WinterlockOwnerTest is Test {
-    WinterlockOwner internal owner;
+    WinterlockOwner internal owner; // the member's proxy
+    WinterlockOwner internal impl;
+    WinterlockOwnerFactory internal factory;
     StatelessKey internal sk; // kept: keygen is costly
     address internal safeA = makeAddr("safe A");
     address internal safeB = makeAddr("safe B");
 
     uint256 internal constant H = 4;
     string internal constant LABEL = "winterlock.test.safe-owner";
+    bytes4 internal constant MAGIC = 0x1626ba7e;
+    bytes4 internal constant INVALID = 0xffffffff;
 
     function _p() internal pure returns (WotsParams memory) {
         return WotsParams(24, 431, 4, 0);
@@ -31,6 +39,8 @@ contract WinterlockOwnerTest is Test {
         }
         sk = StatelessSigner.testKey(LABEL);
         owner = WinterlockOwner(SafeOwnerDeployment.deploy(Ops.params(_p()), StatelessSigner.publicKey(sk)));
+        impl = WinterlockOwner(SafeOwnerDeployment.predictImplementation(Ops.params(_p())));
+        factory = WinterlockOwnerFactory(SafeOwnerDeployment.predictFactory(Ops.params(_p())));
     }
 
     function _member() internal view returns (Member memory) {
@@ -56,18 +66,186 @@ contract WinterlockOwnerTest is Test {
 
     // --- construction ---
 
+    /// The implementation checks the parameter set and the verifier; the factory checks each member's key and that its
+    /// implementation is one.
+    /// The contracts are created with CREATE (_create), not `new` under vm.expectRevert: Forge's test preprocessing
+    /// turns `new` into vm.deployCode, and an expected revert of that cheatcode ends the test as passed, so the checks
+    /// after the first one never ran (seen with Forge 1.8.3).
     function test_constructorChecks() public {
         IStatelessVerifier verifier = owner.STATELESS_VERIFIER();
         bytes32 key = StatelessSigner.publicKey(sk);
-        vm.expectRevert(WinterlockOwner.InvalidConfig.selector); // 32-byte hashes need two slots per tree
-        new WinterlockOwner(Ops.params(WotsParams(32, 560, 4, 0)), verifier, key);
-        vm.expectRevert(WinterlockOwner.InvalidConfig.selector); // no public parameter
-        new WinterlockOwner(Ops.params(_p()), verifier, key & bytes32(StatelessSigner.HIGH));
-        vm.expectRevert(WinterlockOwner.InvalidConfig.selector); // no root
-        new WinterlockOwner(Ops.params(_p()), verifier, key >> 128);
-        vm.expectRevert(WinterlockOwner.InvalidConfig.selector); // no verifier code
-        new WinterlockOwner(Ops.params(_p()), IStatelessVerifier(makeAddr("nothing")), key);
+        bytes memory invalidConfig = abi.encodeWithSelector(WinterlockOwner.InvalidConfig.selector);
+        // 32-byte hashes need two slots per tree
+        assertEq(_create(_implInit(Ops.params(WotsParams(32, 560, 4, 0)), verifier)), invalidConfig);
+        // no verifier code
+        assertEq(_create(_implInit(Ops.params(_p()), IStatelessVerifier(makeAddr("nothing")))), invalidConfig);
+        assertEq(_create(_implInit(Ops.params(_p()), verifier)), ""); // control
+
+        bytes memory invalidImpl = abi.encodeWithSelector(WinterlockOwnerFactory.InvalidImplementation.selector);
+        assertEq(_create(_factoryInit(address(owner))), invalidImpl); // a member's proxy
+        assertEq(_create(_factoryInit(makeAddr("nothing"))), invalidImpl); // no code
+        assertEq(_create(_factoryInit(address(impl))), ""); // control
+
+        vm.expectRevert(WinterlockOwnerFactory.InvalidKey.selector); // no public parameter
+        factory.deploy(key & bytes32(StatelessSigner.HIGH));
+        vm.expectRevert(WinterlockOwnerFactory.InvalidKey.selector); // no root
+        factory.deploy(key >> 128);
         assertEq(owner.KEY(), key);
+    }
+
+    function _implInit(uint256 params, IStatelessVerifier verifier) internal pure returns (bytes memory) {
+        return abi.encodePacked(type(WinterlockOwner).creationCode, abi.encode(params, verifier));
+    }
+
+    function _factoryInit(address implementation) internal pure returns (bytes memory) {
+        return abi.encodePacked(type(WinterlockOwnerFactory).creationCode, abi.encode(implementation));
+    }
+
+    /// Creates `initCode` with CREATE; returns the constructor's revert data, or "" if the contract was created
+    function _create(bytes memory initCode) internal returns (bytes memory err) {
+        address created;
+        assembly ("memory-safe") {
+            created := create(0, add(initCode, 0x20), mload(initCode))
+        }
+        if (created == address(0)) {
+            err = new bytes(0);
+            assembly ("memory-safe") {
+                err := mload(0x40)
+                mstore(err, returndatasize())
+                returndatacopy(add(err, 0x20), 0, returndatasize())
+                mstore(0x40, add(add(err, 0x20), and(add(returndatasize(), 31), not(31))))
+            }
+        }
+    }
+
+    // --- the member's proxy and the implementation ---
+
+    /// The member's owner is the 45-byte ERC-1167 proxy of the implementation with the key appended (77 bytes). It
+    /// reads its own key, and the trees live in its storage, not in the implementation's.
+    function test_ownerIsAProxy() public {
+        bytes32 key = StatelessSigner.publicKey(sk);
+        assertEq(
+            address(owner).code,
+            abi.encodePacked(hex"363d3d373d3d3d363d73", address(impl), hex"5af43d82803e903d91602b57fd5bf3", key)
+        );
+        assertEq(owner.KEY(), key);
+        assertEq(owner.IMPLEMENTATION(), address(impl));
+        assertEq(impl.IMPLEMENTATION(), address(impl));
+        assertEq(owner.PARAMS(), Ops.params(_p()));
+        assertEq(address(factory.IMPLEMENTATION()), address(impl));
+
+        WotsKey memory t = _tree(safeA, 0);
+        assertTrue(_enroll(safeA, t, 0, OwnerSigner.certificate(_member(), t, safeA, 0)));
+        bytes32 slot = keccak256(abi.encode(safeA, uint256(0))); // _trees: slot 0
+        assertTrue(vm.load(address(owner), slot) != 0);
+        assertEq(vm.load(address(impl), slot), 0);
+        (bytes32 root,,,) = impl.tree(safeA);
+        assertEq(root, 0);
+
+        // another member's proxy of the same implementation reads its own key
+        bytes32 other = keccak256("another member") | bytes32(uint256(1));
+        WinterlockOwner second = WinterlockOwner(factory.deploy(other));
+        assertEq(second.KEY(), other);
+        assertEq(owner.KEY(), key);
+    }
+
+    /// Called directly, the implementation has no key (KEY() is 0): it refuses every certificate, so it never holds a
+    /// tree and refuses every transaction signature, and it refuses every message signature. So does a proxy without
+    /// a key, which only a deployer other than the factory can make.
+    function test_implementationHarmless() public {
+        assertEq(impl.KEY(), bytes32(0));
+        WotsKey memory t = OwnerSigner.opsTree(_p(), Member(LABEL, sk, impl), safeA, 0, H, H);
+        bytes memory cert = StatelessSigner.sign(sk, impl.certificateDigest(safeA, t.root, uint8(H), 0));
+        vm.expectRevert(WinterlockOwner.InvalidCertificate.selector);
+        impl.enroll(safeA, t.root, uint8(H), 0, cert);
+        (bytes32 root,,,) = impl.tree(safeA);
+        assertEq(root, 0);
+
+        // a SafeMessage of safeA, signed for the implementation and for the member's proxy by the member's key
+        bytes32 msgHash = keccak256("message");
+        bytes32 safeMsgHash = _safeMessageHash(safeA, msgHash);
+        assertEq(impl.isValidSignature(safeMsgHash, _messageSig(impl, safeA, msgHash, safeMsgHash)), INVALID);
+        assertEq(owner.isValidSignature(safeMsgHash, _messageSig(owner, safeA, msgHash, safeMsgHash)), MAGIC); // control
+
+        // proxies without a key: a zero key, and no key at all (a plain ERC-1167 proxy)
+        address[2] memory keyless =
+            [LibClone.clone(address(impl), abi.encodePacked(bytes32(0))), LibClone.clone(address(impl))];
+        for (uint256 i; i < 2; ++i) {
+            WinterlockOwner k = WinterlockOwner(keyless[i]);
+            assertEq(k.KEY(), bytes32(0));
+            assertEq(k.isValidSignature(safeMsgHash, _messageSig(k, safeA, msgHash, safeMsgHash)), INVALID);
+            bytes memory c = StatelessSigner.sign(sk, k.certificateDigest(safeA, t.root, uint8(H), 0));
+            vm.expectRevert(WinterlockOwner.InvalidCertificate.selector);
+            k.enroll(safeA, t.root, uint8(H), 0, c);
+        }
+    }
+
+    function _safeMessageHash(address safe, bytes32 msgHash) internal view returns (bytes32) {
+        bytes32 domainTypeHash = keccak256("EIP712Domain(uint256 chainId,address verifyingContract)");
+        bytes32 domain = keccak256(abi.encode(domainTypeHash, block.chainid, safe));
+        bytes32 structHash = keccak256(abi.encode(keccak256("SafeMessage(bytes message)"), msgHash));
+        return keccak256(abi.encodePacked(bytes2(0x1901), domain, structHash));
+    }
+
+    function _messageSig(WinterlockOwner o, address safe, bytes32 msgHash, bytes32 safeMsgHash)
+        internal
+        view
+        returns (bytes memory)
+    {
+        return OwnerSigner.messageSignature(Member(LABEL, sk, o), safe, msgHash, safeMsgHash);
+    }
+
+    // --- factory ---
+
+    /// deploy is idempotent and announces a new owner once. deployAndEnroll creates the owner and stores its first
+    /// tree in one transaction, from a certificate signed for the owner's predicted address; a refused certificate
+    /// reverts the whole. On an existing owner it only enrols.
+    function test_factoryDeployAndEnroll() public {
+        bytes32 key = StatelessSigner.publicKey(sk);
+        vm.recordLogs();
+        assertEq(factory.deploy(key), address(owner)); // exists: same address, no event
+        assertEq(vm.getRecordedLogs().length, 0);
+        assertEq(factory.predict(key), address(owner));
+
+        // another parameter set: another implementation and factory, and an owner not deployed yet
+        WotsParams memory p16 = WotsParams(16, 300, 4, 0);
+        WinterlockOwnerFactory f16 = SafeOwnerDeployment.deployShared(Ops.params(p16));
+        address predicted = f16.predict(key);
+        assertEq(predicted.code.length, 0);
+        // what the member's signer computes before the owner exists: the tree (its seed) and the certificate (its
+        // digest) for the predicted address. Here computed with a throwaway deployment.
+        uint256 snap = vm.snapshotState();
+        Member memory m = Member(LABEL, sk, WinterlockOwner(f16.deploy(key)));
+        WotsKey memory t = OwnerSigner.opsTree(p16, m, safeA, 0, H, H);
+        bytes memory cert = OwnerSigner.certificate(m, t, safeA, 0);
+        vm.revertToState(snap);
+        assertEq(predicted.code.length, 0);
+
+        bytes memory forged = bytes.concat(cert);
+        forged[200] ^= 0x01;
+        vm.expectRevert(WinterlockOwner.InvalidCertificate.selector);
+        f16.deployAndEnroll(key, safeA, t.root, uint8(H), 0, forged);
+        assertEq(predicted.code.length, 0, "no owner left behind");
+
+        vm.expectEmit(address(f16));
+        emit WinterlockOwnerFactory.OwnerCreated(predicted, key);
+        vm.expectEmit(predicted);
+        emit WinterlockOwner.Enrolled(safeA, t.root, uint8(H), 0);
+        assertEq(f16.deployAndEnroll(key, safeA, t.root, uint8(H), 0, cert), predicted);
+        _expectTree(predicted, t.root, 0);
+
+        // on the existing owner: a rotation
+        WotsKey memory t3 = OwnerSigner.opsTree(p16, m, safeA, 3, H, H);
+        cert = OwnerSigner.certificate(m, t3, safeA, 3);
+        assertEq(f16.deployAndEnroll(key, safeA, t3.root, uint8(H), 3, cert), predicted);
+        _expectTree(predicted, t3.root, 3);
+    }
+
+    function _expectTree(address o, bytes32 root, uint64 start) internal view {
+        (bytes32 r,, uint8 h, uint64 s) = WinterlockOwner(o).tree(safeA);
+        assertEq(r, root);
+        assertEq(h, H);
+        assertEq(s, start);
     }
 
     // --- enrolment ---
@@ -206,25 +384,44 @@ contract WinterlockOwnerTest is Test {
         assertTrue(owner.certificateDigest(safeA, x, 4, 0) != owner.messageDigest(safeA, x));
     }
 
-    // --- deterministic address ---
+    // --- deterministic addresses ---
 
-    /// CREATE2 through the deterministic deployment proxy, salt = the member's stateless key: the address depends on the
-    /// key, the parameter set and the code, not on the chain.
+    /// The implementation and the factory: CREATE2 through the deterministic deployment proxy with fixed salts. The
+    /// member's owner: CREATE2 by the factory, salt = the member's stateless key. The addresses depend on the key, the
+    /// parameter set and the code, not on the chain.
     function test_deterministicAddress() public {
         uint256 params = Ops.params(_p());
         bytes32 key = StatelessSigner.publicKey(sk);
         assertEq(address(owner), SafeOwnerDeployment.predict(params, key));
+        assertEq(address(owner), factory.predict(key));
+        assertEq(
+            address(owner),
+            LibClone.predictDeterministicAddress(address(impl), abi.encodePacked(key), key, address(factory))
+        );
         assertEq(SafeOwnerDeployment.deploy(params, key), address(owner)); // again: a no-op
         assertTrue(
             SafeOwnerDeployment.predict(params, keccak256("another key") | bytes32(uint256(1))) != address(owner)
         );
         assertTrue(SafeOwnerDeployment.predict(Ops.params(WotsParams(16, 300, 4, 0)), key) != address(owner));
 
+        // a fresh parameter set on two chains, from the same state: implementation, factory and owner
+        uint256 p16 = Ops.params(WotsParams(16, 300, 4, 0));
         bytes32 other = keccak256("member on two chains") | bytes32(uint256(1));
         uint256 snap = vm.snapshotState();
-        address onThisChain = SafeOwnerDeployment.deploy(params, other);
+        address[3] memory here = _deployAll(p16, other);
         vm.revertToState(snap);
         vm.chainId(10);
-        assertEq(SafeOwnerDeployment.deploy(params, other), onThisChain);
+        address[3] memory there = _deployAll(p16, other);
+        for (uint256 i; i < 3; ++i) {
+            assertEq(there[i], here[i]);
+            assertGt(there[i].code.length, 0);
+        }
+    }
+
+    function _deployAll(uint256 params, bytes32 key) internal returns (address[3] memory a) {
+        a[2] = SafeOwnerDeployment.deploy(params, key);
+        a[0] = SafeOwnerDeployment.predictImplementation(params);
+        a[1] = SafeOwnerDeployment.predictFactory(params);
+        assertEq(a[2], SafeOwnerDeployment.predict(params, key));
     }
 }

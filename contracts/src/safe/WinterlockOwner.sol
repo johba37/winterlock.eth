@@ -11,8 +11,8 @@ import {WotsVerifier} from "../WotsVerifier.sol";
 ///         The same verifiers as WinterlockValidator (D1): WotsVerifier and the shared stateless verifier.
 ///
 ///         Keys of the member (D10–D12, as in WinterlockValidator):
-///         - A stateless leanSphincs key, fixed at deployment (KEY). It is the member's only long-term key: it certifies
-///           operation trees and signs SafeMessages (D11).
+///         - A stateless leanSphincs key, fixed at deployment in the member's proxy (KEY). It is the member's only
+///           long-term key: it certifies operation trees and signs SafeMessages (D11).
 ///         - Per Safe and per chain, an operation tree of WOTS keys that signs Safe transactions. A permissionless
 ///           `enroll` transaction stores it once its certificate verifies. Safe checks owners with view calls, which
 ///           can't store anything, so a certificate can't ride in a Safe signature as it does in a UserOperation.
@@ -43,9 +43,18 @@ import {WotsVerifier} from "../WotsVerifier.sol";
 ///   must start after the stored tree, so an old certificate can't bring back a tree it was replaced by. Only valid
 ///   certificates are stored. The tree's public seed is derived (treeSeed), not stored.
 ///
-/// Address: deployed with CREATE2 through the deterministic deployment proxy, with KEY as the salt
-///   (script/DeploySafeOwner.s.sol). Nothing in the constructor depends on the chain, so a member's owner, and a Safe
-///   set up with such owners, has the same address on every chain.
+/// Deployment: one implementation per chain and parameter set, and a minimal proxy per member.
+///   - This contract is the implementation. It holds the code and the parameter set (immutables), and no key: called
+///     directly, KEY() is 0, so it can't enrol a tree or sign anything, and it is nobody's owner.
+///   - A member's owner is an ERC-1167 minimal proxy of it with the member's key appended to the proxy's code (Solady
+///     LibClone, clone with immutable args): [45-byte proxy][KEY: 32], 77 bytes in all. The proxy DELEGATECALLs here,
+///     so address(this) is the member's owner in every digest and seed, and the trees live in the proxy's storage.
+///     The key is read from the proxy's own code (EXTCODECOPY of address(this)), never from calldata, so no caller
+///     can choose it.
+///   - WinterlockOwnerFactory creates the proxies with CREATE2, with the key as the salt. The implementation and the
+///     factory are deployed through the deterministic deployment proxy with fixed salts (script/DeploySafeOwner.s.sol).
+///     Nothing in any of the three depends on the chain, so a member's owner, and a Safe set up with such owners, has
+///     the same address on every chain.
 ///
 /// @dev Status: research prototype. Unaudited. Not for real funds. Hash sizes up to 24 bytes (one slot per tree).
 ///      Supports Safe v1.3.0 and later (EIP-712 domain with chain id); checked against v1.4.1 and v1.5.0.
@@ -86,6 +95,9 @@ contract WinterlockOwner {
     uint256 internal constant MESSAGE_LEN = 1 + 20 + 32 + STATELESS_SIG_LEN;
     /// Low 64 bits of a packed tree: start << 8 | height
     uint256 internal constant META_MASK = (1 << 64) - 1;
+    /// Where a member's proxy keeps the key: right after the 45-byte ERC-1167 proxy code (LibClone's clone with
+    /// immutable args)
+    uint256 internal constant KEY_OFFSET = 0x2d;
     uint256 internal constant HIGH_128 = 0xffffffffffffffffffffffffffffffff00000000000000000000000000000000;
 
     /// Packed WOTS parameter set (WotsVerifier.encodeParams)
@@ -96,8 +108,9 @@ contract WinterlockOwner {
     uint256 internal immutable SIG_LEN;
     /// Verifier of the stateless key, shared by all owners and validators
     IStatelessVerifier public immutable STATELESS_VERIFIER;
-    /// The member's stateless public key: leanSphincs root (16 bytes) ‖ public parameter P (16 bytes)
-    bytes32 public immutable KEY;
+    /// This implementation's own address. In a member's proxy, which runs this code by DELEGATECALL, address(this) is
+    /// the proxy's instead.
+    address public immutable IMPLEMENTATION;
 
     /// Operation tree per Safe on this chain: root in the high N bytes, then start (40 bits) and height (8 bits)
     mapping(address safe => uint256) internal _trees;
@@ -107,19 +120,25 @@ contract WinterlockOwner {
     error InvalidConfig();
     error InvalidCertificate();
 
-    constructor(uint256 params, IStatelessVerifier statelessVerifier, bytes32 key) {
+    /// The implementation, for one parameter set. The members' keys come with their proxies (WinterlockOwnerFactory).
+    constructor(uint256 params, IStatelessVerifier statelessVerifier) {
         WotsVerifier.checkParams(params);
         if (params & 0xff > 24 || address(statelessVerifier).code.length == 0) revert InvalidConfig();
-        // both halves set: a root and a public parameter
-        if (uint256(key) >> 128 == 0 || uint128(uint256(key)) == 0) revert InvalidConfig();
         PARAMS = params;
         N = params & 0xff;
         SIG_LEN = WotsVerifier.sigBytes(params);
         STATELESS_VERIFIER = statelessVerifier;
-        KEY = key;
+        IMPLEMENTATION = address(this);
     }
 
     // --- views ---
+
+    /// The member's stateless public key: leanSphincs root (16 bytes) ‖ public parameter P (16 bytes). 0 on the
+    /// implementation itself, which has no key.
+    // forge-lint: disable-next-line(mixed-case-function)
+    function KEY() external view returns (bytes32) {
+        return _key();
+    }
 
     /// The operation tree enrolled for `safe` on this chain (root 0 if none)
     function tree(address safe) public view returns (bytes32 root, uint128 seed, uint8 height, uint64 start) {
@@ -247,11 +266,26 @@ contract WinterlockOwner {
         return keccak256(abi.encodePacked(bytes2(0x1901), domain, structHash));
     }
 
+    /// The key appended to this member's proxy code; 0 when called on the implementation itself. Everything the key
+    /// approves (certificates, so trees, and messages) goes through _statelessSigned, which refuses a zero key.
+    /// Virtual only for the gas tests, which measure the spike's full-contract design with it
+    /// (test/utils/FullWinterlockOwner.sol).
+    function _key() internal view virtual returns (bytes32 key) {
+        if (address(this) == IMPLEMENTATION) return 0;
+        assembly ("memory-safe") {
+            // scratch space; a code shorter than the proxy and key reads as zeros
+            extcodecopy(address(), 0x00, KEY_OFFSET, 0x20)
+            key := mload(0x00)
+        }
+    }
+
     /// Whether `sig` is KEY's signature of `message`. The verifier takes both halves of the key high-aligned. A call
-    /// that reverts (wrong length, non-canonical input) counts as an invalid signature.
+    /// that reverts (wrong length, non-canonical input) counts as an invalid signature, and so does any signature when
+    /// there is no key.
     function _statelessSigned(bytes32 message, bytes calldata sig) internal view returns (bool valid) {
         address verifier = address(STATELESS_VERIFIER);
-        bytes32 key = KEY;
+        bytes32 key = _key();
+        if (key == 0) return false;
         bytes4 selector = IStatelessVerifier.verify.selector;
         assembly ("memory-safe") {
             // verify(pkSeed, pkRoot, message, sig), encoded beyond the free memory pointer

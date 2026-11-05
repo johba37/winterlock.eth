@@ -7,10 +7,12 @@ import {ISafe} from "safe-v1.5.0/interfaces/ISafe.sol";
 import {IOwnerManager} from "safe-v1.5.0/interfaces/IOwnerManager.sol";
 
 import {WinterlockOwner} from "../../src/safe/WinterlockOwner.sol";
+import {WinterlockOwnerFactory} from "../../src/safe/WinterlockOwnerFactory.sol";
 import {ValidatorDeployment} from "../../script/DeployValidator.s.sol";
 import {SafeOwnerDeployment} from "../../script/DeploySafeOwner.s.sol";
 import {WotsParams, WotsKey, Ops} from "../utils/WotsSigner.sol";
 import {StatelessKey, StatelessSigner} from "../utils/StatelessSigner.sol";
+import {FullWinterlockOwner} from "../utils/FullWinterlockOwner.sol";
 import {
     SafeHarness,
     SafeRelease,
@@ -42,6 +44,24 @@ contract MessageCheckProbe {
     }
 }
 
+/// Checks two owners' signatures of one hash in one transaction and reports the gas of each check, the call included.
+/// The first check meets every account cold; the second finds warm what the first touched, such as the implementation
+/// behind two proxies. Not a view, so that Forge runs a call to it as a transaction of its own (isolate).
+contract OwnerCheckProbe {
+    function check(address a, bytes calldata sigA, address b, bytes calldata sigB, bytes32 hash)
+        external
+        returns (uint256 first, uint256 second)
+    {
+        first = gasleft();
+        bytes4 ra = IERC1271(a).isValidSignature(hash, sigA);
+        first -= gasleft();
+        second = gasleft();
+        bytes4 rb = IERC1271(b).isValidSignature(hash, sigB);
+        second -= gasleft();
+        require(ra == 0x1626ba7e && rb == 0x1626ba7e, "refused");
+    }
+}
+
 /// An owner that accepts a signature only if the asking Safe's nonce equals the value in the signature: it shows
 /// what an owner sees during execTransaction (question 2 of the Safe owner spike).
 contract SafeNonceProbe {
@@ -59,7 +79,8 @@ contract SafeNonceProbe {
 }
 
 /// Winterlock as Safe owners: three members' WinterlockOwners own a 2-of-3 Safe, checked by Safe's own multisig path
-/// (contract signatures, v = 0). Safe's contracts come from their release builds (setup.sh). Parameter set D6.
+/// (contract signatures, v = 0). Each owner is a member's proxy of the shared implementation, created by the factory
+/// (SafeOwnerDeployment). Safe's contracts come from their release builds (setup.sh). Parameter set D6.
 /// Run once per Safe release by the contracts below.
 abstract contract SafeWinterlockOwnerTest is Test {
     using SafeHarness for ISafe;
@@ -85,6 +106,9 @@ abstract contract SafeWinterlockOwnerTest is Test {
     /// Calldata of the last transaction _txGas measured: bytes, and their gas at 4 per zero byte and 16 per other
     uint256 internal lastCalldataBytes;
     uint256 internal lastCalldataGas;
+    /// State after the release's deployment and the members' keys, before any Winterlock contract (for the
+    /// deployment gas)
+    uint256 internal beforeOwners;
 
     function _version() internal pure virtual returns (string memory);
 
@@ -99,6 +123,9 @@ abstract contract SafeWinterlockOwnerTest is Test {
         rel = SafeHarness.deployRelease(_version());
         for (uint256 i; i < 3; ++i) {
             sks[i] = StatelessSigner.testKey(_label(i));
+        }
+        beforeOwners = vm.snapshotState();
+        for (uint256 i; i < 3; ++i) {
             owners[i] = WinterlockOwner(SafeOwnerDeployment.deploy(Ops.params(_p()), _key(i)));
         }
         safe = SafeHarness.createSafe(rel, _ownerList(), 2, 0);
@@ -132,7 +159,12 @@ abstract contract SafeWinterlockOwnerTest is Test {
     }
 
     function _tree(uint256 i, address s, uint64 start) internal view returns (WotsKey memory) {
-        return OwnerSigner.opsTree(_p(), _member(i), s, start, H, K);
+        return _treeOf(owners[i], i, s, start);
+    }
+
+    /// Member i's tree of `s` from `start` for owner contract `o` (a proxy, or a full contract for comparison)
+    function _treeOf(WinterlockOwner o, uint256 i, address s, uint64 start) internal view returns (WotsKey memory) {
+        return OwnerSigner.opsTree(_p(), Member(_label(i), sks[i], o), s, start, H, K);
     }
 
     /// Member i's certificate for its tree of `s` from `start`, sent by a relayer
@@ -145,9 +177,19 @@ abstract contract SafeWinterlockOwnerTest is Test {
 
     /// Member i's WOTS signature of `t` for `s` with `slot`, from its enrolled tree
     function _sign(uint256 i, ISafe s, SafeTx memory t, uint256 slot) internal view returns (OwnerSignature memory) {
-        (,,, uint64 start) = owners[i].tree(address(s));
-        bytes memory data = OwnerSigner.txSignature(_tree(i, address(s), start), start, slot, address(s), t, s.hash(t));
-        return SafeHarness.contractSig(address(owners[i]), data);
+        return _signBy(owners[i], i, s, t, slot);
+    }
+
+    /// The same for member i's owner contract `o`
+    function _signBy(WinterlockOwner o, uint256 i, ISafe s, SafeTx memory t, uint256 slot)
+        internal
+        view
+        returns (OwnerSignature memory)
+    {
+        (,,, uint64 start) = o.tree(address(s));
+        bytes memory data =
+            OwnerSigner.txSignature(_treeOf(o, i, address(s), start), start, slot, address(s), t, s.hash(t));
+        return SafeHarness.contractSig(address(o), data);
     }
 
     function _signed(ISafe s, SafeTx memory t, uint256 a, uint256 b) internal view returns (bytes memory) {
@@ -350,7 +392,7 @@ abstract contract SafeWinterlockOwnerTest is Test {
         assertEq(sa, sb);
         for (uint256 i; i < 3; ++i) {
             assertEq(a[i], b[i]);
-            assertGt(a[i].code.length, 0);
+            assertEq(a[i].code.length, 77, "a member's proxy");
         }
     }
 
@@ -499,36 +541,102 @@ abstract contract SafeWinterlockOwnerTest is Test {
 
     // --- gas and sizes ---
 
-    /// Transaction gas of execTransaction for a 2-of-3 Safe of WinterlockOwners against 2-of-3 ECDSA owners, both at
-    /// steady state: nonce >= 1, and the recipient's ETH and token balances nonzero. See _txGas.
+    /// Transaction gas of execTransaction for a 2-of-3 Safe of WinterlockOwners (members' proxies) against 2-of-3 ECDSA
+    /// owners and against 2-of-3 WinterlockOwners as full contracts (the spike's design), all at steady state:
+    /// nonce >= 1, and the recipient's ETH and token balances nonzero. See _txGas.
     function test_gas_execTransaction() public {
-        (uint256 wlEth, uint256 wlErc20, uint256 sigBytes) = _winterlockGas();
+        (uint256 wlEth, uint256 wlErc20, uint256 sigBytes) = _winterlockGas(safe, owners);
         (uint256 wlBytes, uint256 wlCalldataGas) = (lastCalldataBytes, lastCalldataGas);
+        (ISafe fullSafe, WinterlockOwner[3] memory full) = _fullOwnerSafe();
+        (uint256 fullEth, uint256 fullErc20, uint256 fullSigBytes) = _winterlockGas(fullSafe, full);
         (uint256 ecEth, uint256 ecErc20) = _ecdsaGas();
         console.log(string.concat("Safe ", rel.version, ", transaction gas"));
-        console.log("ETH transfer, 2-of-3 ECDSA owners       ", ecEth);
-        console.log("ETH transfer, 2-of-3 WinterlockOwners   ", wlEth);
-        console.log("ERC-20 transfer, 2-of-3 ECDSA owners    ", ecErc20);
-        console.log("ERC-20 transfer, 2-of-3 WinterlockOwners", wlErc20);
-        console.log("contract signature per owner, bytes     ", sigBytes);
-        console.log("as a confirmation (65 + 32 + data)      ", 97 + sigBytes);
-        console.log("ERC-20 calldata, bytes, ECDSA owners    ", lastCalldataBytes, ", gas", lastCalldataGas);
-        console.log("ERC-20 calldata, bytes, WinterlockOwners", wlBytes, ", gas", wlCalldataGas);
+        console.log("ETH transfer, 2-of-3 ECDSA owners                ", ecEth);
+        console.log("ETH transfer, 2-of-3 WinterlockOwners (proxies)  ", wlEth);
+        console.log("ETH transfer, 2-of-3 WinterlockOwners (full)     ", fullEth);
+        console.log("ERC-20 transfer, 2-of-3 ECDSA owners             ", ecErc20);
+        console.log("ERC-20 transfer, 2-of-3 WinterlockOwners (proxies)", wlErc20);
+        console.log("ERC-20 transfer, 2-of-3 WinterlockOwners (full)  ", fullErc20);
+        console.log("proxies over full, ETH, ERC-20                   ", wlEth - fullEth, wlErc20 - fullErc20);
+        console.log("contract signature per owner, bytes              ", sigBytes);
+        console.log("as a confirmation (65 + 32 + data)               ", 97 + sigBytes);
+        console.log("ERC-20 calldata, bytes, ECDSA owners             ", lastCalldataBytes, ", gas", lastCalldataGas);
+        console.log("ERC-20 calldata, bytes, WinterlockOwners          ", wlBytes, ", gas", wlCalldataGas);
         assertEq(sigBytes, 1 + 20 + 320 + 1176 + 24 * H);
+        assertEq(fullSigBytes, sigBytes);
         assertLt(97 + sigBytes, 5000, "fits the Transaction Service's 5,000-byte confirmation");
     }
 
-    function _winterlockGas() internal returns (uint256 eth, uint256 erc20, uint256 sigBytes) {
+    function _winterlockGas(ISafe s, WinterlockOwner[3] memory o)
+        internal
+        returns (uint256 eth, uint256 erc20, uint256 sigBytes)
+    {
         SafeTx memory t = SafeHarness.transfer(recipient, 1 ether, 0);
-        assertTrue(safe.exec(t, _signed(safe, t, 0, 1))); // nonce 0 -> 1
+        assertTrue(s.exec(t, _pair(s, o, t, 0, 1))); // nonce 0 -> 1
         t.nonce = 1;
-        OwnerSignature memory a = _sign(0, safe, t, 0);
-        sigBytes = a.data.length;
-        eth = _txGas(address(safe), SafeHarness.execCalldata(t, SafeHarness.pack(a, _sign(1, safe, t, 0))));
+        sigBytes = _signBy(o[0], 0, s, t, 0).data.length;
+        eth = _txGas(address(s), SafeHarness.execCalldata(t, _pair(s, o, t, 0, 1)));
         t = SafeHarness.call(address(token), abi.encodeCall(ERC20.transfer, (recipient, 1 ether)), 2);
-        erc20 = _txGas(address(safe), SafeHarness.execCalldata(t, _signed(safe, t, 1, 2)));
-        assertEq(safe.nonce(), 3);
-        assertEq(token.balanceOf(recipient), 1 ether + 1);
+        erc20 = _txGas(address(s), SafeHarness.execCalldata(t, _pair(s, o, t, 1, 2)));
+        assertEq(s.nonce(), 3);
+    }
+
+    /// Members i's and j's signatures of `t` (slot 0) through their owner contracts `o`, packed for `s`
+    function _pair(ISafe s, WinterlockOwner[3] memory o, SafeTx memory t, uint256 i, uint256 j)
+        internal
+        view
+        returns (bytes memory)
+    {
+        return SafeHarness.pack(_signBy(o[i], i, s, t, 0), _signBy(o[j], j, s, t, 0));
+    }
+
+    /// For comparison: a 2-of-3 Safe whose owners are the members' WinterlockOwners as full contracts (the spike's
+    /// design: the key an immutable, no proxy), funded and enrolled like `safe`
+    function _fullOwnerSafe() internal returns (ISafe s, WinterlockOwner[3] memory full) {
+        address[] memory list = new address[](3);
+        for (uint256 i; i < 3; ++i) {
+            full[i] = new FullWinterlockOwner(Ops.params(_p()), owners[0].STATELESS_VERIFIER(), _key(i));
+            list[i] = address(full[i]);
+        }
+        s = SafeHarness.createSafe(rel, list, 2, 77);
+        vm.deal(address(s), 10 ether);
+        vm.prank(address(safe));
+        token.transfer(address(s), 10 ether);
+        for (uint256 i; i < 3; ++i) {
+            Member memory m = Member(_label(i), sks[i], full[i]);
+            bytes memory cd = OwnerSigner.enrollCalldata(m, _treeOf(full[i], i, address(s), 0), address(s), 0);
+            (bool ok,) = address(full[i]).call(cd);
+            assertTrue(ok, "enroll");
+        }
+    }
+
+    /// What the proxy adds to each owner check: two owners' checks of a SafeTx (nonce 1) in one transaction, through
+    /// the members' proxies and through full contracts. The proxy copies the calldata, DELEGATECALLs the implementation
+    /// (cold for the first proxy in a transaction, warm for the next) and copies the result back.
+    function test_gas_ownerCheck() public {
+        (ISafe fullSafe, WinterlockOwner[3] memory full) = _fullOwnerSafe();
+        OwnerCheckProbe probe = new OwnerCheckProbe();
+        (uint256 proxy1, uint256 proxy2) = _checkGas(probe, safe, owners);
+        (uint256 full1, uint256 full2) = _checkGas(probe, fullSafe, full);
+        console.log("owner check (isValidSignature, SafeTx), gas of the call");
+        console.log("first check, full contract       ", full1);
+        console.log("first check, proxy (impl. cold)  ", proxy1, ", overhead", proxy1 - full1);
+        console.log("second check, full contract      ", full2);
+        console.log("second check, proxy (impl. warm) ", proxy2, ", overhead", proxy2 - full2);
+        assertGt(proxy1, full1);
+        assertLt(proxy1 - full1, 4000);
+        assertLt(proxy2 - full2, 1500);
+    }
+
+    /// Owners 0 and 1 of `s` check their signatures of a SafeTx at nonce 1, in one transaction
+    function _checkGas(OwnerCheckProbe probe, ISafe s, WinterlockOwner[3] memory o)
+        internal
+        returns (uint256 first, uint256 second)
+    {
+        SafeTx memory t = SafeHarness.transfer(recipient, 1 ether, 1);
+        OwnerSignature memory a = _signBy(o[0], 0, s, t, 0);
+        OwnerSignature memory b = _signBy(o[1], 1, s, t, 0);
+        return probe.check(a.owner, a.data, b.owner, b.data, s.hash(t));
     }
 
     function _ecdsaGas() internal returns (uint256 eth, uint256 erc20) {
@@ -572,28 +680,84 @@ abstract contract SafeWinterlockOwnerTest is Test {
         assertEq(m0.data.length, 1 + 20 + 32 + 5684);
     }
 
-    /// Transaction gas of the one-time steps per member and chain: deploying the owner and enrolling a tree
+    /// Transaction gas of the deployments and of enrolment, from a chain with Safe and the members' keys but no
+    /// Winterlock contract yet:
+    /// - once per chain: the stateless verifier, the implementation and the factory, each through the deterministic
+    ///   deployment proxy
+    /// - per member and chain: the member's owner (a proxy, by the factory); the same with a first tree in one
+    ///   transaction (deployAndEnroll); and, for comparison, a full contract as in the spike
+    /// - per Safe and chain: a first enrolment, and a rotation
     function test_gas_deployAndEnrol() public {
-        bytes32 key = keccak256("a fresh member's key") | bytes32(uint256(1)); // both halves nonzero
-        bytes memory init = SafeOwnerDeployment.initCode(Ops.params(_p()), key);
-        uint256 deployGas = _txGas(ValidatorDeployment.DEPLOYER, abi.encodePacked(key, init));
-        assertGt(SafeOwnerDeployment.predict(Ops.params(_p()), key).code.length, 0);
+        vm.revertToState(beforeOwners);
+        WinterlockOwnerFactory factory = _gasShared();
+        address team = address(uint160(uint256(keccak256("a team's Safe"))));
+        WinterlockOwner owner0 = _gasMembers(factory, team);
 
-        // a rotation: a tree from nonce 5 replaces the tree from 0
-        bytes memory cd = OwnerSigner.enrollCalldata(_member(0), _tree(0, address(safe), 5), address(safe), 5);
-        uint256 rotateGas = _txGas(address(owners[0]), cd);
-        (bytes32 root,,, uint64 start) = owners[0].tree(address(safe));
+        // member 0 enrols for the team's Safe: a first tree (a new slot), then a rotation from nonce 5
+        Member memory m0 = Member(_label(0), sks[0], owner0);
+        bytes memory cd = OwnerSigner.enrollCalldata(m0, OwnerSigner.opsTree(_p(), m0, team, 0, H, K), team, 0);
+        uint256 enrolGas = _txGas(address(owner0), cd);
+        cd = OwnerSigner.enrollCalldata(m0, OwnerSigner.opsTree(_p(), m0, team, 5, H, K), team, 5);
+        uint256 rotateGas = _txGas(address(owner0), cd);
+        (,,, uint64 start) = owner0.tree(team);
         assertEq(start, 5);
-        assertTrue(root != bytes32(0));
-        // a first enrolment: a new slot
-        ISafe twin = SafeHarness.createSafe(rel, _ownerList(), 2, 1);
-        cd = OwnerSigner.enrollCalldata(_member(0), _tree(0, address(twin), 0), address(twin), 0);
-        uint256 enrolGas = _txGas(address(owners[0]), cd);
-        console.log("deploy a WinterlockOwner, tx gas", deployGas);
-        console.log("WinterlockOwner runtime bytes", address(owners[0]).code.length, ", init code bytes", init.length);
-        console.log("enroll, first tree for a Safe, tx gas", enrolGas);
-        console.log("enroll, rotation, tx gas", rotateGas);
-        console.log("enroll calldata bytes", cd.length);
+        console.log("per Safe and chain, tx gas:");
+        console.log("  enroll, first tree       ", enrolGas);
+        console.log("  enroll, rotation         ", rotateGas);
+        console.log("  enroll calldata bytes    ", cd.length);
+    }
+
+    /// Once per chain: the stateless verifier, the implementation and the factory
+    function _gasShared() internal returns (WinterlockOwnerFactory factory) {
+        uint256 params = Ops.params(_p());
+        address deployer = ValidatorDeployment.DEPLOYER;
+        bytes memory init = ValidatorDeployment.verifierInitCode();
+        uint256 verifierGas = _txGas(deployer, abi.encodePacked(ValidatorDeployment.VERIFIER_SALT, init));
+        address verifier = ValidatorDeployment.predictVerifier();
+        init = SafeOwnerDeployment.implementationInitCode(params);
+        uint256 implGas = _txGas(deployer, abi.encodePacked(SafeOwnerDeployment.IMPLEMENTATION_SALT, init));
+        address impl = SafeOwnerDeployment.predictImplementation(params);
+        console.log("once per chain, tx gas (runtime bytes, init code bytes):");
+        console.log("  stateless verifier       ", verifierGas, verifier.code.length);
+        console.log("  WinterlockOwner impl.    ", implGas, impl.code.length, init.length);
+        init = SafeOwnerDeployment.factoryInitCode(impl);
+        uint256 factoryGas = _txGas(deployer, abi.encodePacked(SafeOwnerDeployment.FACTORY_SALT, init));
+        factory = WinterlockOwnerFactory(SafeOwnerDeployment.predictFactory(params));
+        console.log("  WinterlockOwnerFactory   ", factoryGas, address(factory).code.length, init.length);
+    }
+
+    /// Per member and chain: the owner as a proxy (member 0), as a proxy with its first tree for `team` in one
+    /// transaction (member 1), and as a full contract as in the spike (member 2)
+    function _gasMembers(WinterlockOwnerFactory factory, address team) internal returns (WinterlockOwner owner0) {
+        uint256 proxyGas = _txGas(address(factory), abi.encodeCall(WinterlockOwnerFactory.deploy, (_key(0))));
+        owner0 = WinterlockOwner(factory.predict(_key(0)));
+        assertEq(owner0.KEY(), _key(0));
+        assertEq(address(owner0).code.length, 77);
+
+        // the signer knows the owner's address in advance; here its tree and certificate come from a throwaway
+        // deployment
+        uint256 snap = vm.snapshotState();
+        Member memory m1 = Member(_label(1), sks[1], WinterlockOwner(factory.deploy(_key(1))));
+        WotsKey memory t1 = OwnerSigner.opsTree(_p(), m1, team, 0, H, K);
+        bytes memory cert = OwnerSigner.certificate(m1, t1, team, 0);
+        vm.revertToState(snap);
+        bytes memory cd =
+            abi.encodeCall(WinterlockOwnerFactory.deployAndEnroll, (_key(1), team, t1.root, uint8(H), uint64(0), cert));
+        uint256 deployAndEnrolGas = _txGas(address(factory), cd);
+        (bytes32 root,,,) = m1.owner.tree(team);
+        assertEq(root, t1.root);
+
+        // through the deterministic deployment proxy with its key as the salt
+        bytes memory init = abi.encodePacked(
+            type(FullWinterlockOwner).creationCode,
+            abi.encode(Ops.params(_p()), ValidatorDeployment.predictVerifier(), _key(2))
+        );
+        uint256 fullGas = _txGas(ValidatorDeployment.DEPLOYER, abi.encodePacked(_key(2), init));
+        address full = ValidatorDeployment._create2(_key(2), init);
+        console.log("per member and chain, tx gas (runtime bytes):");
+        console.log("  owner, proxy             ", proxyGas, address(owner0).code.length);
+        console.log("  owner, proxy + 1st tree  ", deployAndEnrolGas, ", calldata bytes", cd.length);
+        console.log("  owner, full contract     ", fullGas, full.code.length);
     }
 
     // --- transaction gas ---

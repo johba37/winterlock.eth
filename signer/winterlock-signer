@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Runs the signer with signer/.venv if it exists (python3 -m venv signer/.venv && signer/.venv/bin/pip install -r
+# signer/requirements.txt), else with python3.
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+py="$here/.venv/bin/python"
+[ -x "$py" ] || py=python3
+PYTHONPATH="$here${PYTHONPATH:+:$PYTHONPATH}" exec "$py" -m winterlock_signer "$@"
