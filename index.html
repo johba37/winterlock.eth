@@ -275,6 +275,13 @@ p { margin: 0; }
 
 .join p { margin-top: 0.9rem; max-width: 40rem; }
 .join .actions { margin-top: 2rem; }
+.proof { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: 0.45rem; }
+.proof a { font-weight: 600; }
+.facts { margin: 0.75rem 0 0; display: grid; gap: 0.9rem; }
+.facts div { display: grid; gap: 0.1rem; }
+.facts dt { font-size: 1.5rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.01em; }
+.facts dd { margin: 0; color: var(--slate); }
+.testnet-note { margin-top: 2.25rem; max-width: 40rem; color: var(--slate); }
 
 footer { border-top: 1px solid var(--frost); padding: 2.25rem 0 3rem; font-size: 0.9375rem; color: var(--slate); }
 footer .wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.6rem 2rem; }
@@ -316,6 +323,7 @@ footer a { color: var(--slate); }
   <a class="wordmark" href="./">winterlock<span>.eth</span></a>
   <nav aria-label="Project links">
     <a href="https://forum.safefoundation.org/t/post-quantum-owners-for-safe-hash-based-signers-winterlock/7165" rel="noopener noreferrer">Forum</a>
+    <a href="#testnet">Testnet</a>
     <a href="https://github.com/johba37/winterlock.eth" rel="noopener noreferrer">GitHub</a>
   </nav>
 </header>
@@ -408,11 +416,46 @@ footer a { color: var(--slate); }
     </div>
   </section>
 
+  <section class="block" id="testnet" aria-labelledby="testnet-title">
+    <div class="wrap">
+      <h2 id="testnet-title">Live on testnet</h2>
+      <p class="sub">A working prototype runs on Ethereum's Sepolia testnet. Open these Safes in Safe's own app: their owners are Winterlock contracts, and every approval you see there is a hash-based signature. Safe's app and services needed no changes.</p>
+      <div class="parts">
+        <div>
+          <h3>A team Safe with Winterlock owners</h3>
+          <p>Both owners of this 2-of-2 Safe are Winterlock owner contracts. Each member's signer proposed or confirmed through Safe's Transaction Service, and then any account could send the transaction.</p>
+          <ul class="proof">
+            <li><a href="https://app.safe.global/transactions/history?safe=sep:0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07" rel="noopener noreferrer">Open the Safe in Safe's app</a></li>
+            <li><a href="https://sepolia.etherscan.io/tx/0x0f0040b8ba88605ad5591847244b8e19c95e21c33623871dc272875c2ed6ff46" rel="noopener noreferrer">The executed transaction</a> on Etherscan</li>
+            <li><a href="https://sepolia.etherscan.io/address/0x9Ba62FC5AfeF50566446c6b91C32A9C9451aEA24" rel="noopener noreferrer">An owner contract</a>: 77 bytes, the same address on every network</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Replace or cancel at the same nonce</h3>
+          <p>Each member holds two keys per nonce: one to approve, and a spare to replace or cancel. In this 2-of-3 Safe, the second transaction was cancelled with the spare keys, and Safe's app shows it as an ordinary on-chain rejection.</p>
+          <ul class="proof">
+            <li><a href="https://app.safe.global/transactions/history?safe=sep:0x5B81D3ce1Ca48be48F154D8AD060Cf9f883E86B2" rel="noopener noreferrer">Open the Safe in Safe's app</a></li>
+            <li><a href="https://sepolia.etherscan.io/tx/0x33b36753f78881530dfe8d08056ead5f8e2a396d5060b8baeec89d2f5fd63c2f" rel="noopener noreferrer">The cancellation</a> on Etherscan</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Measured</h3>
+          <dl class="facts">
+            <div><dt>1.8 KB</dt><dd>per owner signature, within the size Safe's Transaction Service accepts</dd></div>
+            <div><dt>&asymp; 90,000 gas</dt><dd>extra for each owner that signs a transaction</dd></div>
+            <div><dt>&asymp; 0.6M gas</dt><dd>once per member and network, to create its owner and first keys</dd></div>
+          </dl>
+        </div>
+      </div>
+      <p class="testnet-note">A research prototype: unaudited, testnet only, no real funds. The <a href="https://github.com/johba37/winterlock.eth/blob/main/docs/decisions.md" rel="noopener noreferrer">design notes and measurements</a> are on GitHub.</p>
+    </div>
+  </section>
+
   <section class="block" aria-labelledby="roadmap-title">
     <div class="wrap">
       <h2 id="roadmap-title">Roadmap</h2>
       <ol class="roadmap">
-        <li class="now"><span class="when">Now</span>Proposal open for feedback on the Safe forum</li>
+        <li class="now"><span class="when">Now</span>Proposal open for feedback on the Safe forum, and a working prototype on Sepolia</li>
         <li><span class="when">Milestone 1</span>Specification, reference contracts and test suite</li>
         <li><span class="when">Milestone 2</span>Audited owner contract and migration tool on testnet</li>
         <li><span class="when">Milestone 3</span>Batched verification beta, with direct verification as fallback</li>
