@@ -198,6 +198,52 @@ Bundlers estimate verification gas by running validation with the wallet's dummy
   | D6 SHA-256 | 251k |
   | D6 2-of-3 | 269k |
 
+**2026-11-05: bundler acceptance, stage 2 (hosted bundlers, Arbitrum Sepolia)** (`contracts/bench/bundlers/testnet.sh`)
+
+**Setup.**
+- **Contracts:** the canonical EntryPoint v0.7 and ZeroDev's production Kernel v3.3 (implementation, factory, ECDSA validator), with its meta factory staked at 0.1 ETH. Only the five Winterlock validators are ours.
+- **Bundlers:** Pimlico (Alto), Candide (its own bundler, public endpoint) and Alchemy (Rundler).
+- **Operations:** the same as in stage 1. Every operation uses the bundler's own gas estimates and gas prices, unchanged.
+- **Signing:** on a local anvil node, so the test signer, whose keys come from public labels, stays off the public chain.
+
+| Parameter set | Pimlico | Candide | Alchemy |
+|---|---|---|---|
+| ECDSA (control) | included | included | included |
+| D6 | included | included | included |
+| D6 2-of-3 | included | included | included |
+| 16-byte | included | included | included |
+| 32-byte, checksum | included | included | included |
+| D6 with SHA-256 | included | included | included |
+| w = 256 | included | included | included |
+| Counterfactual deploy (ECDSA and D6) | included | included | rejected: CREATE2 rule |
+
+Gas used per transfer on an already deployed account (second transfer), as each bundler charged it:
+
+| Parameter set | Pimlico | Candide | Alchemy | vs ECDSA |
+|---|---|---|---|---|
+| ECDSA (control) | 136,327 | 133,083 | 133,492 | 1.00× |
+| 16-byte | 189,327 | 184,904 | 185,325 | 1.39× |
+| D6 | 221,563 | 215,951 | 216,384 | 1.62× |
+| D6 SHA-256 | 271,973 | 266,361 | 266,794 | 2.00× |
+| 32-byte, checksum | 273,395 | 269,485 | 269,918 | 2.02× |
+| D6 2-of-3 | 314,885 | 306,801 | 307,258 | 2.31× |
+| w = 256 | 501,633 | 496,858 | 497,303 | 3.71× |
+
+- **The three most-used bundler implementations all accept WOTS-signed operations from a production Kernel.** That holds for every parameter set, threshold signatures included, and with each bundler's own estimates. The ratios match the local benchmark: D6 costs 1.62× an ECDSA transfer on Kernel, 2-of-3 about 2.3×. At testnet prices, a D6 transfer cost about 4,400 gwei of ETH against about 2,700 for ECDSA.
+- **The signature's bytes are about a third of D6's extra cost on Arbitrum.** Preverification gas rose by about 28k for 1.6 KB, roughly the calldata price. Validation adds the other ~57k.
+- **Counterfactual deployment through Kernel's meta factory works on Pimlico and Candide, but not on Alchemy, for ECDSA as well.** ERC-7562 rule OP-031 only says that CREATE2 may run once during deployment and must create the sender. Rundler also demands that the staked factory run it itself, which Kernel's meta factory doesn't. So a ZeroDev account's first operation can't go through Alchemy. That's a Kernel/Rundler question, not a Winterlock one. A wallet can deploy the account in an ordinary transaction, or route the first operation to another bundler.
+- **The hosted bundlers accept w = 256,** unlike the local Rundler, which timed out tracing it. The local timeout was a matter of local resources, but w = 256 costs 3.7× ECDSA, so D9 stands.
+- **Practical notes:**
+  - Pimlico and Arbitrum's public RPC refuse Python's default User-Agent (HTTP 403), so the driver sends its own.
+  - Alchemy needs each network enabled per app.
+  - Test cost: about 0.09 ETH of the 0.25 bridged, almost all of it parked as 0.003 ETH balances in 29 test accounts. Gas itself came to about 0.0002 ETH.
+- **Deployed validators (Arbitrum Sepolia):**
+  - D6: `0xC6b12d267b4b04f2c0aCC9dae64ed912832d69cf`
+  - 16-byte: `0xAC907c93E8f7591A300a033B2ff0ED6Ebb34B43d`
+  - 32-byte checksum: `0xC3C2D49CB6a207A68858114FF852fe3a4C50ceC1`
+  - SHA-256: `0x18565b26FFb7BFa10f8c2f54889e71c928Fd6c08`
+  - w = 256: `0xDC9f57B3caa9847F0A838ffb1e034B5d2a0Ab6Ef`
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7 tests.
@@ -228,10 +274,10 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 - Classic Safes: whether to build the Safe-owner (EIP-1271) adapter from D1, for teams that don't use 4337.
 
 **Infrastructure**
-- Bundler acceptance: Rundler accepts WOTS operations under full ERC-7562 checks (stage 1, above). Still open:
-  - Alto's ERC-7562 checks and the hosted providers (stage 2 on a testnet)
-  - the shared mempool
-  - a factory that supports counterfactual deployment under Rundler's CREATE2 rule
+- Bundler acceptance: answered for the hosted bundlers. Pimlico, Candide and Alchemy accept and include WOTS operations from a production Kernel on Arbitrum Sepolia (stage 2, above). Still open:
+  - the shared (P2P) mempool
+  - mainnet configurations, which may differ from testnet ones
+  - Kernel's first operation on Alchemy (the CREATE2 rule): report it to ZeroDev or Alchemy, or deploy the account by an ordinary transaction
 - The collection service (D8): its API, who may post proposals (spam), how private pending proposals are, and whether to reuse code from Safe's transaction service.
 - Limits and abuse policy for the rescue bundler, how to fund it, and a legal check on sanctions screening (EU/Germany).
 - The signer: software first, key derivation from a seed, tracking used slots. Hardware comes later.

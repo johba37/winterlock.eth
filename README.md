@@ -22,6 +22,7 @@ forge test          # unit tests per parameter set, Kernel integration tests, ve
 ./bench.sh          # local anvil, real handleOps txs, gas table from receipts
 L2_RPC=https://mainnet.base.org ./bench.sh   # also price them on Base (read-only RPC calls)
 ./bench/bundlers/run.sh   # bundler acceptance: geth + Alto + Rundler in Docker, real ERC-7562 checks
+./bench/bundlers/testnet.sh   # hosted bundlers on Arbitrum Sepolia; needs bench/bundlers/.env (keys, funded test key)
 ```
 
 ## Preview locally

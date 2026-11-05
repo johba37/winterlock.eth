@@ -6,3 +6,6 @@ bench/bundlers/deployment.json
 bench/bundlers/results.json
 bench/bundlers/rundler-chain.toml
 bench/bundlers/logs/
+bench/bundlers/.env
+bench/bundlers/deployment-*.json
+bench/bundlers/results-*.json
