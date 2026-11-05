@@ -97,11 +97,11 @@ Open:
 - **Messages that apps check on-chain** (permits, Permit2): the team approves the message in an ordinary WOTS-signed Safe transaction through SignMessageLib. The app then checks it with an empty signature.
 - **Messages that apps check off-chain** (sign-in with Ethereum): members sign with their stateless keys; Winterlock's collection service (D8) gathers and serves the signatures. They verify on-chain through the Safe's `isValidSignature`.
 - **Both need the signer to answer apps itself, over WalletConnect,** because Safe's app doesn't reliably pass message results back.
+- **Built:** the WalletConnect bridge in the signer, and SignMessageLib built with Safe's release settings (see "WalletConnect bridge" under Measurements).
 - **To build:**
-  - the WalletConnect bridge
-  - an owner signature kind that defers to the Safe's own approval, because viem refuses empty signatures
-  - building SignMessageLib with Safe's release settings
+  - an owner signature kind that defers to the Safe's own approval, because viem refuses empty signatures (designed in docs/notes/walletconnect.md; it changes the owner's code, so every owner address)
   - a revocation library, if the team wants to withdraw approvals
+  - a live test against WalletConnect's real relay (needs a Reown project ID)
 - **Not covered:** EIP-2612 permits that accept only ECDSA, which no smart account can sign.
 
 ## Constraints that every design must respect
@@ -777,12 +777,7 @@ A Python command-line signer for the Safe route.
   - Proposal and confirmation through the hosted service: 201 and 201.
   - Execution: `0x88de9dfee61300fa0ffe4b441cc52ee130a02992f6e7652b1ed032708e9f5313`, 384,803 gas.
   - The service shows both confirmations as contract signatures.
-- **Gaps before real use:**
-  - a hardware signer, a recovery phrase with a backup check, and a passphrase on the seed
-  - moving to another device; a VM snapshot can still reuse keys, and the online check catches that only when it's online
-  - a hard stop at the stateless key's budget
-  - WalletConnect and message signing
-  - an audit
+- **Gaps before real use:** a hardware signer, a hard stop at the stateless key's budget, and an audit. Since built: a recovery phrase, an encrypted seed, moves between devices, and WalletConnect with message signing (below).
 
 **2026-11-05: proxy owners, live on Sepolia** (`signer/`, `signer/tools/live_check.py`)
 
@@ -824,6 +819,41 @@ The question: do proxy owners work end to end with a real Safe and Safe's hosted
   - execution `0x0f0040b8ba88605ad5591847244b8e19c95e21c33623871dc272875c2ed6ff46` (SafeTx `0xc9d8851cfb3fbb0fb97d8ed551bbc74e9e1bee06faff88f4cf0a7aa1bb8c1be2`)
 - **Spent:** 0.0000099 ETH, nearly all of it left in the Safe; fees were 3.9e-10 ETH at 23 wei per gas.
 - **Nothing differed from the local run** apart from the gas pricing.
+
+**2026-11-05: signer recovery and device moves** (`signer/`, `docs/notes/signer-recovery.md`)
+
+- **Recovery phrase:** 24 BIP-39 words that encode the signer's 32-byte seed directly. Existing seeds get a phrase without their owner address changing, and there is no second secret.
+  - `init` shows the phrase once and asks for three random words before saving anything. `backup --check` repeats that later, and `status` reminds after 90 days.
+- **Seed at rest:** encrypted with scrypt and ChaCha20-Poly1305. Only commands that sign, certify or export ask for the passphrase.
+- **Moving to a new device** (the old one still works): the new device shows a one-time move code, the old device exports an encrypted bundle (the key log, no secret keys), then locks itself and deletes its seed. The new device checks the bundle against the chain and Safe's service, and keeps the same trees, with no fee.
+  - Tested failure modes: the same bundle on two devices, exporting twice, a changed or truncated bundle, an interrupted move, a stale bundle.
+- **Lost device:** restoring from the phrase certifies fresh trees, one `enroll` per Safe and network. The signer lists which pending approvals stop counting.
+- **Copied or rolled-back key logs** are detected offline (device identity, the log's file identity, a record counter) and sign nothing until their trees are retired or the copy is adopted.
+- **Not protected:**
+  - a whole-machine rollback (a VM snapshot from before a move)
+  - anyone holding the phrase
+  - malware on an unlocked device
+  - deliberate tampering with the tracking files
+- **Tests:** 38 new signer tests.
+
+**2026-11-05: WalletConnect bridge** (`signer/`, `docs/notes/walletconnect.md`)
+
+The signer answers dapps over WalletConnect v2 as the team's Safe. It implements the needed part of the protocol itself: no suitable Python library exists (GPL or unmaintained), and Reown has no Python SDK. The crypto and relay login match WalletConnect's own test values, and dapps built on the official JS SDK work with it through a stand-in relay.
+
+| Request | What happens | What the dapp gets |
+|---|---|---|
+| Transactions, batches | Decoded, signed by this member, proposed through Safe's service | The SafeTx hash, as Safe's own app answers |
+| Sign-in and other messages checked off-chain | Stateless signatures from k members, collected peer to peer or by a small endpoint, checked through the Safe | The combined signature (11.7 KB for 2 of 3) |
+| Permits and other messages checked on-chain | Approved in a Safe transaction through SignMessageLib | `0x` after execution |
+| Bare hashes, `eth_sign`, another site's sign-in, the Safe's own typed data, Kernel's Enable data, risky self-calls | Refused with the reason | An error |
+
+- **Locked devices refuse dapps too:** message signing goes through the same check as transactions, so a moved or locked device signs nothing.
+- **Open:**
+  - viem refuses `0x`, so on-chain approvals need the owner signature kind in D14's to-do list
+  - a live test against Reown's relay
+  - one dapp session at a time
+  - the dapp's name and URL aren't verified, so the sign-in check compares only what the dapp claims
+- **Tests:** 42 new signer tests; together with the recovery work, 126 pass.
 
 ## Integration notes: Kernel v3.3
 
