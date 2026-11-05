@@ -1,0 +1,1298 @@
+<title>Winterlock Team Treasury</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Clickable mockup of Winterlock for teams: a 2-of-3 treasury with hash-based single-use keys. Sample data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Mono:wght@400;600&family=Atkinson+Hyperlegible+Next:wght@300;400;600;700&display=swap">
+<style>
+/* Layout: a team rail on the left and one working column; wherever a key is used, the signer appears as its own window with a dark frame. Palette and faces follow the winterlock.eth landing page. */
+:root {
+  --bg: #EDF2F4;
+  --surface: #F8FAFB;
+  --sunk: #E2E9ED;
+  --ink: #102030;
+  --slate: #4A5E6C;
+  --frost: #C3D0D8;
+  --glacier: #146A82;
+  --glacier-wash: rgba(20, 106, 130, 0.10);
+  --lamp: #C08214;
+  --lamp-ink: #7A4D04;
+  --band: rgba(192, 130, 20, 0.14);
+  --breach: #A3392A;
+  --breach-wash: rgba(163, 57, 42, 0.09);
+  --on-ink: #EDF2F4;
+  --chrome: #102030;
+  --on-chrome: #EDF2F4;
+  --chrome-dim: #94A7B4;
+  --shadow: rgba(16, 32, 48, 0.28);
+
+  --sans: "Atkinson Hyperlegible Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Atkinson Hyperlegible Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0D1820; --surface: #12212B; --sunk: #0A141A; --ink: #E3EBEF; --slate: #94A7B4; --frost: #2B3D4A;
+    --glacier: #6BB8CE; --glacier-wash: rgba(107, 184, 206, 0.12); --lamp: #E3AA4C; --lamp-ink: #EDBE6C;
+    --band: rgba(227, 170, 76, 0.13); --breach: #EC8774; --breach-wash: rgba(236, 135, 116, 0.11);
+    --on-ink: #0D1820; --chrome: #253B4C; --on-chrome: #E3EBEF; --chrome-dim: #A5B7C3; --shadow: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0D1820; --surface: #12212B; --sunk: #0A141A; --ink: #E3EBEF; --slate: #94A7B4; --frost: #2B3D4A;
+  --glacier: #6BB8CE; --glacier-wash: rgba(107, 184, 206, 0.12); --lamp: #E3AA4C; --lamp-ink: #EDBE6C;
+  --band: rgba(227, 170, 76, 0.13); --breach: #EC8774; --breach-wash: rgba(236, 135, 116, 0.11);
+  --on-ink: #0D1820; --chrome: #253B4C; --on-chrome: #E3EBEF; --chrome-dim: #A5B7C3; --shadow: rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+h1, h2, h3, p { margin: 0; }
+a { color: var(--glacier); text-underline-offset: 0.18em; text-decoration-thickness: 1px; }
+code, .mono { font-family: var(--mono); font-size: 0.8125rem; }
+small { font-size: 0.8125rem; color: var(--slate); }
+:focus-visible { outline: 3px solid var(--lamp); outline-offset: 2px; border-radius: 4px; }
+svg.i { width: 1.1em; height: 1.1em; flex: none; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; vertical-align: -0.18em; }
+.muted { color: var(--slate); }
+.gutter { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Demo strip */
+.demo { background: var(--sunk); border-bottom: 1px solid var(--frost); }
+.demo-in { max-width: 84rem; margin: 0 auto; padding-block: 0.6rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.25rem; }
+.brand { display: flex; align-items: center; gap: 0.55rem; font-weight: 700; white-space: nowrap; }
+.brand svg { width: 1.4rem; height: 1.4rem; }
+.brand span { font-weight: 400; color: var(--slate); }
+.demo-note { font-size: 0.8125rem; color: var(--slate); }
+.demo-tabs { flex: 1 1 32rem; min-width: 0; display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: thin; padding-block: 2px; }
+.dtab { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; padding: 0.35rem 0.65rem; border-radius: 7px; color: var(--slate); text-decoration: none; font-size: 0.8125rem; font-weight: 600; }
+.dtab b { font-family: var(--mono); font-weight: 400; font-size: 0.75rem; }
+.dtab:hover { color: var(--ink); background: var(--bg); }
+.dtab[aria-current] { background: var(--ink); color: var(--on-ink); }
+
+/* App shell */
+.app { max-width: 84rem; margin: 0 auto; padding-block: 1.5rem 4rem; display: grid; grid-template-columns: 14.5rem minmax(0, 1fr); gap: 2.25rem; }
+.side { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 1rem); align-self: start; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; min-width: 0; }
+.team { display: flex; align-items: center; gap: 0.7rem; }
+.team-mark { width: 2.4rem; height: 2.4rem; border-radius: 10px; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; font-weight: 700; font-size: 1.05rem; flex: none; }
+.team-name { font-weight: 700; line-height: 1.25; }
+.team-meta { font-size: 0.8125rem; color: var(--slate); }
+.nav { display: grid; gap: 2px; }
+.nav a { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.65rem; border-radius: 8px; color: var(--ink); text-decoration: none; font-weight: 600; font-size: 0.875rem; }
+.nav a:hover { background: var(--sunk); }
+.nav a[aria-current] { background: var(--surface); box-shadow: inset 0 0 0 1px var(--frost); }
+.nav .count { margin-left: auto; font-size: 0.75rem; min-width: 1.4rem; text-align: center; padding: 0.05rem 0.4rem; border-radius: 999px; background: var(--band); color: var(--lamp-ink); }
+.side-foot { border-top: 1px solid var(--frost); padding-top: 1rem; display: grid; gap: 0.35rem; font-size: 0.8125rem; }
+.side-foot .row { display: flex; align-items: center; gap: 0.45rem; font-weight: 600; }
+.dot { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--glacier); flex: none; }
+.main { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; align-content: start; }
+.screen { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; min-width: 0; }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; padding-top: 1rem; }
+  .side { position: static; gap: 0.75rem; }
+  .nav { display: flex; overflow-x: auto; gap: 0.25rem; scrollbar-width: thin; }
+  .nav a { white-space: nowrap; }
+  .nav .count { margin-left: 0.2rem; }
+  .side-foot { display: none; }
+}
+
+/* Type and headings */
+.head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.5rem; }
+.eyebrow { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--slate); }
+h1 { font-size: clamp(1.75rem, 3.4vw, 2.4rem); font-weight: 300; letter-spacing: -0.028em; line-height: 1.08; text-wrap: balance; }
+.lede { font-size: 1.0625rem; max-width: 42rem; color: var(--ink); }
+.meta { display: flex; flex-wrap: wrap; gap: 0.5rem 0.9rem; align-items: center; font-size: 0.8125rem; color: var(--slate); }
+.back { font-size: 0.8125rem; font-weight: 600; text-decoration: none; display: inline-flex; gap: 0.35rem; align-items: center; justify-self: start; }
+
+/* Building blocks */
+.cols { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; min-width: 0; align-content: start; }
+@media (max-width: 1080px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--surface); border: 1px solid var(--frost); border-radius: 12px; padding: 1.1rem 1.2rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.9rem; min-width: 0; align-content: start; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem 1rem; flex-wrap: wrap; }
+.card h2 { font-size: 1rem; font-weight: 700; }
+.card-head a { font-size: 0.8125rem; font-weight: 600; text-decoration: none; }
+.chip { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; font-weight: 600; line-height: 1.3; padding: 0.15rem 0.55rem; border-radius: 999px; border: 1px solid var(--frost); color: var(--slate); white-space: nowrap; }
+a.chip { text-decoration: none; }
+.chip.ok { color: var(--glacier); background: var(--glacier-wash); border-color: transparent; }
+.chip.warn { color: var(--lamp-ink); background: var(--band); border-color: transparent; }
+.chip.bad { color: var(--breach); background: var(--breach-wash); border-color: transparent; }
+.btn { font: inherit; font-size: 0.875rem; font-weight: 600; line-height: 1.2; padding: 0.6rem 1rem; border-radius: 8px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; text-decoration: none; }
+.btn:hover { background: var(--sunk); }
+.btn.primary { background: var(--ink); color: var(--on-ink); }
+.btn.primary:hover { background: var(--slate); border-color: var(--slate); }
+.btn.quiet { border-color: var(--frost); }
+.btn.danger { border-color: var(--breach); color: var(--breach); }
+.btn.danger:hover { background: var(--breach-wash); }
+.btn.small { padding: 0.35rem 0.65rem; font-size: 0.8125rem; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.band { display: flex; gap: 0.65rem; align-items: flex-start; padding: 0.75rem 0.9rem; border-radius: 10px; background: var(--sunk); font-size: 0.875rem; }
+.band > div { min-width: 0; display: grid; gap: 0.3rem; }
+.danger-head > div { min-width: 0; display: grid; gap: 0.3rem; }
+.band.warn { background: var(--band); }
+.band.warn > svg { color: var(--lamp-ink); }
+.band.bad { background: var(--breach-wash); }
+.band.bad > svg { color: var(--breach); }
+.band.ok { background: var(--glacier-wash); }
+.band.ok > svg { color: var(--glacier); }
+.kv { display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: 0.55rem 1rem; margin: 0; }
+.kv dt { color: var(--slate); font-size: 0.8125rem; padding-top: 0.1rem; }
+.kv dd { margin: 0; min-width: 0; display: grid; gap: 0.1rem; }
+@media (max-width: 520px) { .kv { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; } .kv dd { margin-bottom: 0.55rem; } }
+.addr { word-spacing: 0.1em; overflow-wrap: anywhere; }
+.big-num { font-size: 2.4rem; font-weight: 300; line-height: 1; letter-spacing: -0.03em; }
+.av { width: 1.9rem; height: 1.9rem; border-radius: 50%; background: var(--sunk); border: 1px solid var(--frost); display: grid; place-items: center; font-weight: 700; font-size: 0.75rem; flex: none; }
+.pips { display: inline-flex; gap: 3px; vertical-align: middle; }
+.pip { display: inline-block; width: 0.72rem; height: 0.72rem; border-radius: 2px; border: 1.5px solid var(--slate); }
+.pip.on { background: var(--glacier); border-color: var(--glacier); }
+.pip.spare { background: var(--lamp); border-color: var(--lamp); }
+.pip.next { border-color: var(--glacier); border-style: dashed; background: var(--glacier-wash); }
+.legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; font-size: 0.75rem; color: var(--slate); }
+.legend span { display: inline-flex; align-items: center; gap: 0.35rem; }
+.meter { height: 0.5rem; border-radius: 999px; background: var(--sunk); border: 1px solid var(--frost); overflow: hidden; min-width: 4rem; }
+.meter > i { display: block; height: 100%; background: var(--glacier); }
+.meter.warn > i { background: var(--lamp); }
+.progress { height: 0.55rem; border-radius: 999px; background: var(--sunk); overflow: hidden; }
+.progress > i { display: block; height: 100%; background: var(--glacier); transition: width 0.5s ease; }
+details summary { cursor: pointer; color: var(--glacier); font-weight: 600; font-size: 0.875rem; }
+details[open] summary { margin-bottom: 0.5rem; }
+.raw { font-family: var(--mono); font-size: 0.75rem; line-height: 1.55; background: var(--bg); border: 1px solid var(--frost); border-radius: 8px; padding: 0.75rem 0.9rem; overflow-x: auto; white-space: pre; margin: 0; }
+.tech { font-size: 0.8125rem; color: var(--slate); }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font: inherit; font-size: 0.875rem; color: inherit; }
+th { text-align: left; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--slate); padding: 0.35rem 0.6rem 0.45rem; border-bottom: 1px solid var(--frost); white-space: nowrap; }
+td { padding: 0.6rem; border-bottom: 1px solid var(--frost); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--sunk); border: 1px solid var(--frost); justify-self: start; max-width: 100%; overflow-x: auto; }
+.seg button { font: inherit; font-size: 0.8125rem; font-weight: 600; color: var(--slate); background: transparent; border: 0; border-radius: 6px; padding: 0.35rem 0.8rem; cursor: pointer; white-space: nowrap; }
+.seg button[aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 1px var(--frost); }
+
+/* Steps and timelines */
+.steps, .tl { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+.steps li { display: flex; gap: 0.65rem; align-items: center; color: var(--slate); font-size: 0.875rem; }
+.steps li::before { content: ""; width: 1rem; height: 1rem; border-radius: 50%; border: 2px solid var(--frost); flex: none; }
+.steps li.active { color: var(--ink); }
+.steps li.active::before { border-color: var(--glacier); border-right-color: transparent; animation: spin 0.8s linear infinite; }
+.steps li.done { color: var(--ink); }
+.steps li.done::before { background: var(--glacier); border-color: var(--glacier); box-shadow: inset 0 0 0 2.5px var(--surface); }
+@keyframes spin { to { transform: rotate(360deg); } }
+.tl { gap: 0; }
+.tl li { display: grid; grid-template-columns: 1rem minmax(0, 1fr) auto; gap: 0.75rem; position: relative; padding-bottom: 0.85rem; font-size: 0.875rem; color: var(--slate); }
+.tl li::before { content: ""; width: 0.75rem; height: 0.75rem; border-radius: 50%; border: 2px solid var(--frost); background: var(--surface); margin-top: 0.3rem; position: relative; z-index: 1; }
+.tl li::after { content: ""; position: absolute; left: 0.34rem; top: 1rem; bottom: 0; width: 2px; background: var(--frost); }
+.tl li:last-child::after { display: none; }
+.tl li.done { color: var(--ink); }
+.tl li.done::before { background: var(--glacier); border-color: var(--glacier); }
+.tl li.now::before { border-color: var(--lamp); background: var(--band); }
+.tl time { font-family: var(--mono); font-size: 0.75rem; color: var(--slate); white-space: nowrap; }
+
+/* Overview */
+.att-list { display: grid; gap: 0.5rem; }
+.att { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; padding: 0.7rem 0.9rem; border-radius: 10px; background: var(--surface); border: 1px solid var(--frost); color: inherit; text-decoration: none; }
+.att:hover { border-color: var(--slate); }
+.att .sev { width: 1.9rem; height: 1.9rem; border-radius: 8px; display: grid; place-items: center; background: var(--sunk); color: var(--slate); }
+.att.warn .sev { background: var(--band); color: var(--lamp-ink); }
+.att.info .sev { background: var(--glacier-wash); color: var(--glacier); }
+.att b { display: block; font-weight: 600; }
+.att small { display: block; }
+.att .go { font-size: 0.8125rem; font-weight: 600; color: var(--glacier); white-space: nowrap; }
+@media (max-width: 560px) { .att { grid-template-columns: auto minmax(0, 1fr); } .att .go { grid-column: 2; } }
+.lane { display: grid; }
+.lane-head { display: flex; justify-content: space-between; gap: 1rem; font-size: 0.8125rem; padding-bottom: 0.4rem; }
+.lane-head b { font-weight: 700; }
+.lane + .lane { margin-top: 0.6rem; }
+.qrow { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) auto; gap: 0.4rem 0.75rem; align-items: center; padding: 0.65rem 0; border-top: 1px solid var(--frost); color: inherit; text-decoration: none; }
+a.qrow:hover .qt { text-decoration: underline; text-decoration-color: var(--slate); }
+.pos { font-family: var(--mono); font-size: 0.8125rem; color: var(--slate); }
+.qt { font-weight: 600; min-width: 0; }
+.qt small { display: block; font-weight: 400; }
+.q-end { display: flex; align-items: center; gap: 0.6rem; justify-content: flex-end; flex-wrap: wrap; font-size: 0.8125rem; color: var(--slate); }
+@media (max-width: 560px) { .qrow { grid-template-columns: 3.9rem minmax(0, 1fr); } .q-end { grid-column: 2; justify-content: flex-start; } }
+.lane-note { font-size: 0.8125rem; margin-top: 0.2rem; }
+.list { display: grid; }
+.li { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem 1rem; flex-wrap: wrap; padding: 0.55rem 0; border-top: 1px solid var(--frost); font-size: 0.875rem; }
+.li:first-child { border-top: 0; padding-top: 0; }
+.li > span:first-child { font-weight: 600; }
+.ways { display: flex; align-items: baseline; gap: 0.75rem; }
+
+/* Proposal */
+.who { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 0.75rem; align-items: center; padding: 0.7rem 0; border-top: 1px solid var(--frost); }
+.who-name { font-weight: 600; }
+.who-name small { font-weight: 400; margin-left: 0.3rem; }
+.who-state { font-size: 0.8125rem; color: var(--slate); }
+.who-end { display: flex; align-items: center; gap: 0.75rem; justify-content: flex-end; flex-wrap: wrap; }
+@media (max-width: 560px) { .who { grid-template-columns: auto minmax(0, 1fr); } .who-end { grid-column: 2; justify-content: flex-start; } }
+.amount { font-size: 1.6rem; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15; }
+.matrix td:not(:first-child), .matrix th:not(:first-child) { text-align: center; }
+.cell { font-size: 0.75rem; color: var(--slate); }
+.versions { display: grid; gap: 0.5rem; }
+.ver { display: flex; justify-content: space-between; gap: 0.5rem 1rem; flex-wrap: wrap; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--frost); font-size: 0.875rem; }
+
+/* Signer window */
+.signer { border-radius: 14px; overflow: hidden; border: 1px solid var(--chrome); background: var(--surface); box-shadow: 0 18px 40px -24px var(--shadow); max-width: 44rem; width: 100%; }
+.signer-bar { background: var(--chrome); color: var(--on-chrome); display: flex; align-items: center; gap: 0.55rem; padding: 0.6rem 1rem; font-size: 0.8125rem; font-weight: 600; flex-wrap: wrap; }
+.signer-bar .dev { margin-left: auto; color: var(--chrome-dim); font-weight: 400; }
+.signer-body { padding: 1.25rem 1.3rem 1.4rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.1rem; }
+.s-title { font-size: 1.6rem; font-weight: 300; letter-spacing: -0.02em; line-height: 1.15; text-wrap: balance; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; font-size: 0.875rem; }
+.checks li { display: flex; gap: 0.55rem; align-items: flex-start; }
+.checks li svg { margin-top: 0.15rem; }
+.checks .ok svg { color: var(--glacier); }
+.checks .bad svg { color: var(--breach); }
+.checks .warn svg { color: var(--lamp-ink); }
+.keybox { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.9rem; align-items: center; padding: 0.85rem 1rem; border-radius: 10px; border: 1px dashed var(--glacier); background: var(--glacier-wash); }
+.keybox .pips { gap: 6px; }
+.keybox .pip { width: 1.4rem; height: 1.4rem; border-radius: 4px; }
+.keybox p { font-size: 0.875rem; }
+.done-box { display: grid; gap: 0.6rem; }
+.danger-head { display: flex; gap: 0.75rem; align-items: flex-start; padding: 0.9rem 1rem; border-radius: 10px; background: var(--breach-wash); border: 1px solid var(--breach); }
+.danger-head svg { color: var(--breach); width: 1.5rem; height: 1.5rem; }
+.danger-head h2 { font-size: 1.25rem; font-weight: 700; line-height: 1.25; color: var(--breach); }
+.field { display: grid; gap: 0.35rem; }
+.field label { font-size: 0.8125rem; font-weight: 600; }
+input[type="text"] { font: inherit; font-size: 0.9375rem; color: var(--ink); background: var(--bg); border: 1px solid var(--frost); border-radius: 8px; padding: 0.55rem 0.7rem; min-width: 0; width: 100%; max-width: 22rem; }
+input[type="text"]:focus-visible { outline-offset: 1px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 1rem; align-items: start; }
+
+/* Activation */
+.seq { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.85rem; counter-reset: s; }
+.seq li { display: grid; grid-template-columns: 1.9rem minmax(0, 1fr); gap: 0.75rem; counter-increment: s; }
+.seq li::before { content: counter(s); width: 1.9rem; height: 1.9rem; border-radius: 50%; border: 1.5px solid var(--glacier); color: var(--glacier); display: grid; place-items: center; font-weight: 700; font-size: 0.8125rem; }
+.seq b { display: block; }
+.opt { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.65rem; align-items: start; padding: 0.8rem 0.9rem; border: 1.5px solid var(--frost); border-radius: 10px; cursor: pointer; }
+.opt:has(input:checked) { border-color: var(--ink); background: var(--sunk); }
+.opt input { margin-top: 0.25rem; accent-color: var(--glacier); }
+.opt b { display: block; }
+.opts { display: grid; gap: 0.5rem; }
+
+/* Recovery */
+.stepper { list-style: none; margin: 0; padding: 0; display: flex; gap: 0.35rem; overflow-x: auto; }
+.stepper li { flex: 1 1 0; min-width: 5.2rem; border-top: 3px solid var(--frost); padding-top: 0.4rem; font-size: 0.75rem; color: var(--slate); }
+.stepper li.done { border-color: var(--glacier); }
+.stepper li[aria-current] { border-color: var(--ink); color: var(--ink); font-weight: 700; }
+.words { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; }
+@media (max-width: 560px) { .words { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.word { display: flex; gap: 0.45rem; padding: 0.4rem 0.55rem; border: 1px solid var(--frost); border-radius: 6px; background: var(--bg); font-family: var(--mono); font-size: 0.8125rem; }
+.word b { color: var(--slate); font-weight: 400; min-width: 1.3rem; }
+.qr { width: 9rem; height: 9rem; border-radius: 8px; background: var(--surface); border: 1px solid var(--frost); padding: 0.5rem; }
+.qr canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+
+@media (prefers-reduced-motion: reduce) {
+  .steps li.active::before { animation: none; border-right-color: var(--glacier); }
+  .progress > i { transition: none; }
+}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="12" r="3.5"/><path d="M11 12h9.5M17.5 12v3M20.5 12v2.5"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7 3v5.5c0 4.4-3 8-7 9.5-4-1.5-7-5.1-7-9.5V6z"/><path d="M8.8 12.2l2.3 2.3 4.2-4.6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.8l9 15.7H3z"/><path d="M12 10v4.2M12 17v.3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8.5 10.5V7.5a3.5 3.5 0 017 0v3"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6A1.5 1.5 0 0014 4.5H6A1.5 1.5 0 004.5 6v8A1.5 1.5 0 006 15.5h2.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 11-2.2-5.3M19.5 4.5v4h-4"/></symbol>
+  <symbol id="i-net" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.2 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.2-3.5-8.5s1.1-6.1 3.5-8.5z"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11l8-6.5 8 6.5M6.5 9.5V19h11V9.5"/></symbol>
+  <symbol id="i-queue" viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h9"/></symbol>
+  <symbol id="i-msg" viewBox="0 0 24 24"><path d="M4.5 6.5h15v10h-9l-4 3.5v-3.5h-2z"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><path d="M3.5 19c.6-3 2.8-4.6 5.5-4.6s4.9 1.6 5.5 4.6"/><circle cx="16.5" cy="8" r="2.6"/><path d="M15.5 13.3c2.7-.3 4.6 1.2 5.1 3.9"/></symbol>
+</svg>
+
+<header class="demo">
+  <div class="demo-in gutter">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" style="fill:var(--ink)"/><path d="M16 7v18" style="stroke:var(--glacier)" stroke-width="2"/><circle cx="16" cy="7" r="3.5" style="fill:var(--glacier)"/><circle cx="16" cy="16" r="3.5" style="fill:var(--lamp)"/><rect x="12.5" y="21.5" width="7" height="7" rx="1" style="fill:var(--bg)"/></svg>
+      Winterlock <span>for teams</span>
+    </div>
+    <p class="demo-note">Clickable mockup. Fictional team, sample figures.</p>
+    <nav class="demo-tabs" aria-label="Mockup screens">
+      <a class="dtab" href="#overview"><b>1</b>Team dashboard</a>
+      <a class="dtab" href="#proposal"><b>2</b>Proposal</a>
+      <a class="dtab" href="#approve"><b>3</b>Signer: approve</a>
+      <a class="dtab" href="#activate"><b>4</b>New network</a>
+      <a class="dtab" href="#message"><b>5</b>Message request</a>
+      <a class="dtab" href="#keys"><b>6</b>Keys and backup</a>
+      <a class="dtab" href="#recover"><b>7</b>Recovery</a>
+    </nav>
+  </div>
+</header>
+
+<div class="app gutter">
+  <aside class="side">
+    <div class="team">
+      <div class="team-mark" aria-hidden="true">R</div>
+      <div>
+        <div class="team-name">Ridgeline Grants</div>
+        <div class="team-meta">2 of 3 approvals · you are Bo</div>
+      </div>
+    </div>
+    <nav class="nav" aria-label="Team app">
+      <a href="#overview" data-nav="overview"><svg class="i"><use href="#i-home"/></svg>Overview</a>
+      <a href="#proposal" data-nav="proposal"><svg class="i"><use href="#i-queue"/></svg>Queue <span class="count" id="nav-q">1</span></a>
+      <a href="#message" data-nav="message"><svg class="i"><use href="#i-msg"/></svg>Messages <span class="count" id="nav-m">1</span></a>
+      <a href="#activate" data-nav="activate"><svg class="i"><use href="#i-net"/></svg>Networks</a>
+      <a href="#keys" data-nav="keys"><svg class="i"><use href="#i-users"/></svg>Team and keys</a>
+    </nav>
+    <div class="side-foot">
+      <div class="row"><span class="dot" aria-hidden="true"></span>Signer connected</div>
+      <div class="muted">Bo's laptop · key log saved 09:58</div>
+      <a href="#approve">Open signer request</a>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- 1 Overview -->
+    <section class="screen" data-screen="overview" aria-labelledby="h-overview">
+      <div class="head">
+        <p class="eyebrow">Team treasury · 2 of 3 approvals</p>
+        <h1 id="h-overview">Ridgeline Grants</h1>
+        <div class="meta">
+          <code class="addr">0x7a3F 9e21 B0d8 4c55 E6a1 F02d 93b7 C8e4 a5D2 c41E</code>
+          <button class="btn small quiet" type="button" data-copy="0x7a3F9e21B0d84c55E6a1F02d93b7C8e4a5D2c41E"><svg class="i"><use href="#i-copy"/></svg><span>Copy</span></button>
+          <span>Same address on every network</span>
+        </div>
+      </div>
+
+      <div class="att-list" role="list" aria-label="Needs attention">
+        <a class="att warn" href="#proposal" role="listitem" id="att-3341">
+          <span class="sev"><svg class="i"><use href="#i-key"/></svg></span>
+          <span><b>A payment needs your approval</b><small>Arbitrum #3,341 · Q4 grant, round 3 · 25,000 USDC</small></span>
+          <span class="go">Review</span>
+        </a>
+        <a class="att info" href="#activate" role="listitem">
+          <span class="sev"><svg class="i"><use href="#i-net"/></svg></span>
+          <span><b>1,200 USDC arrived on Base</b><small>The account isn't set up on Base yet. Its first payment sets it up.</small></span>
+          <span class="go">Set up Base</span>
+        </a>
+        <a class="att warn" href="#keys" role="listitem">
+          <span class="sev"><svg class="i"><use href="#i-refresh"/></svg></span>
+          <span><b>Arbitrum key sets are 82% used</b><small>About 750 queue positions left, roughly 2 months at the team's pace</small></span>
+          <span class="go">Plan refresh</span>
+        </a>
+        <a class="att" href="#message" role="listitem">
+          <span class="sev"><svg class="i"><use href="#i-msg"/></svg></span>
+          <span><b>Sign-in request from vote.example.org</b><small id="att-msg">1 of 2 members signed</small></span>
+          <span class="go">Open</span>
+        </a>
+      </div>
+
+      <div class="cols">
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Queue</h2><a href="#proposal">Open #3,341</a></div>
+            <div class="lane">
+              <div class="lane-head"><b>Arbitrum</b><span class="muted">next position #3,341</span></div>
+              <a class="qrow" href="#proposal">
+                <span class="pos">#3,341</span>
+                <span class="qt">Q4 grant, round 3<small>25,000 USDC to 0x5c1E…9a2F</small></span>
+                <span class="q-end"><span id="ov-3341-count">1 of 2</span><span class="chip warn" id="ov-3341-chip">Needs you</span></span>
+              </a>
+              <div class="qrow">
+                <span class="pos">#3,342</span>
+                <span class="qt">Reimburse audit deposit<small>4,800 USDC to 0x91aD…04Bc</small></span>
+                <span class="q-end">1 of 2<span class="chip">Waits for #3,341</span></span>
+              </div>
+            </div>
+            <div class="lane">
+              <div class="lane-head"><b>Ethereum</b><span class="muted">next position #57</span></div>
+              <div class="qrow">
+                <span class="pos">#57</span>
+                <span class="qt">November payroll<small>6 payments, 38,400 USDC</small></span>
+                <span class="q-end">2 of 2<span class="chip warn" id="rescue-chip">Sent · rebroadcasting</span></span>
+              </div>
+              <div class="band warn lane-note" id="rescue-band">
+                <svg class="i"><use href="#i-clock"/></svg>
+                <div>
+                  <span>The network fee has been above this payment's cap for 6 minutes. The app keeps resending it unchanged; there is no need to speed it up.</span>
+                  <span class="actions"><button class="btn small" type="button" id="rescue-btn">Use rescue relay</button><small>It includes the payment now and covers the difference.</small></span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Holdings</h2><span class="muted mono">≈ $246,800</span></div>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Network</th><th>Assets</th><th>ETH for fees</th><th>Status</th></tr></thead>
+                <tbody>
+                  <tr><td>Ethereum</td><td>180,000 USDC<br><small>0.42 ETH</small></td><td><small>about 500 payments</small></td><td><span class="chip ok">Active</span></td></tr>
+                  <tr><td>Arbitrum</td><td>64,250 USDC<br><small>0.031 ETH</small></td><td><small>about 10,000 payments</small></td><td><span class="chip ok">Active</span></td></tr>
+                  <tr><td>Base</td><td>1,200 USDC<br><small>0.002 ETH</small></td><td><small>enough to set up</small></td><td><a class="chip warn" href="#activate">Not set up</a></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Ways in</h2><span class="chip ok"><svg class="i"><use href="#i-shield"/></svg>As expected</span></div>
+            <div class="ways"><span class="big-num">1</span><span>way to move funds, on every network: <b>2 of 3 Winterlock approvals</b></span></div>
+            <div class="list">
+              <div class="li"><span>Ethereum</span><small>No add-ons, hooks or executors</small></div>
+              <div class="li"><span>Arbitrum</span><small>No add-ons, hooks or executors</small></div>
+              <div class="li"><span>Base</span><small>Not deployed. Would start with Ana, Bo and Chidi, 2 of 3</small></div>
+            </div>
+            <p class="tech">Any add-on would be a second way in. Installing one needs a separate, red review in every member's signer.</p>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Team</h2><a href="#keys">Key health</a></div>
+            <div class="list">
+              <div class="li"><span>Ana <small>· ops lead</small></span><span class="chip ok">Phrase checked 21 Oct</span></div>
+              <div class="li"><span>Bo <small>· you</small></span><span class="chip ok">Phrase checked 12 Aug</span></div>
+              <div class="li"><span>Chidi <small>· security lead</small></span><span class="chip warn">Phrase check due</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 Proposal -->
+    <section class="screen" data-screen="proposal" aria-labelledby="h-proposal" hidden>
+      <a class="back" href="#overview"><svg class="i"><use href="#i-back"/></svg>Overview</a>
+      <div class="head">
+        <p class="eyebrow">Arbitrum · queue position #3,341</p>
+        <h1 id="h-proposal">Q4 grant, round 3</h1>
+        <div class="meta"><span class="chip warn" id="p-status">Needs 1 more approval</span><span>Proposed by Ana today at 10:42</span></div>
+      </div>
+
+      <div class="cols">
+        <div class="stack">
+          <div class="card">
+            <h2>What it does</h2>
+            <p class="amount">Send 25,000 USDC</p>
+            <dl class="kv">
+              <dt>To</dt><dd><code class="addr">0x5c1E 7b20 41aa 0F3c 8D19 e6B2 77c0 d4A1 3e58 9a2F</code><small>Grant recipient, round 3 · in the team's address book</small></dd>
+              <dt>From</dt><dd>Ridgeline Grants on Arbitrum</dd>
+              <dt>Note</dt><dd>Tranche 2 of 3, milestone report accepted on 2 Nov</dd>
+            </dl>
+          </div>
+
+          <div class="card">
+            <div class="card-head"><h2>Approvals</h2><span class="mono" id="p-count">1 of 2</span></div>
+            <div class="progress" aria-hidden="true"><i id="p-bar" style="width:50%"></i></div>
+            <div class="legend">
+              <span><i class="pip on"></i>approval key used</span>
+              <span><i class="pip spare"></i>spare key used</span>
+              <span><i class="pip"></i>free</span>
+            </div>
+            <div>
+              <div class="who">
+                <span class="av">A</span>
+                <div><div class="who-name">Ana<small>proposer</small></div><div class="who-state">Approved at 10:43</div></div>
+                <div class="who-end"><span class="pips" title="Ana's keys at #3,341"><i class="pip on"></i><i class="pip"></i></span></div>
+              </div>
+              <div class="who">
+                <span class="av">B</span>
+                <div><div class="who-name">Bo<small>you</small></div><div class="who-state" id="bo-state">Waiting for you</div></div>
+                <div class="who-end"><span class="pips" title="Your keys at #3,341"><i class="pip" id="bo-pip"></i><i class="pip"></i></span><a class="btn primary small" href="#approve" id="bo-action">Review in signer</a></div>
+              </div>
+              <div class="who">
+                <span class="av">C</span>
+                <div><div class="who-name">Chidi<small>security lead</small></div><div class="who-state" id="chidi-state">Can approve</div></div>
+                <div class="who-end"><span class="pips" title="Chidi's keys at #3,341"><i class="pip"></i><i class="pip"></i></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Status</h2>
+            <ol class="tl">
+              <li class="done"><span>Proposed by Ana</span><time>10:42</time></li>
+              <li class="done"><span>Approved by Ana</span><time>10:43</time></li>
+              <li class="now" id="t-bo"><span>Approved by Bo</span><time>waiting</time></li>
+              <li id="t-sent"><span>Sent to a relay</span><time>—</time></li>
+              <li id="t-inc"><span>Included on Arbitrum</span><time>—</time></li>
+            </ol>
+            <div class="band">
+              <svg class="i"><use href="#i-clock"/></svg>
+              <div><span>Approvals don't expire. Once fully approved, anyone holding this payment can submit it until the team cancels it.</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn small quiet" type="button" id="export-btn">Export approvals</button>
+              <small id="export-note" hidden>In the product this saves a file or shows a QR code. Any member can import it and submit the payment without the team queue.</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <h2>Fee</h2>
+            <dl class="kv">
+              <dt>Expected</dt><dd><span>≈ $0.01</span><small>0.0000031 ETH, paid by the treasury</small></dd>
+              <dt>Cap</dt><dd><span>0.00007 ETH</span><small>Set high on purpose. You pay the actual fee, never the cap.</small></dd>
+            </dl>
+            <details>
+              <summary>Why it costs more</summary>
+              <p class="tech">Quantum-safe signatures are larger and take more work to check. This 2-of-3 payment uses about 307,000 gas, against about 143,000 for a standard multisig: +$0.005 here. On Ethereum the difference is about a dollar.</p>
+            </details>
+          </div>
+
+          <div class="card">
+            <h2>Replace or cancel</h2>
+            <p class="tech">At each queue position, every member has one approval key and one spare. A replacement or cancellation uses the spare of everyone who already approved this one.</p>
+            <div class="tbl">
+              <table class="matrix">
+                <thead><tr><th>At #3,341</th><th>Approval key</th><th>Spare key</th></tr></thead>
+                <tbody>
+                  <tr><td>Ana</td><td><span class="cell">used</span></td><td><span class="cell" id="m-ana-spare">free</span></td></tr>
+                  <tr><td>Bo</td><td><span class="cell" id="m-bo-appr">free</span></td><td><span class="cell">free</span></td></tr>
+                  <tr><td>Chidi</td><td><span class="cell">free</span></td><td><span class="cell">free</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="actions">
+              <button class="btn small" type="button" id="rc-replace">Replace</button>
+              <button class="btn small danger" type="button" id="rc-cancel">Cancel payment</button>
+            </div>
+            <div class="versions" id="versions" hidden>
+              <div class="ver"><span>Original · 25,000 USDC</span><span class="mono" id="v1-count">1 of 2</span></div>
+              <div class="ver"><span id="v2-title">Cancellation · empty operation</span><span class="mono">0 of 2</span></div>
+              <p class="tech">Two versions now share #3,341. The first one to reach 2 approvals and be included wins; the other becomes void. Ana would approve the new version with her spare key.</p>
+              <div class="band warn" id="race" hidden>
+                <svg class="i"><use href="#i-alert"/></svg>
+                <div><span>The original is already fully approved, so this is a race. The team queue has stopped handing it to relays, but anyone holding it could still submit it.</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2>Next in this queue</h2>
+            <div class="li"><span>#3,342 · Reimburse audit deposit</span><small>runs after #3,341</small></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 Signer: approve -->
+    <section class="screen" data-screen="approve" aria-labelledby="h-approve" hidden>
+      <div class="head">
+        <p class="eyebrow">Signer · on Bo's laptop</p>
+        <h1 id="h-approve">Review a request</h1>
+        <p class="lede">The signer decodes every request itself. Members learn to trust what this dark frame shows, never the web page.</p>
+      </div>
+      <div class="seg" role="tablist" aria-label="Request type" data-tabs>
+        <button type="button" role="tab" aria-selected="true" data-tab="req-pay">Payment</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="req-addon">Add-on install (example)</button>
+      </div>
+
+      <div class="signer" id="req-pay" role="tabpanel">
+        <div class="signer-bar"><svg class="i"><use href="#i-lock"/></svg>Winterlock Signer<span class="dev">Bo's laptop · this device</span></div>
+        <div class="signer-body">
+          <p class="eyebrow">Approve payment · Ridgeline Grants · Arbitrum</p>
+          <p class="s-title">Send 25,000 USDC</p>
+          <dl class="kv">
+            <dt>To</dt><dd><code class="addr">0x5c1E 7b20 41aa 0F3c 8D19 e6B2 77c0 d4A1 3e58 9a2F</code><small>Grant recipient, round 3 · in the team's address book</small></dd>
+            <dt>Network</dt><dd>Arbitrum · chain 42161</dd>
+            <dt>Queue position</dt><dd>#3,341 · next on Arbitrum</dd>
+            <dt>Fee cap</dt><dd><span>0.00007 ETH</span><small>The treasury pays the actual fee, about 0.0000031 ETH</small></dd>
+          </dl>
+          <ul class="checks">
+            <li class="ok"><svg class="i"><use href="#i-check"/></svg>Decoded on this laptop from the raw operation</li>
+            <li class="ok"><svg class="i"><use href="#i-check"/></svg>Calls only the USDC token: one transfer</li>
+            <li class="ok"><svg class="i"><use href="#i-check"/></svg>No add-ons, no change to the team</li>
+            <li class="ok"><svg class="i"><use href="#i-check"/></svg>This account, this network only</li>
+          </ul>
+          <details>
+            <summary>Raw operation</summary>
+<pre class="raw">sender          0x7a3F9e21B0d84c55E6a1F02d93b7C8e4a5D2c41E
+nonce           lane: Winterlock validator 0x0532…685E
+                sequence: 3341
+callData        execute (single call)
+  target        0xaf88d065e77c8cC2239327C5EDb3A432268e5831  USDC
+  value         0
+  data          transfer(0x5c1E7b2041aa0F3c8D19e6B277c0d4A13e589a2F,
+                         25000000000)
+maxFeePerGas          0.2 gwei   (cap)
+maxPriorityFeePerGas  0.01 gwei
+your entry      member 2 · slot 0 (approval key) · no certificate</pre>
+          </details>
+          <div class="keybox">
+            <span class="pips" aria-hidden="true"><i class="pip next" id="kb-pip"></i><i class="pip"></i></span>
+            <div>
+              <p><b id="kb-line">Uses your approval key for #3,341.</b> Your spare stays free for one replacement or cancellation.</p>
+              <p class="muted">Arbitrum key set: positions #0 to #4,095 · 82% used</p>
+            </div>
+          </div>
+          <div class="actions" id="ap-actions">
+            <button class="btn primary" type="button" id="ap-go"><svg class="i"><use href="#i-key"/></svg>Approve</button>
+            <button class="btn quiet" type="button" id="ap-reject">Reject</button>
+          </div>
+          <p class="tech" id="ap-rejected" hidden>Rejected. Nothing was signed, and your keys for #3,341 are unchanged.</p>
+          <ol class="steps" id="ap-steps" hidden>
+            <li>Save to key log</li>
+            <li id="ap-sign">Sign with a single-use key</li>
+            <li>Send approval to the team queue</li>
+          </ol>
+          <div class="done-box" id="ap-done" hidden>
+            <div class="band ok"><svg class="i"><use href="#i-check"/></svg><div><b>Approved. 2 of 2 approvals are in.</b><span>The team app is sending the payment to a relay.</span></div></div>
+            <div class="actions"><a class="btn primary" href="#proposal">Back to the proposal<svg class="i"><use href="#i-arrow"/></svg></a></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="signer" id="req-addon" role="tabpanel" hidden>
+        <div class="signer-bar"><svg class="i"><use href="#i-lock"/></svg>Winterlock Signer<span class="dev">Bo's laptop · this device</span></div>
+        <div class="signer-body">
+          <p class="eyebrow">Approve add-on install · Ridgeline Grants · Ethereum · #58</p>
+          <div class="danger-head">
+            <svg class="i"><use href="#i-alert"/></svg>
+            <div><h2>This adds a second way into the treasury</h2><p>Whoever holds this add-on's key could move all funds on Ethereum without the team's approvals, using ordinary ECDSA signatures that aren't quantum-safe.</p></div>
+          </div>
+          <dl class="kv">
+            <dt>Add-on</dt><dd><span>Validator <code>0x8104…e3A9</code></span><small>Proposed by Ana at 09:12</small></dd>
+            <dt>Ways in</dt><dd>Ethereum: 1 → 2 · other networks unchanged</dd>
+          </dl>
+          <ul class="checks">
+            <li class="bad"><svg class="i"><use href="#i-x"/></svg>Not on Winterlock's reviewed list</li>
+            <li class="bad"><svg class="i"><use href="#i-x"/></svg>Accepts ECDSA signatures</li>
+            <li class="warn"><svg class="i"><use href="#i-alert"/></svg>Every member should review this, not only two</li>
+          </ul>
+          <p class="tech">If you didn't expect this request, reject it and tell your team on another channel.</p>
+          <div class="field">
+            <label for="addon-confirm">Type the team's name to approve anyway</label>
+            <input type="text" id="addon-confirm" autocomplete="off" placeholder="Ridgeline Grants">
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button" id="addon-reject">Reject</button>
+            <button class="btn danger" type="button" id="addon-go" disabled>Approve install</button>
+          </div>
+          <p class="tech" id="addon-note" hidden></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 New network -->
+    <section class="screen" data-screen="activate" aria-labelledby="h-activate" hidden>
+      <div class="head">
+        <p class="eyebrow">Networks · Base</p>
+        <h1 id="h-activate">Use Ridgeline Grants on Base</h1>
+        <p class="lede">Your treasury has the same address on every network, and 1,200 USDC is already waiting on Base. The team's first payment there sets the account up.</p>
+      </div>
+      <div class="cols">
+        <div class="stack">
+          <div class="card">
+            <h2>What happens</h2>
+            <ol class="seq">
+              <li><div><b>Each approving member's signer makes a fresh key set for Base</b><small>4,096 queue positions, about 10 seconds on a laptop</small></div></li>
+              <li><div><b>Their main keys sign an introduction for it</b><small>Valid only for this account, on Base, for that member</small></div></li>
+              <li><div><b>The first payment carries the introductions</b><small>It deploys the account and stores the key sets. Later payments cost the normal amount.</small></div></li>
+            </ol>
+            <details>
+              <summary>In technical terms</summary>
+              <p class="tech">One key of the member's master tree signs a certificate that binds a per-chain WOTS+ key tree to chain 8453, the validator, this account and the member (decision D10). The validator stores the tree on the first operation that carries it, about 190k gas per member.</p>
+            </details>
+          </div>
+
+          <div class="card">
+            <h2>First operation on Base</h2>
+            <div class="opts" role="radiogroup" aria-label="First operation">
+              <label class="opt"><input type="radio" name="first-op" id="fo-pay" value="pay" checked><span><b>Set up with a payment</b><small>Return 1,200 USDC to 0x3dE0…71Fa, the grantee who sent it by mistake</small></span></label>
+              <label class="opt"><input type="radio" name="first-op" id="fo-empty" value="empty"><span><b>Set up only</b><small>An empty operation that deploys the account and activates the approving members</small></span></label>
+            </div>
+            <div class="actions"><button class="btn primary" type="button" id="act-go">Propose Base #0</button></div>
+            <div class="band ok" id="act-done" hidden>
+              <svg class="i"><use href="#i-check"/></svg>
+              <div><b id="act-title">Proposed as Base #0</b><span>Needs 2 approvals. Each approving signer creates its Base key set while you review.</span><a href="#approve">Review in signer</a></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <h2>One-time cost on Base</h2>
+            <div class="tbl">
+              <table>
+                <tbody>
+                  <tr><td>Account setup</td><td class="num mono">≈ $0.005</td></tr>
+                  <tr><td>Activation, 2 approving members</td><td class="num mono">≈ $0.007</td></tr>
+                  <tr><td>The payment itself</td><td class="num mono">≈ $0.006</td></tr>
+                  <tr><td><b>Total</b></td><td class="num mono"><b>≈ $0.02</b></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="tech">Chidi activates Base with his first approval there. The same first payment on Ethereum would cost about $10 at 2 gwei.</p>
+          </div>
+          <div class="card">
+            <h2>Main keys</h2>
+            <p class="tech">Each activation or refresh uses one main key. Every member has 64.</p>
+            <div class="list">
+              <div class="li"><span>Ana</span><small class="mono">2 → 3 of 64</small></div>
+              <div class="li"><span>Bo</span><small class="mono">2 → 3 of 64</small></div>
+              <div class="li"><span>Chidi</span><small class="mono">2 of 64 until he approves on Base</small></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 Message request -->
+    <section class="screen" data-screen="message" aria-labelledby="h-message" hidden>
+      <div class="head">
+        <p class="eyebrow">Messages</p>
+        <h1 id="h-message">Sign as the team</h1>
+        <p class="lede">Messages are signed with each member's reusable key. They take no queue position and need no spare, so members can sign in any order. 2 of 3 must sign.</p>
+      </div>
+      <div class="seg" role="tablist" aria-label="Message type" data-tabs>
+        <button type="button" role="tab" aria-selected="true" data-tab="msg-siwe">Sign-in</button>
+        <button type="button" role="tab" aria-selected="false" data-tab="msg-permit">Permit</button>
+      </div>
+
+      <div class="cols" id="msg-siwe" role="tabpanel">
+        <div class="stack">
+          <div class="signer">
+            <div class="signer-bar"><svg class="i"><use href="#i-lock"/></svg>Winterlock Signer<span class="dev">Bo's laptop · this device</span></div>
+            <div class="signer-body">
+              <p class="eyebrow">Sign message · Ridgeline Grants · Ethereum</p>
+              <p class="s-title">Sign in to vote.example.org</p>
+              <dl class="kv">
+                <dt>Asked by</dt><dd><span>vote.example.org</span><small>Matches the site that sent the request</small></dd>
+                <dt>Account</dt><dd><code>0x7a3F…c41E</code></dd>
+                <dt>Valid until</dt><dd>12 Nov 2026, 10:12 UTC</dd>
+                <dt>Key</dt><dd><span>Your reusable key</span><small>8 signatures so far · no queue position used</small></dd>
+              </dl>
+              <details>
+                <summary>Full message</summary>
+<pre class="raw">vote.example.org wants you to sign in with your Ethereum account:
+0x7a3F9e21B0d84c55E6a1F02d93b7C8e4a5D2c41E
+
+Sign in to submit the Q4 grants report.
+
+URI: https://vote.example.org
+Version: 1
+Chain ID: 1
+Nonce: 8fK2pQx1
+Issued At: 2026-11-05T10:12:00Z
+Expiration Time: 2026-11-12T10:12:00Z</pre>
+              </details>
+              <div class="band warn"><svg class="i"><use href="#i-alert"/></svg><div><span>A signed message can't be withdrawn. It stays valid until it expires.</span></div></div>
+              <div class="actions" id="ms-actions"><button class="btn primary" type="button" id="ms-go"><svg class="i"><use href="#i-key"/></svg>Sign</button><button class="btn quiet" type="button" id="ms-reject">Decline</button></div>
+              <p class="tech" id="ms-rejected" hidden>Declined. Nothing was signed.</p>
+              <ol class="steps" id="ms-steps" hidden>
+                <li>Sign with your reusable key</li>
+                <li>Send signature to the team queue</li>
+              </ol>
+              <div class="band ok" id="ms-done" hidden><svg class="i"><use href="#i-check"/></svg><div><b>2 of 2 signed.</b><span>vote.example.org can now check the team's signature through the account.</span></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <div class="card-head"><h2>Signatures</h2><span class="mono" id="ms-count">1 of 2</span></div>
+            <div class="progress" aria-hidden="true"><i id="ms-bar" style="width:50%"></i></div>
+            <div>
+              <div class="who"><span class="av">A</span><div><div class="who-name">Ana</div><div class="who-state">Signed at 10:15</div></div><div class="who-end"><span class="chip ok">Signed</span></div></div>
+              <div class="who"><span class="av">B</span><div><div class="who-name">Bo<small>you</small></div><div class="who-state" id="ms-bo">Waiting for you</div></div><div class="who-end"><span class="chip warn" id="ms-bo-chip">Waiting</span></div></div>
+              <div class="who"><span class="av">C</span><div><div class="who-name">Chidi</div><div class="who-state">Not needed if Bo signs</div></div><div class="who-end"><span class="chip">Optional</span></div></div>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Why sign-in takes two people</h2>
+            <p class="tech">The site asks the treasury account whether the signature is valid, and the account needs 2 of 3 members. Checking it costs the site nothing; it runs off-chain.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cols" id="msg-permit" role="tabpanel" hidden>
+        <div class="stack">
+          <div class="card">
+            <p class="eyebrow">Request from swap.example.org · Ethereum</p>
+            <p class="s-title">Permit a contract to spend 50,000 USDC</p>
+            <dl class="kv">
+              <dt>Spender</dt><dd><code>0xA11c…7e02</code><small>Swap router · not in the team's address book</small></dd>
+              <dt>Amount</dt><dd>50,000 USDC</dd>
+              <dt>Valid until</dt><dd>30 Nov 2026</dd>
+            </dl>
+            <div class="band warn">
+              <svg class="i"><use href="#i-alert"/></svg>
+              <div><b>Above your team's limit of 10,000 USDC for signed permits</b><span>A signed permit can't be withdrawn. An on-chain approval does the same job, and the team can revoke it at any time.</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn primary" type="button" id="pm-onchain">Propose an on-chain approval instead</button>
+              <button class="btn quiet" type="button" id="pm-decline">Decline request</button>
+            </div>
+            <div class="band ok" id="pm-done" hidden><svg class="i"><use href="#i-check"/></svg><div><b>Proposed as Ethereum #58</b><span>Approve 50,000 USDC for 0xA11c…7e02. Needs 2 approvals, like any payment.</span></div></div>
+            <p class="tech" id="pm-declined" hidden>Declined. swap.example.org was told the team won't sign this permit.</p>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <h2>Cost to the spender</h2>
+            <p class="tech">If the spender checks this permit on-chain, it pays several hundred thousand gas to verify two reusable-key signatures. Some contracts may refuse a signature this large.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 Keys and backup -->
+    <section class="screen" data-screen="keys" aria-labelledby="h-keys" hidden>
+      <div class="head">
+        <p class="eyebrow">Team and keys</p>
+        <h1 id="h-keys">Key health and backups</h1>
+        <div class="meta"><span class="chip warn">Arbitrum key sets 82% used</span><span class="chip warn">1 phrase check due</span><span class="chip ok">Main keys 2 of 64 used</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Key sets by network</h2><button class="btn small" type="button" id="refresh-btn"><svg class="i"><use href="#i-refresh"/></svg>Plan Arbitrum refresh</button></div>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Network</th><th>Covers positions</th><th>Next</th><th>Used</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td>Ethereum</td><td class="mono">#0 to #4,095</td><td class="mono">#57</td><td><div class="meter" title="1%"><i style="width:1.4%"></i></div></td><td><span class="chip ok">Fine</span></td></tr>
+              <tr><td>Arbitrum</td><td class="mono">#0 to #4,095</td><td class="mono">#3,341</td><td><div class="meter warn" title="82%"><i style="width:81.6%"></i></div></td><td><span class="chip warn">Refresh within 2 months</span></td></tr>
+              <tr><td>Base</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td><span class="chip">Made on first use</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="tech">The team's queue uses up key sets, whether or not a member approves every payment. That's why all three members' sets run out together.</p>
+        <div class="band" id="refresh-plan" hidden>
+          <svg class="i"><use href="#i-refresh"/></svg>
+          <div>
+            <b>Staggered refresh, one member at a time</b>
+            <span>Ana: with her next Arbitrum approval · ≈ $0.002</span>
+            <span>Bo: with his first approval after Ana's refresh is included</span>
+            <span>Chidi: with the approval after that</span>
+            <small>Each refresh uses one main key. Spreading them out keeps every payment cheap.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Members</h2>
+        <div class="tbl">
+          <table>
+            <thead><tr><th>Member</th><th>Signing device</th><th>Phrase checked</th><th>Main keys</th><th>Reusable key</th></tr></thead>
+            <tbody>
+              <tr><td><b>Ana</b><br><small>ops lead</small></td><td>Ana's laptop</td><td><span class="chip ok">21 Oct</span></td><td class="mono">2 of 64</td><td class="mono">9 signatures</td></tr>
+              <tr><td><b>Bo</b><br><small>you</small></td><td>Bo's laptop</td><td><span class="chip ok" id="bo-phrase-chip">12 Aug</span></td><td class="mono">2 of 64</td><td class="mono">8 signatures</td></tr>
+              <tr><td><b>Chidi</b><br><small>security lead</small></td><td>Chidi's laptop</td><td><span class="chip warn">3 Aug · due</span></td><td class="mono">2 of 64</td><td class="mono">6 signatures</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="tech">The team sees when a phrase was last checked, never the phrase.</p>
+      </div>
+
+      <div class="pair">
+        <div class="card">
+          <h2>Your recovery phrase</h2>
+          <p class="tech">The only backup you must keep. It restores all your keys. A restore always starts fresh single-use keys, so an old copy can never make you reuse one.</p>
+          <form class="field" id="phrase-form" autocomplete="off">
+            <label for="w4">Check three words from your paper copy</label>
+            <div class="words" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+              <input type="text" id="w4" placeholder="Word 4" aria-label="Word 4">
+              <input type="text" id="w11" placeholder="Word 11" aria-label="Word 11">
+              <input type="text" id="w19" placeholder="Word 19" aria-label="Word 19">
+            </div>
+            <div class="actions"><button class="btn small" type="submit">Check</button><small id="phrase-msg" aria-live="polite">Last checked 12 Aug, 85 days ago</small></div>
+          </form>
+        </div>
+        <div class="card">
+          <h2>Key log and device</h2>
+          <dl class="kv">
+            <dt>Key log</dt><dd><span>On this laptop</span><small>Saved before every approval · last saved today at 09:58</small></dd>
+            <dt>Signing device</dt><dd><span>Bo's laptop</span><small>Active since 3 Sep 2026. Only one device signs for you at a time.</small></dd>
+          </dl>
+          <div class="actions">
+            <a class="btn small quiet" href="#recover" data-choice="move">Move to a new device</a>
+            <a class="btn small quiet" href="#recover" data-choice="lost">I lost my laptop</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 Recovery -->
+    <section class="screen" data-screen="recover" aria-labelledby="h-recover" hidden>
+      <div class="head">
+        <p class="eyebrow">Signer · restore</p>
+        <h1 id="h-recover">Restore Bo on a new laptop</h1>
+        <p class="lede">The safe path is the default: a restored signer never guesses which single-use keys its old laptop used.</p>
+      </div>
+      <div class="signer">
+        <div class="signer-bar"><svg class="i"><use href="#i-lock"/></svg>Winterlock Signer<span class="dev">new laptop · restoring</span></div>
+        <div class="signer-body">
+          <ol class="stepper" aria-label="Restore steps">
+            <li data-st="1">Phrase</li><li data-st="2">Team</li><li data-st="3">Old laptop</li><li data-st="4">Keys</li><li data-st="5">Done</li>
+          </ol>
+
+          <div data-rstep="1" class="stack">
+            <p class="s-title">Enter your recovery phrase</p>
+            <div class="words" aria-label="Recovery phrase, hidden in this mockup" id="words"></div>
+            <small>The words are hidden in this mockup.</small>
+            <div class="actions"><button class="btn primary" type="button" data-rnext>Continue</button></div>
+          </div>
+
+          <div data-rstep="2" class="stack" hidden>
+            <p class="s-title">Found Ridgeline Grants</p>
+            <p class="tech">You're member 2 of 3. The team needs 2 approvals.</p>
+            <div class="tbl">
+              <table>
+                <thead><tr><th>Network</th><th>Account</th><th>Next position</th><th>Pending</th></tr></thead>
+                <tbody>
+                  <tr><td>Ethereum</td><td><span class="chip ok">Active</span></td><td class="mono">#57</td><td>1 payment, being sent</td></tr>
+                  <tr><td>Arbitrum</td><td><span class="chip ok">Active</span></td><td class="mono">#3,341</td><td>2 proposals</td></tr>
+                  <tr><td>Base</td><td><span class="chip">Not set up</span></td><td class="muted">—</td><td class="muted">—</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="actions"><button class="btn quiet" type="button" data-rback>Back</button><button class="btn primary" type="button" data-rnext>Continue</button></div>
+          </div>
+
+          <div data-rstep="3" class="stack" hidden>
+            <p class="s-title">What happened to your old laptop?</p>
+            <div class="opts" role="radiogroup" aria-label="Old laptop">
+              <label class="opt"><input type="radio" name="old" value="move" id="old-move"><span><b>I still have it, and it works</b><small>Move: it hands over its key log and locks itself. No fee.</small></span></label>
+              <label class="opt"><input type="radio" name="old" value="lost" id="old-lost" checked><span><b>It's lost, broken or wiped</b><small>Restore with fresh keys. A small fee on each network.</small></span></label>
+              <label class="opt"><input type="radio" name="old" value="stolen" id="old-stolen"><span><b>Someone else may have my phrase or laptop</b><small>Your keys can't be trusted any more. The team replaces them.</small></span></label>
+            </div>
+            <div class="actions"><button class="btn quiet" type="button" data-rback>Back</button><button class="btn primary" type="button" data-rnext>Continue</button></div>
+          </div>
+
+          <div data-rstep="4" class="stack" hidden>
+            <div data-variant="lost" class="stack">
+              <p class="s-title">Your old single-use keys are retired</p>
+              <p class="tech">This signer will never use them. Your old laptop may have approved proposals this signer can't see, and guessing could mean using a key twice. Your reusable key introduces fresh key sets instead.</p>
+              <div class="tbl">
+                <table>
+                  <thead><tr><th>Network</th><th>Fresh key set</th><th>Introduced by</th><th class="num">One-time fee</th></tr></thead>
+                  <tbody>
+                    <tr><td>Ethereum</td><td class="mono">#57 onward</td><td>reusable key</td><td class="num mono">≈ $2</td></tr>
+                    <tr><td>Arbitrum</td><td class="mono">#3,341 onward</td><td>reusable key</td><td class="num mono">≈ $0.01</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <small>Estimate: about 350,000 gas per network. Each re-activation rides on your next approval there.</small>
+              <div class="band warn"><svg class="i"><use href="#i-alert"/></svg><div><span>If your old laptop approved #3,341 or #3,342, those approvals stop counting once your new keys are active. You'll be asked to approve again.</span></div></div>
+              <div class="band ok"><svg class="i"><use href="#i-users"/></svg><div><span>Meanwhile Ana and Chidi can still approve payments without you: they make 2 of 2.</span></div></div>
+              <ol class="steps" id="rk-steps" hidden>
+                <li>Make an Ethereum key set, 4,096 positions</li>
+                <li>Make an Arbitrum key set, 4,096 positions</li>
+                <li>Sign both introductions with your reusable key</li>
+                <li>Tell the team this laptop now signs for you</li>
+              </ol>
+              <div class="actions"><button class="btn quiet" type="button" data-rback>Back</button><button class="btn primary" type="button" id="rk-go">Create fresh keys</button><button class="btn primary" type="button" data-rnext id="rk-next" hidden>Continue</button></div>
+            </div>
+
+            <div data-variant="move" class="stack" hidden>
+              <p class="s-title">Move from your old laptop</p>
+              <p class="tech">On the old laptop, open the signer and choose Devices, then Move to a new device. Scan the code it shows. The old laptop sends its key log and locks itself before this one signs anything.</p>
+              <div class="pair" style="align-items:center">
+                <div class="qr"><canvas id="qr" width="25" height="25" aria-label="Sample pairing code"></canvas></div>
+                <small>This laptop's pairing code. The old laptop shows its own code to confirm.</small>
+              </div>
+              <ol class="steps" id="mv-steps" hidden>
+                <li>Old laptop: key log sent</li>
+                <li>Old laptop: locked</li>
+                <li>This laptop: key log checked against the chain</li>
+              </ol>
+              <div class="actions"><button class="btn quiet" type="button" data-rback>Back</button><button class="btn primary" type="button" id="mv-go">Simulate the scan</button><button class="btn primary" type="button" data-rnext id="mv-next" hidden>Continue</button></div>
+            </div>
+
+            <div data-variant="stolen" class="stack" hidden>
+              <p class="s-title">This isn't a recovery</p>
+              <p class="tech">If someone else may have your phrase, nothing signed with your keys can be trusted. Ana and Chidi remove you from the team and add you back with new keys. Until then, they hold the 2 approvals the team needs.</p>
+              <div class="band warn"><svg class="i"><use href="#i-alert"/></svg><div><span>Changing members is designed but not built on-chain yet. It must be applied on every network, including ones the team hasn't used.</span></div></div>
+              <div class="actions"><button class="btn quiet" type="button" data-rback>Back</button><button class="btn primary" type="button" id="st-go">Ask Ana and Chidi to replace my keys</button><button class="btn primary" type="button" data-rnext id="st-next" hidden>Continue</button></div>
+            </div>
+          </div>
+
+          <div data-rstep="5" class="stack" hidden>
+            <div data-variant="lost" class="stack">
+              <p class="s-title">You're restored with fresh keys</p>
+              <p class="tech">Your next approval on Ethereum and on Arbitrum includes the re-activation. The old laptop is listed as retired under Devices.</p>
+            </div>
+            <div data-variant="move" class="stack" hidden>
+              <p class="s-title">Moved. The old laptop is locked.</p>
+              <p class="tech">This laptop continues with the same keys and key log. No fee was needed.</p>
+            </div>
+            <div data-variant="stolen" class="stack" hidden>
+              <p class="s-title">The team has been asked to replace your keys</p>
+              <p class="tech">Ana and Chidi see a "Replace Bo's keys" proposal on every network. This laptop holds no keys for the team until it's approved.</p>
+            </div>
+            <div class="actions"><a class="btn primary" href="#keys">Back to key health</a><button class="btn quiet" type="button" id="r-restart">Start over</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function () {
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var wait = function (ms) { return new Promise(function (r) { setTimeout(r, reduce ? Math.min(ms, 120) : ms); }); };
+
+  /* Routing */
+  var SCREENS = ['overview', 'proposal', 'approve', 'activate', 'message', 'keys', 'recover'];
+  var NAV_FOR = { overview: 'overview', proposal: 'proposal', approve: 'proposal', activate: 'activate', message: 'message', keys: 'keys', recover: 'keys' };
+  function show(name) {
+    if (SCREENS.indexOf(name) < 0) name = 'overview';
+    $$('[data-screen]').forEach(function (s) { s.hidden = s.dataset.screen !== name; });
+    $$('.dtab').forEach(function (a) {
+      if (a.getAttribute('href') === '#' + name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+    $$('.nav a').forEach(function (a) {
+      if (a.dataset.nav === NAV_FOR[name]) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+    var tabs = $('.demo-tabs'), cur = $('.dtab[aria-current]');
+    if (tabs && cur) {
+      var l = cur.offsetLeft - tabs.offsetLeft, r = l + cur.offsetWidth;
+      if (l < tabs.scrollLeft || r > tabs.scrollLeft + tabs.clientWidth) tabs.scrollLeft = Math.max(0, l - 16);
+    }
+    window.scrollTo(0, 0);
+    if (name === 'proposal') advance();
+    if (name === 'recover') rshow();
+  }
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+
+  /* Copy */
+  $$('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var label = b.querySelector('span'), text = b.dataset.copy;
+      var ok = function () { label.textContent = 'Copied'; setTimeout(function () { label.textContent = 'Copy'; }, 1600); };
+      var fallback = function () {
+        var code = b.previousElementSibling, sel = window.getSelection(), range = document.createRange();
+        range.selectNodeContents(code); sel.removeAllRanges(); sel.addRange(range);
+        label.textContent = 'Selected';
+      };
+      try { navigator.clipboard.writeText(text).then(ok, fallback); } catch (e) { fallback(); }
+    });
+  });
+
+  /* Segmented tabs */
+  $$('[data-tabs]').forEach(function (group) {
+    var buttons = $$('button[data-tab]', group);
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        buttons.forEach(function (b) {
+          var on = b === btn;
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
+          document.getElementById(b.dataset.tab).hidden = !on;
+        });
+      });
+    });
+  });
+
+  /* Proposal state */
+  var S = { bo: false, sent: false, included: false, running: false, version: null };
+  function chip(el, kind, text) { el.className = 'chip' + (kind ? ' ' + kind : ''); el.textContent = text; }
+  function tl(id, state, time) {
+    var li = document.getElementById(id);
+    li.className = state; li.querySelector('time').textContent = time;
+  }
+  function render() {
+    var n = S.bo ? 2 : 1;
+    $('#p-count').textContent = n + ' of 2';
+    $('#ov-3341-count').textContent = n + ' of 2';
+    $('#v1-count').textContent = n + ' of 2';
+    $('#p-bar').style.width = (n * 50) + '%';
+    var status = S.included ? ['ok', 'Done · included in block 289,114,203'] : S.sent ? ['ok', 'Sent · waiting for inclusion'] : S.bo ? ['ok', 'Approved · sending'] : ['warn', 'Needs 1 more approval'];
+    chip($('#p-status'), status[0], status[1]);
+    chip($('#ov-3341-chip'), S.included ? 'ok' : S.bo ? 'ok' : 'warn', S.included ? 'Done' : S.sent ? 'Sent' : S.bo ? 'Approved' : 'Needs you');
+    $('#bo-state').textContent = S.bo ? 'Approved at 11:05 with the approval key' : 'Waiting for you';
+    $('#bo-pip').className = 'pip' + (S.bo ? ' on' : '');
+    $('#bo-action').hidden = S.bo;
+    $('#m-bo-appr').textContent = S.bo ? 'used' : 'free';
+    $('#chidi-state').textContent = S.bo ? 'Not needed' : 'Can approve';
+    tl('t-bo', S.bo ? 'done' : 'now', S.bo ? '11:05' : 'waiting');
+    tl('t-sent', S.sent ? 'done' : S.bo ? 'now' : '', S.sent ? '11:05' : S.bo ? 'now' : '—');
+    tl('t-inc', S.included ? 'done' : S.sent ? 'now' : '', S.included ? '11:06' : S.sent ? 'pending' : '—');
+    $('#nav-q').hidden = S.bo;
+    $('#att-3341').hidden = S.bo;
+    if (S.version) $('#race').hidden = !S.bo;
+  }
+  function advance() {
+    if (!S.bo || S.included || S.running) return;
+    S.running = true;
+    wait(900).then(function () { S.sent = true; render(); return wait(1600); })
+      .then(function () { S.included = true; S.running = false; render(); });
+  }
+
+  /* Replace or cancel */
+  function addVersion(kind) {
+    if (S.version) return;
+    S.version = kind;
+    $('#versions').hidden = false;
+    $('#v2-title').textContent = kind === 'cancel' ? 'Cancellation · empty operation' : 'Replacement · 24,000 USDC to 0x5c1E…9a2F';
+    $('#m-ana-spare').textContent = 'for the new version';
+    $('#rc-replace').disabled = true; $('#rc-cancel').disabled = true;
+    $('#race').hidden = !S.bo;
+  }
+  $('#rc-replace').addEventListener('click', function () { addVersion('replace'); });
+  $('#rc-cancel').addEventListener('click', function () { addVersion('cancel'); });
+  $('#export-btn').addEventListener('click', function () { $('#export-note').hidden = false; });
+
+  /* Signer: approve */
+  function runSteps(list, ms, onStep) {
+    list.hidden = false;
+    var items = $$('li', list), p = Promise.resolve();
+    items.forEach(function (li, i) {
+      p = p.then(function () {
+        li.className = 'active';
+        return (onStep ? onStep(i, li) : Promise.resolve()).then(function () { return wait(ms[i] || 600); });
+      }).then(function () { li.className = 'done'; });
+    });
+    return p;
+  }
+  $('#ap-go').addEventListener('click', function () {
+    if (S.bo) return;
+    $('#ap-go').disabled = true; $('#ap-reject').disabled = true;
+    $('#kb-pip').className = 'pip on';
+    runSteps($('#ap-steps'), [650, 900, 650], function (i, li) {
+      if (i !== 1) return Promise.resolve();
+      var target = 941, start = Date.now(), dur = reduce ? 0 : 850;
+      return new Promise(function (res) {
+        (function tick() {
+          var t = dur ? Math.min(1, (Date.now() - start) / dur) : 1;
+          li.textContent = 'Sign with a single-use key · ' + Math.round(target * t) + ' tries to find a valid signature';
+          if (t < 1) requestAnimationFrame(tick); else res();
+        })();
+      });
+    }).then(function () {
+      S.bo = true; render();
+      $('#kb-line').textContent = 'Used your approval key for #3,341.';
+      $('#ap-actions').hidden = true;
+      $('#ap-done').hidden = false;
+    });
+  });
+  $('#ap-reject').addEventListener('click', function () { $('#ap-rejected').hidden = false; });
+
+  /* Signer: add-on */
+  var addonInput = $('#addon-confirm');
+  addonInput.addEventListener('input', function () {
+    $('#addon-go').disabled = addonInput.value.trim().toLowerCase() !== 'ridgeline grants';
+  });
+  $('#addon-go').addEventListener('click', function () {
+    var n = $('#addon-note'); n.hidden = false;
+    n.textContent = 'Approved. If the install goes through, the overview shows 2 ways in on Ethereum until the team removes the add-on.';
+  });
+  $('#addon-reject').addEventListener('click', function () {
+    var n = $('#addon-note'); n.hidden = false;
+    n.textContent = 'Rejected. Nothing was signed. Tell your team on another channel that you didn’t expect this request.';
+  });
+
+  /* Activation */
+  $('#act-go').addEventListener('click', function () {
+    var pay = $('#fo-pay').checked;
+    $('#act-title').textContent = pay ? 'Proposed as Base #0: set up and return 1,200 USDC' : 'Proposed as Base #0: set up only';
+    $('#act-done').hidden = false;
+    $('#act-go').disabled = true;
+  });
+  $$('input[name="first-op"]').forEach(function (r) {
+    r.addEventListener('change', function () { $('#act-go').disabled = false; $('#act-done').hidden = true; });
+  });
+
+  /* Message signing */
+  $('#ms-go').addEventListener('click', function () {
+    $('#ms-go').disabled = true; $('#ms-reject').disabled = true;
+    runSteps($('#ms-steps'), [1000, 600]).then(function () {
+      $('#ms-actions').hidden = true; $('#ms-done').hidden = false;
+      $('#ms-count').textContent = '2 of 2'; $('#ms-bar').style.width = '100%';
+      $('#ms-bo').textContent = 'Signed at 11:08'; chip($('#ms-bo-chip'), 'ok', 'Signed');
+      $('#att-msg').textContent = '2 of 2 members signed'; $('#nav-m').hidden = true;
+    });
+  });
+  $('#ms-reject').addEventListener('click', function () { $('#ms-rejected').hidden = false; });
+  $('#pm-onchain').addEventListener('click', function () { $('#pm-done').hidden = false; $('#pm-declined').hidden = true; $('#pm-onchain').disabled = true; $('#pm-decline').disabled = true; });
+  $('#pm-decline').addEventListener('click', function () { $('#pm-declined').hidden = false; $('#pm-onchain').disabled = true; $('#pm-decline').disabled = true; });
+
+  /* Keys */
+  $('#refresh-btn').addEventListener('click', function () { $('#refresh-plan').hidden = false; });
+  $('#phrase-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var vals = ['#w4', '#w11', '#w19'].map(function (s) { return $(s).value.trim(); });
+    var msg = $('#phrase-msg');
+    if (vals.some(function (v) { return !v; })) { msg.textContent = 'Enter all three words from your paper copy.'; return; }
+    msg.textContent = 'Matches. Checked today; next reminder on 3 Feb 2027.';
+    chip($('#bo-phrase-chip'), 'ok', 'Today');
+    ['#w4', '#w11', '#w19'].forEach(function (s) { $(s).value = ''; });
+  });
+
+  /* Recovery */
+  var R = { step: 1, choice: 'lost', done: false };
+  var words = $('#words');
+  for (var i = 1; i <= 24; i++) {
+    var w = document.createElement('div'); w.className = 'word';
+    w.innerHTML = '<b>' + i + '</b><span aria-hidden="true">•••••</span>';
+    words.appendChild(w);
+  }
+  $$('[data-choice]').forEach(function (a) {
+    a.addEventListener('click', function () { R.choice = a.dataset.choice; R.step = 1; R.done = false; resetRecovery(); });
+  });
+  function resetRecovery() {
+    var radio = document.getElementById('old-' + R.choice); if (radio) radio.checked = true;
+    ['rk', 'mv', 'st'].forEach(function (p) {
+      var go = $('#' + p + '-go'), next = $('#' + p + '-next'), steps = $('#' + p + '-steps');
+      go.hidden = false; go.disabled = false; next.hidden = true;
+      if (steps) { steps.hidden = true; $$('li', steps).forEach(function (li) { li.className = ''; }); }
+    });
+  }
+  function rshow() {
+    $$('[data-rstep]').forEach(function (p) { p.hidden = +p.dataset.rstep !== R.step; });
+    $$('[data-rstep="4"] [data-variant], [data-rstep="5"] [data-variant]').forEach(function (v) { v.hidden = v.dataset.variant !== R.choice; });
+    $$('.stepper li').forEach(function (li) {
+      var n = +li.dataset.st;
+      li.className = n < R.step ? 'done' : '';
+      if (n === R.step) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+    });
+    if (R.step === 4 && R.choice === 'move') drawQR();
+  }
+  $$('[data-rnext]').forEach(function (b) { b.addEventListener('click', function () { R.step = Math.min(5, R.step + 1); rshow(); }); });
+  $$('[data-rback]').forEach(function (b) { b.addEventListener('click', function () { R.step = Math.max(1, R.step - 1); rshow(); }); });
+  $$('input[name="old"]').forEach(function (r) { r.addEventListener('change', function () { R.choice = r.value; resetRecovery(); }); });
+  function finish(prefix, ms) {
+    var go = $('#' + prefix + '-go');
+    go.disabled = true;
+    var steps = $('#' + prefix + '-steps');
+    var p = steps ? runSteps(steps, ms) : wait(500);
+    p.then(function () { go.hidden = true; $('#' + prefix + '-next').hidden = false; });
+  }
+  $('#rk-go').addEventListener('click', function () { finish('rk', [900, 900, 800, 500]); });
+  $('#mv-go').addEventListener('click', function () { finish('mv', [700, 600, 800]); });
+  $('#st-go').addEventListener('click', function () { finish('st'); });
+  $('#r-restart').addEventListener('click', function () { R.step = 1; R.choice = 'lost'; resetRecovery(); rshow(); });
+
+  function drawQR() {
+    var c = $('#qr'); if (!c || !c.getContext) return;
+    var ctx = c.getContext('2d'), n = 25, cs = getComputedStyle(document.documentElement);
+    var ink = cs.getPropertyValue('--ink').trim() || '#102030', bg = cs.getPropertyValue('--surface').trim() || '#F8FAFB';
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, n, n);
+    var seed = 7;
+    var rnd = function () { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    ctx.fillStyle = ink;
+    for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) if (rnd() > 0.52) ctx.fillRect(x, y, 1, 1);
+    [[0, 0], [n - 7, 0], [0, n - 7]].forEach(function (p) {
+      ctx.fillStyle = bg; ctx.fillRect(p[0] - (p[0] ? 1 : 0), p[1] - (p[1] ? 1 : 0), 8, 8);
+      ctx.fillStyle = ink; ctx.fillRect(p[0], p[1], 7, 7);
+      ctx.fillStyle = bg; ctx.fillRect(p[0] + 1, p[1] + 1, 5, 5);
+      ctx.fillStyle = ink; ctx.fillRect(p[0] + 2, p[1] + 2, 3, 3);
+    });
+  }
+
+  render();
+  show(location.hash.slice(1));
+})();
+</script>
