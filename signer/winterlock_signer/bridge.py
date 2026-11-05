@@ -370,7 +370,8 @@ class Bridge:
 
     def sign_message(self, method, params, deadline):
         threshold, owners = self.owners()
-        d = messages.decide(method, params, self.safe, self.chain, self.dapp.get("url"), owners)
+        # a connected app that names no URL can't pass a sign-in's domain check
+        d = messages.decide(method, params, self.safe, self.chain, self.dapp.get("url") or "", owners)
         self.ui.show(f"Request from {self.dapp.get('name') or 'the app'} ({self.dapp.get('url') or 'no URL'})",
                      *d.show())
         if d.path == messages.REFUSE:
@@ -516,6 +517,13 @@ def serve(wallet: Wallet, session, bridge: Bridge, ui: Ui, max_requests=None, st
             ui.show(f"--> error {e.code}: {e.message}")
         except RelayError as e:
             ui.show(f"--> couldn't answer: {e}")
+        except Exception as e:  # the chain, the service or the key log failed: answer, and keep the session
+            msg = f"{type(e).__name__}: {str(e)[:300]}"
+            ui.show(f"--> failed: {msg}")
+            try:
+                wallet.respond(obj, error=(-32603, f"the signer failed: {msg}"))
+            except RelayError:
+                pass
         done += 1
     return done
 
@@ -603,6 +611,8 @@ def cmd_connect(args):
             serve(wallet, session, bridge, ui, args.max_requests)
         except KeyboardInterrupt:
             cli.out("")
+    except KeyboardInterrupt:
+        raise cli.Abort("interrupted before the session started") from None
     finally:
         if session is not None and session.topic in wallet.sessions:
             wallet.disconnect(session)

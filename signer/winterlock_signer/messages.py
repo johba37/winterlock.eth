@@ -249,7 +249,8 @@ def _decide_personal(params, safe, chain_id, dapp_url, now) -> Decision:
     if dapp_url is not None:
         if not _related(domain_host, _host(dapp_url)):
             return _refuse(m, "sign-in with Ethereum", f"the sign-in is for {siwe['domain']}, but the connected app "
-                                                       f"says it is {dapp_url}: a site may be signing you in "
+                                                       f"says it is {dapp_url or 'nowhere (no URL)'}: a site may be "
+                                                       "signing you in "
                                                        "somewhere else", lines)
     else:
         warnings.append(f"check that you are signing in to {siwe['domain']}")
@@ -369,7 +370,7 @@ def check_doc(doc: dict, chain_id: int, owners=(), now=None) -> Decision:
     if doc.get("chain") != chain_id:
         raise ValueError(f"the message file is for chain {doc.get('chain')}, not {chain_id}")
     req = doc.get("request") or {}
-    d = decide(req.get("method"), req.get("params"), doc["safe"], chain_id, (doc.get("dapp") or {}).get("url"),
+    d = decide(req.get("method"), req.get("params"), doc["safe"], chain_id, (doc.get("dapp") or {}).get("url") or "",
                owners, now)
     if d.path == REFUSE:
         return d

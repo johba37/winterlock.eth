@@ -65,6 +65,22 @@ signer/winterlock-signer execute --chain sepolia --safe-tx-hash 0x...
 cd signer && .venv/bin/python -m unittest discover -s tests -t .   # tests
 ```
 
+### Connect to a dapp
+
+`connect` pairs the signer with a dapp over WalletConnect v2. The dapp sees the team's Safe as its account. Each request is decoded and shown, and is signed only after you agree.
+- **Transactions** (`eth_sendTransaction`, `wallet_sendCalls`): you sign one as a member, and it is proposed to Safe's Transaction Service like `propose`. The dapp gets the SafeTx hash. The other members confirm and execute as usual.
+- **Sign-in and other off-chain messages:** your stateless key signs, and a message file is written. The other members sign it with `message` and send it back, or post their signatures to a collection endpoint. Once enough members have signed, the dapp gets the Safe's combined signature.
+- **Permits and other messages checked on-chain:** a Safe transaction approves the message through Safe's SignMessageLib. After it executes, the dapp gets `0x`.
+- **Refused:** requests the signer can't decode or that look like an attack (a bare hash, `eth_sign`, another site's sign-in, the Safe's own typed data).
+
+```sh
+export WALLETCONNECT_PROJECT_ID=...      # from cloud.reown.com; Reown's relay requires one
+signer/winterlock-signer connect --chain sepolia --safe 0x...   # paste the dapp's wc: URI when asked (it isn't shown)
+signer/winterlock-signer message --chain sepolia --file safe-message-....json   # another member signs a message
+```
+
+The design and its limits are described in [docs/notes/walletconnect.md](docs/notes/walletconnect.md).
+
 ## Preview locally
 
 ```sh

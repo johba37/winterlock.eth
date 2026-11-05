@@ -107,9 +107,11 @@ class Decisions(unittest.TestCase):
                         "somewhere else")
         expired = siwe(extra="\nExpiration Time: 2026-01-01T00:00:00Z")
         self.assertPath(self.decide("personal_sign", [hx(expired), SAFE]), messages.REFUSE, "expired")
-        # a member signing from a file has no app URL to compare: allowed, with a warning naming the domain
+        # without an app URL to compare (decide's caller has none): allowed, with a warning naming the domain
         self.assertPath(self.decide("personal_sign", [hx(siwe()), SAFE], url=None), messages.OFFCHAIN,
                         "check that you are signing in to app.example")
+        # a connected app, or a message file, that names no URL can't pass the check
+        self.assertPath(self.decide("personal_sign", [hx(siwe()), SAFE], url=""), messages.REFUSE, "no URL")
 
     def test_text_and_refusals(self):
         self.assertPath(self.decide("personal_sign", [hx("Welcome! Sign to accept the terms."), SAFE]),
@@ -203,6 +205,7 @@ class Files(unittest.TestCase):
         # a file whose app URL doesn't match the sign-in's domain is refused by every member, not only the first
         self.assertEqual(messages.check_doc(dict(doc, dapp={"url": "https://evil.example"}), CHAIN, now=NOW).path,
                          messages.REFUSE)
+        self.assertEqual(messages.check_doc(dict(doc, dapp={}), CHAIN, now=NOW).path, messages.REFUSE)
 
     def test_merge_and_combine(self):
         d = messages.decide("personal_sign", [hx("hello"), SAFE], SAFE, CHAIN, None, (), NOW)
