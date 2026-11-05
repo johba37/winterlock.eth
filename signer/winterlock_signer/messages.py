@@ -227,8 +227,8 @@ def _decide_personal(params, safe, chain_id, dapp_url, now) -> Decision:
     siwe = parse_siwe(text)
     if not siwe:
         return Decision(m, "text message", OFFCHAIN, h, lines, [],
-                        "a text message, which apps check off-chain: the members' stateless signatures, collected "
-                        "peer to peer")
+                        "a text message, which apps check off-chain: the members' stateless signatures, gathered "
+                        "from the other members")
     warnings = []
     if not _same(siwe["address"], safe):
         return _refuse(m, "sign-in with Ethereum", f"the sign-in is for {siwe['address']}, not this Safe", lines)
@@ -256,8 +256,8 @@ def _decide_personal(params, safe, chain_id, dapp_url, now) -> Decision:
     if siwe.get("URI") and not _related(_host(siwe["URI"]), domain_host):
         warnings.append(f"the URI {siwe['URI']} is not on {siwe['domain']}")
     return Decision(m, f"sign-in with Ethereum to {siwe['domain']}", OFFCHAIN, h, lines, warnings,
-                    "a sign-in, which the app checks off-chain: the members' stateless signatures, collected peer to "
-                    "peer")
+                    "a sign-in, which the app checks off-chain: the members' stateless signatures, gathered from the "
+                    "other members")
 
 
 def _decide_typed(method, params, safe, chain_id, owners, now) -> Decision:
@@ -325,7 +325,7 @@ def _decide_typed(method, params, safe, chain_id, owners, now) -> Decision:
                         "it through SignMessageLib; then the Safe accepts an empty signature")
     return Decision(method, kind, OFFCHAIN, h, lines, warnings,
                     "it names no verifying contract, so a server checks it off-chain: the members' stateless "
-                    "signatures, collected peer to peer")
+                    "signatures, gathered from the other members")
 
 
 def _domain_line(td):

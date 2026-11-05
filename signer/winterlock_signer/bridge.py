@@ -28,7 +28,7 @@ import sys
 import threading
 import time
 
-from . import abi, messages, owner, safelibs, walletconnect
+from . import abi, collect, messages, owner, safelibs, walletconnect
 from .abi import b2h, checksum, h2b, word
 from .keccak import keccak256
 from .keylog import Refused
@@ -147,9 +147,10 @@ def session_namespaces(proposal, chain: int, safe: str):
 
 class Bridge:
     def __init__(self, member, ctx, safe, ui: Ui = None, exchange_dir=".", sign_message_lib=None, multisend=None,
-                 wait_for_execution=False, poll=3.0, dapp=None):
+                 wait_for_execution=False, poll=3.0, dapp=None, collect_url=None):
         from . import cli
         self.cli = cli
+        self.collect = collect_url
         self.m = member
         self.ctx = ctx
         self.rpc = ctx.rpc
@@ -408,7 +409,8 @@ class Bridge:
         return os.path.join(self.exchange_dir, f"safe-message-{smh[2:14]}.json")
 
     def _gather(self, doc):
-        """Merges the signatures of every message file in the exchange directory for the same message"""
+        """Merges the signatures for the same message from every message file in the exchange directory, and from
+        the collection endpoint if there is one"""
         for path in glob.glob(os.path.join(self.exchange_dir, "*.json")):
             try:
                 with open(path) as f:
@@ -417,6 +419,18 @@ class Bridge:
                 continue
             if isinstance(other, dict) and other.get("kind") == messages.DOC_KIND:
                 messages.merge(doc, other)
+        if self.collect:
+            try:
+                messages.merge(doc, collect.get(self.collect, doc["safeMessageHash"]))
+            except collect.CollectError:
+                pass  # not posted yet, or the endpoint is down: files still work
+
+    def _post(self, doc):
+        if self.collect:
+            try:
+                collect.put(self.collect, doc)
+            except collect.CollectError as e:
+                self.ui.show(f"  (collection endpoint: {e}; message files still work)")
 
     def collect_offchain(self, method, params, d, threshold, owners, deadline):
         smh = b2h(messages.safe_message_hash(self.chain, self.safe, d.app_hash))
@@ -437,11 +451,15 @@ class Bridge:
             valid = messages.valid_signatures(self.rpc, doc, owners)
         self.cli.save_file(path, doc)
         if len(valid) < threshold:
+            self._post(doc)
             until = time.strftime('%H:%M:%S', time.localtime(deadline + MARGIN))
             self.ui.show(f"Signatures {len(valid)} of {threshold}. Send {path} to the other members: each runs",
                          f"  winterlock-signer message --chain {self.chain} --file <the file>",
-                         f"  and sends it back into {self.exchange_dir}. Waiting until the app's request expires "
-                         f"({until}).")
+                         f"  and sends it back into {self.exchange_dir}.")
+            if self.collect:
+                self.ui.show("  Or, through the collection endpoint:",
+                             f"  winterlock-signer message --chain {self.chain} --collect {self.collect} --hash {smh}")
+            self.ui.show(f"Waiting until the app's request expires ({until}).")
         while len(valid) < threshold:
             if time.time() >= deadline or self.stop.is_set():
                 raise RpcFail(-32000, f"{len(valid)} of {threshold} signatures before the request expired; the "
@@ -531,6 +549,8 @@ def cmd_connect(args):
     if not uri:
         raise cli.Abort("no WalletConnect URI")
     ui = Ui(yes=args.yes)
+    if args.yes:
+        cli.out("WARNING: --yes: every request the signer's rules allow is signed without asking you")
     os.makedirs(args.exchange_dir, exist_ok=True)
     relay = walletconnect.Relay(relay_url, project, log=cli.out)
     try:
@@ -578,7 +598,7 @@ def cmd_connect(args):
         session = wallet.approve(proposal, ns, props)
         cli.out("Connected: answering the app's requests (Ctrl-C disconnects)")
         bridge = Bridge(m, ctx, safe, ui, args.exchange_dir, args.sign_message_lib, args.multisend,
-                        args.wait_for_execution, poll=args.poll, dapp=md)
+                        args.wait_for_execution, poll=args.poll, dapp=md, collect_url=args.collect)
         try:
             serve(wallet, session, bridge, ui, args.max_requests)
         except KeyboardInterrupt:
@@ -591,15 +611,26 @@ def cmd_connect(args):
 
 
 def cmd_message(args):
-    """Another member signs a message file the connected member sent them"""
+    """Another member signs a message the connected member collects: a message file they sent, or one on the
+    collection endpoint"""
     from . import cli
+    if bool(args.file) == bool(args.collect):
+        raise cli.Abort("give --file, or --collect URL with --hash")
     m = cli.open_member(args)
     ctx = cli.Ctx(args)
-    doc = cli.load_file(args.file)
+    if args.collect:
+        if not args.hash:
+            raise cli.Abort("--collect needs --hash: the SafeMessage hash the connected member shows")
+        try:
+            doc = collect.get(args.collect, args.hash.lower())
+        except collect.CollectError as e:
+            raise cli.Abort(str(e)) from None
+    else:
+        doc = cli.load_file(args.file)
     try:
         safe = abi.address(doc.get("safe", ""))
     except ValueError:
-        raise cli.Abort(f"{args.file} names no Safe") from None
+        raise cli.Abort("the message names no Safe") from None
     _, threshold, owners = cli.safe_state(ctx.rpc, safe)
     if m.owner.lower() not in [o.lower() for o in owners]:
         raise Refused(f"your owner {m.owner} is not an owner of {safe}")
@@ -629,7 +660,15 @@ def cmd_message(args):
     data = messages.signature_data(m, ctx.chain, safe, d.app_hash)
     if not owner.is_valid_signature(ctx.rpc, m.owner, smh, data):
         raise cli.Abort("your owner contract refuses the message signature (eth_call): not added")
-    messages.add_signature(doc, m.owner, b2h(contract_signature(m.owner, data)))
+    sig = b2h(contract_signature(m.owner, data))
+    if args.collect:
+        try:
+            stored = collect.post_signature(args.collect, doc["safeMessageHash"], m.owner, sig)
+        except collect.CollectError as e:
+            raise cli.Abort(f"the endpoint didn't take the signature: {e}") from None
+        cli.out(f"Signed and posted: the endpoint holds {len(stored.get('signatures', []))} of {threshold}")
+        return
+    messages.add_signature(doc, m.owner, sig)
     cli.save_file(args.file, doc)
     cli.out(f"Signed ({len(valid) + 1} of {threshold}): send {args.file} back to the member who is connected")
 
@@ -643,6 +682,8 @@ def add_commands(sub, chain_opts):
     sp.add_argument("--relay", help=f"WalletConnect relay (default {DEFAULT_RELAY}, which needs "
                                     "WALLETCONNECT_PROJECT_ID; or WALLETCONNECT_RELAY)")
     sp.add_argument("--exchange-dir", default=".", help="where message files are written and collected (default .)")
+    sp.add_argument("--collect", metavar="URL", help="also gather message signatures through a collection endpoint "
+                                                     "(collect.py)")
     sp.add_argument("--sign-message-lib", help="SignMessageLib address (default: Safe v1.4.1's canonical one)")
     sp.add_argument("--multisend", help="MultiSendCallOnly address (default: Safe v1.4.1's canonical one)")
     sp.add_argument("--wait-for-execution", action="store_true",
@@ -651,7 +692,9 @@ def add_commands(sub, chain_opts):
     sp.add_argument("--poll", type=float, default=3.0, help=argparse.SUPPRESS)
     sp.add_argument("--max-requests", type=int, help=argparse.SUPPRESS)
     sp.set_defaults(func=cmd_connect)
-    sp = sub.add_parser("message", help="sign a Safe message file that the connected member sent you")
+    sp = sub.add_parser("message", help="sign a Safe message that another member collects for a dapp")
     chain_opts(sp, service=False)
-    sp.add_argument("--file", required=True)
+    sp.add_argument("--file", help="the message file the connected member sent you")
+    sp.add_argument("--collect", metavar="URL", help="or: the collection endpoint the connected member names")
+    sp.add_argument("--hash", help="with --collect: the message's SafeMessage hash")
     sp.set_defaults(func=cmd_message)

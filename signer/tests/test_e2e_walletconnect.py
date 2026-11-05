@@ -34,7 +34,7 @@ sys.path.insert(0, os.path.join(SIGNER, "tools"))
 import devchain  # noqa: E402
 from tests.mock_dapp import MockDapp, DappError  # noqa: E402
 from tests.mock_relay import Relay as MockRelay  # noqa: E402
-from winterlock_signer import abi, cli, messages, owner  # noqa: E402
+from winterlock_signer import abi, cli, collect, messages, owner  # noqa: E402
 from winterlock_signer.abi import b2h, h2b  # noqa: E402
 from winterlock_signer.eip712 import TypedData, personal_hash  # noqa: E402
 from winterlock_signer.ethtx import send  # noqa: E402
@@ -99,6 +99,7 @@ class WalletConnectEndToEnd(unittest.TestCase):
                                                                                              else []))
             assert code == 0, text
         cls.relay = MockRelay().start()
+        cls.collector, cls.collect_url = collect.serve(cls.chain.url)
         cls.exchange = os.path.join(cls.tmp.name, "exchange")
         os.makedirs(cls.exchange)
         cls.dapp = MockDapp(cls.relay.url)
@@ -109,7 +110,8 @@ class WalletConnectEndToEnd(unittest.TestCase):
         cls.connect = subprocess.Popen(
             [sys.executable, "-m", "winterlock_signer", "--home", cls.homes["m1"], "--yes", "connect", "--chain",
              str(CHAIN), "--rpc", cls.chain.url, "--service", cls.service, "--safe", cls.safe, "--relay", cls.relay.url,
-             "--exchange-dir", cls.exchange, "--poll", "0.3", uri], cwd=SIGNER, stdout=cls.log, stderr=subprocess.STDOUT,
+             "--exchange-dir", cls.exchange, "--collect", cls.collect_url, "--poll", "0.3", uri], cwd=SIGNER,
+            stdout=cls.log, stderr=subprocess.STDOUT,
             env=env)
         cls.namespaces = cls.dapp.propose(optional={"eip155": {
             "chains": [f"eip155:{CHAIN}"], "events": ["chainChanged", "accountsChanged"],
@@ -125,6 +127,8 @@ class WalletConnectEndToEnd(unittest.TestCase):
             shutil.copy(cls.log_path, os.environ["WINTERLOCK_CONNECT_LOG"])
         cls.dapp.close()
         cls.relay.close()
+        cls.collector.shutdown()
+        cls.collector.server_close()
         cls.service_proc.terminate()
         cls.service_proc.wait()
         cls.chain.close()
@@ -251,6 +255,40 @@ class WalletConnectEndToEnd(unittest.TestCase):
         m2 = Member(self.homes["m2"], lock=False)
         self.assertEqual(sum(1 for r in m2.log.records if r["t"] == "msg"), 1)
         m2.close()
+
+    def test_4b_collection_endpoint(self):
+        """A text message, with member 3's signature through the collection endpoint instead of a file"""
+        text = "Welcome to app.example. Sign to accept the terms of service (version 3)."
+        app_hash = personal_hash(text.encode())
+        smh = b2h(messages.safe_message_hash(CHAIN, self.safe, app_hash))
+        t, box = self.in_background("personal_sign", [b2h(text.encode()), self.safe])
+
+        def posted():
+            try:
+                return collect.get(self.collect_url, smh)
+            except collect.CollectError:
+                return None
+        self.assertEqual([s["owner"] for s in self.wait_for(posted, "member 1's post")["signatures"]],
+                         [self.owners["m1"]])
+        out = self.cmd("m3", "message", "--collect", self.collect_url, "--hash", smh)
+        self.assertIn("text message", out)
+        self.assertIn("Signed and posted: the endpoint holds 2 of 2", out)
+        t.join(120)
+        self.assertNotIn("error", box, str(box.get("error")))
+        self.assertTrue(self.is_valid(app_hash, h2b(box["result"])))
+        self.assertIn(f"--collect {self.collect_url} --hash {smh}", self.connect_log())
+        # the endpoint stores only what checks out: a signature for another message, or a forged one, is dropped
+        doc = collect.get(self.collect_url, smh)
+        forged = dict(doc["signatures"][1])
+        forged["signature"] = forged["signature"][:-4] + ("00" if forged["signature"][-2:] != "00" else "11") + \
+            forged["signature"][-2:]
+        stored = collect.post_signature(self.collect_url, smh, forged["owner"], forged["signature"])
+        self.assertEqual(stored["signatures"], doc["signatures"])
+        with self.assertRaises(collect.CollectError):  # an on-chain message is not collected
+            bad = messages.new_doc(CHAIN, self.safe, "eth_signTypedData_v4", [self.safe, permit2_single()],
+                                   messages.decide("eth_signTypedData_v4", [self.safe, permit2_single()], self.safe,
+                                                   CHAIN))
+            collect.put(self.collect_url, bad)
 
     def test_5_permit_onchain(self):
         typed = permit2_single()
