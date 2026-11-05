@@ -268,8 +268,7 @@ def lost_report(m, ctx, safes):
 
 def cmd_backup(args):
     m = open_member(args)
-    if m.move_out():
-        raise Refused(m.state()[1])
+    m.require_active()  # a moved device has no seed; a locked one can't record the check
     words = phrase.to_phrase(m.seed())
     if not args.check:
         show_phrase(words)

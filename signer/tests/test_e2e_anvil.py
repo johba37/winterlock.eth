@@ -6,7 +6,8 @@ eth_call to the owner, as the hosted one does.
 Steps: init, address; enroll, which deploys the verifier, implementation and factory once (--deploy) and creates each
 member's owner with its first tree (deployAndEnroll); a transfer (propose, confirm, execute); a same-nonce replacement
 with the spare keys and a refused third version; a restore that certifies a fresh tree with a plain enroll and voids
-the old device's approval; a stale key log caught by the service check; the bare implementation refused as an owner.
+the old device's approval; a stale key log caught by the service check; the bare implementation refused as an owner;
+a move to a new device checked against the chain and the service, and a rolled-back device caught by those checks.
 Needs Foundry's anvil and contracts/ built (./setup.sh, forge build).
 """
 import contextlib

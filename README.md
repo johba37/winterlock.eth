@@ -52,10 +52,12 @@ A minimal signer for members of a Safe whose owners are Winterlock contracts.
 - **Keys:** WOTS and leanSphincs are implemented natively, checked byte for byte against the Solidity signers and the upstream known answers.
 - **Safety:** it keeps a key log that is saved before any signature leaves it, refuses to reuse a key, and computes every hash it signs itself.
 - **Service:** it posts to Safe's Transaction Service.
+- **Backup:** a 24-word recovery phrase (BIP-39) is the only backup. `init` shows it once and checks three of its words. On the device, the seed is encrypted with a passphrase.
+- **One device at a time:** the key log is bound to its device. A copied or rolled-back key log signs nothing, and a move locks the old device for good.
 
 ```sh
 python3 -m venv signer/.venv && signer/.venv/bin/pip install -r signer/requirements.txt
-signer/winterlock-signer init            # a new secret seed (or --restore on a new device)
+signer/winterlock-signer init            # a new signer: write down the phrase, confirm three words, set a passphrase
 signer/winterlock-signer address         # your owner address, the same on every chain
 export WINTERLOCK_RPC=... WINTERLOCK_GAS_KEY=... SAFE_API_KEY=...
 signer/winterlock-signer enroll  --chain sepolia --safe 0x...   # certify a key tree; creates your owner if needed
@@ -64,6 +66,26 @@ signer/winterlock-signer confirm --chain sepolia --safe-tx-hash 0x...
 signer/winterlock-signer execute --chain sepolia --safe-tx-hash 0x...
 cd signer && .venv/bin/python -m unittest discover -s tests -t .   # tests
 ```
+
+**Backup, recovery and new devices.** `status` shows the device state (active, locked or moved) and when the phrase was last checked. It also warns if the key log looks like a copy or a restored backup.
+
+```sh
+signer/winterlock-signer backup --check      # check the phrase now and then (status reminds you after 90 days)
+signer/winterlock-signer passphrase          # change the seed file's passphrase (--forgot: set a new one from the phrase)
+
+# A new device, and the old one still works: a move keeps the same key trees, with no fee
+signer/winterlock-signer move start                                # new device: type the phrase; it shows a move code
+signer/winterlock-signer move export --code CODE --out move.json   # old device: locks itself for good, writes the bundle
+signer/winterlock-signer move import move.json --chain sepolia     # new device: checks the bundle against the chain and the service
+
+# The old device is lost: restore with fresh trees, one enroll per Safe and chain (about 0.25M gas each)
+signer/winterlock-signer init --restore --lost --chain sepolia     # lists the approvals that stop counting
+signer/winterlock-signer enroll --chain sepolia --safe 0x...
+```
+
+- **Phrase or device compromised:** if someone else may have your phrase or your device, restoring doesn't help. The team replaces your owner in the Safe; `init --restore` explains how.
+- **Copied or rolled-back key log:** it signs nothing. `device fresh-trees` retires its trees, and `enroll` then certifies fresh ones.
+- **More:** design, threat model and limits are in `docs/notes/signer-recovery.md`.
 
 ## Preview locally
 
