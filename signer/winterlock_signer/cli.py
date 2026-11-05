@@ -7,6 +7,8 @@
   confirm   fetch a proposed transaction, decode and show it, sign it, and post the confirmation
   queue     the Safe's pending transactions, decoded here, with this member's key use at each nonce
   execute   send execTransaction with the collected signatures, from a gas-paying account
+  connect   answer a dapp over WalletConnect as the team's Safe: transactions, batches and messages (bridge.py)
+  message   sign a Safe message file another member collects for a dapp (peer to peer)
   status    key usage and tree health
 
 Chain access: --chain (name or id) and --rpc URL (or WINTERLOCK_RPC). Service: Safe's hosted Transaction Service
@@ -660,6 +662,7 @@ def cmd_status(args):
     if ident and ident["t"] == "restore":
         out(f"  restored from the seed on {ident['at']}: trees of the old device are never used")
     certs = len(m.log.certs())
+    certs += sum(1 for r in m.log.records if r["t"] == "msg")  # message signatures (bridge.py)
     budget = STATELESS_BUDGET.get(STATELESS_B)
     out(f"  stateless signatures {certs}" + (f" of a {budget:,} budget (kept subtree {STATELESS_B})" if budget else ""))
     for w in m.log.warnings:
@@ -767,6 +770,8 @@ def build_parser():
     chain_opts(sp)
     sp.add_argument("--safe-tx-hash")
     sp.add_argument("--file")
+    from .bridge import add_commands
+    add_commands(sub, chain_opts)  # connect, message
     sp = sub.add_parser("status", help="key usage and tree health")
     chain_opts(sp, service=False)
     sp.add_argument("--safe")
@@ -780,7 +785,7 @@ COMMANDS = {"init": cmd_init, "address": cmd_address, "enroll": cmd_enroll, "pro
 def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
-        COMMANDS[args.cmd](args)
+        (COMMANDS.get(args.cmd) or args.func)(args)
     except Refused as e:
         out(f"REFUSED: {e}")
         return 2

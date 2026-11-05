@@ -111,3 +111,18 @@ def forge_build(files, out_dir):
                     "--cache-path", os.path.join(out_dir, "cache")], cwd=CONTRACTS, check=True,
                    stdout=subprocess.DEVNULL)
     return os.path.join(out_dir, "out")
+
+
+def safe_libraries(rpc, build=SAFE_141):
+    """Puts Safe's SignMessageLib and MultiSendCallOnly, from the release build, at their canonical v1.4.1 addresses
+    (anvil_setCode), where the signer looks for them by default. Their code differs from the canonical deployments
+    only in the trailing metadata (signer/tools/pin_safe_libs.py)."""
+    from winterlock_signer import safelibs
+    out = {}
+    for name in (safelibs.SIGN_MESSAGE_LIB, safelibs.MULTISEND):
+        with open(f"{build}/{name}.sol/{name}.json") as f:
+            code = json.load(f)["deployedBytecode"]["object"]
+        addr = safelibs.default_address(name)
+        rpc.call("anvil_setCode", [addr, code])
+        out[name] = addr
+    return out

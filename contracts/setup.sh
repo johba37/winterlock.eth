@@ -12,5 +12,6 @@ for v in v1.4.1 v1.5.0; do
   (cd "lib/safe-smart-account-$v" && forge build --root . --contracts contracts --use 0.7.6 --optimize false \
     --evm-version istanbul --out build/forge-out --cache-path build/forge-cache \
     contracts/Safe.sol contracts/SafeL2.sol contracts/proxies/SafeProxyFactory.sol \
-    contracts/handler/CompatibilityFallbackHandler.sol contracts/libraries/MultiSendCallOnly.sol)
+    contracts/handler/CompatibilityFallbackHandler.sol contracts/libraries/MultiSendCallOnly.sol \
+    contracts/libraries/SignMessageLib.sol)
 done

@@ -147,6 +147,7 @@ KNOWN = {
     "setGuard(address)": ("Safe: SET A GUARD", ["address"], ["guard"]),
     "setFallbackHandler(address)": ("Safe: SET THE FALLBACK HANDLER", ["address"], ["handler"]),
     "multiSend(bytes)": ("MultiSend batch", ["bytes"], ["transactions"]),
+    "signMessage(bytes)": ("SignMessageLib: approve a message on-chain", ["bytes"], ["message"]),
     "enroll(address,bytes32,uint8,uint64,bytes)": ("Winterlock: enrol an operation tree",
                                                    ["address", "bytes32", "uint256", "uint256", "bytes"],
                                                    ["safe", "root", "height", "start", "certificate"]),
