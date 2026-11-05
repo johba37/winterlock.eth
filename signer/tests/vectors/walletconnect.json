@@ -1,0 +1,44 @@
+{
+ "_comment": "Known answers for winterlock_signer/walletconnect.py. 'monorepo': WalletConnect's own test values (walletconnect-monorepo packages/utils/test/shared/values.ts and crypto.spec.ts; walletconnect-utils relay-auth test/shared/values.ts). 'sdk': computed with @walletconnect/utils and relay-auth as shipped with sign-client 2.21.0 (deriveSymKey, hashKey, encrypt with a fixed iv, signJWT). 'rfc7748': section 6.1.",
+ "rfc7748": {
+  "alice_priv": "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a",
+  "alice_pub": "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+  "bob_priv": "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb",
+  "bob_pub": "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+  "shared": "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"
+ },
+ "monorepo": {
+  "a_priv": "1fb63fca5c6ac731246f2f069d3bc2454345d5208254aa8ea7bffc6d110c8862",
+  "a_pub": "ff7a7d5767c362b0a17ad92299ebdb7831dcbd9a56959c01368c7404543b3342",
+  "b_pub": "590c2c627be7af08597091ff80dd41f7fa28acd10ef7191d7e830e116d3a186a",
+  "shared": "9c87e48e69b33a613907515bcd5b1b4cc10bbaf15167b19804b00f0a9217e607",
+  "sym_key": "0653ca620c7b4990392e1c53c4a51c14a2840cd20f0f1524cf435b17b6fe988c",
+  "message": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"test_method\",\"params\":{}}",
+  "iv": "717765636661617364616473",
+  "type0": "AHF3ZWNmYWFzZGFkc3paHoQ96/mLAdanVxi17icRXq+jyrqXA8ocVgGmryQZBFMg+uwgc8yLa43EOeY+IWEv84g8hn4L3Ncsgz6397sgNKnsNcL7A9k3Mg==",
+  "type0_b64url": "AHF3ZWNmYWFzZGFkc3paHoQ96_mLAdanVxi17icRXq-jyrqXA8ocVgGmryQZBFMg-uwgc8yLa43EOeY-IWEv84g8hn4L3Ncsgz6397sgNKnsNcL7A9k3Mg",
+  "type1": "Af96fVdnw2KwoXrZIpnr23gx3L2aVpWcATaMdARUOzNCcXdlY2ZhYXNkYWRzeloehD3r+YsB1qdXGLXuJxFer6PKupcDyhxWAaavJBkEUyD67CBzzItrjcQ55j4hYS/ziDyGfgvc1yyDPrf3uyA0qew1wvsD2Tcy",
+  "jwt_seed": "58e0254c211b858ef7896b00e3f36beeb13d568d47c6031c4218b87718061295",
+  "jwt_sub": "c479fe5dc464e771e78b193d239a65b58d278cad1c34bfb0b5716e5bb514928e",
+  "jwt_aud": "wss://relay.walletconnect.com",
+  "jwt_iat": 1656910097,
+  "jwt_iss": "did:key:z6MkodHZwneVRShtaLf8JKYkxpDGp1vGZnpGmdBpX8M2exxH",
+  "jwt": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkaWQ6a2V5Ono2TWtvZEhad25lVlJTaHRhTGY4SktZa3hwREdwMXZHWm5wR21kQnBYOE0yZXh4SCIsInN1YiI6ImM0NzlmZTVkYzQ2NGU3NzFlNzhiMTkzZDIzOWE2NWI1OGQyNzhjYWQxYzM0YmZiMGI1NzE2ZTViYjUxNDkyOGUiLCJhdWQiOiJ3c3M6Ly9yZWxheS53YWxsZXRjb25uZWN0LmNvbSIsImlhdCI6MTY1NjkxMDA5NywiZXhwIjoxNjU2OTk2NDk3fQ.bAKl1swvwqqV_FgwvD4Bx3Yp987B9gTpZctyBviA-EkAuWc8iI8SyokOjkv9GJESgid4U8Tf2foCgrQp2qrxBA"
+ },
+ "sdk": {
+  "priv": "1fb63fca5c6ac731246f2f069d3bc2454345d5208254aa8ea7bffc6d110c8862",
+  "pub": "ff7a7d5767c362b0a17ad92299ebdb7831dcbd9a56959c01368c7404543b3342",
+  "peer_pub": "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+  "sym_key": "c74edcd97f244010b29f1c8bd3a1d5eef35fa90cbd4f22ac8043d418f3e07bc1",
+  "topic": "3a5e4ef05db25e8bab9fbdcdbf50d507cf58bf4ff7139f9c30c80303c3e24dba",
+  "message": "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"wc_sessionPing\",\"params\":{}}",
+  "iv": "717765636e706c6d6e6a7569",
+  "type0": "AHF3ZWNucGxtbmp1acbrpgoqivXZlBQurBMF8b8ZyWZ+fmI+AHxC5s9Sfqb8UGQr28iu/vATX4SiYcDZJN/H85BLQ2ZZPpszlV5NduF9ePEgX7lPywHguamszA==",
+  "type1": "Af96fVdnw2KwoXrZIpnr23gx3L2aVpWcATaMdARUOzNCcXdlY25wbG1uanVpxuumCiqK9dmUFC6sEwXxvxnJZn5+Yj4AfELmz1J+pvxQZCvbyK7+8BNfhKJhwNkk38fzkEtDZlk+mzOVXk124X148SBfuU/LAeC5qazM",
+  "jwt_seed": "58e0254c211b858ef7896b00e3f36beeb13d568d47c6031c4218b87718061295",
+  "jwt_sub": "c479fe5dc464e771e78b193d239a65b58d278cad1c34bfb0b5716e5bb514928e",
+  "jwt_aud": "wss://relay.walletconnect.org",
+  "jwt_iat": 1656910097,
+  "jwt": "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJkaWQ6a2V5Ono2TWtvZEhad25lVlJTaHRhTGY4SktZa3hwREdwMXZHWm5wR21kQnBYOE0yZXh4SCIsInN1YiI6ImM0NzlmZTVkYzQ2NGU3NzFlNzhiMTkzZDIzOWE2NWI1OGQyNzhjYWQxYzM0YmZiMGI1NzE2ZTViYjUxNDkyOGUiLCJhdWQiOiJ3c3M6Ly9yZWxheS53YWxsZXRjb25uZWN0Lm9yZyIsImlhdCI6MTY1NjkxMDA5NywiZXhwIjoxNjU2OTk2NDk3fQ.lV9WBz1j3uQvDlv8NFnzymGczKQMWFsSqaZdXs4cUwFepP5LVC2eYIHdGsYkiJfwJxNia3LghX20GBW09SuwBA"
+ }
+}

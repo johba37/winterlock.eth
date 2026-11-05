@@ -1,0 +1,215 @@
+{
+ "_comment": "EIP-712 and EIP-191 hashes computed with ethers 6.13.4 (TypedDataEncoder.hash, hashMessage); the 'mail' case is EIP-712's own example.",
+ "typed": [
+  {
+   "name": "mail",
+   "data": {
+    "domain": {
+     "name": "Ether Mail",
+     "version": "1",
+     "chainId": 1,
+     "verifyingContract": "0xCcCCccccCCCCcCCCCCCcCcCccCcCCCcCcccccccC"
+    },
+    "types": {
+     "Person": [
+      {
+       "name": "name",
+       "type": "string"
+      },
+      {
+       "name": "wallet",
+       "type": "address"
+      }
+     ],
+     "Mail": [
+      {
+       "name": "from",
+       "type": "Person"
+      },
+      {
+       "name": "to",
+       "type": "Person"
+      },
+      {
+       "name": "contents",
+       "type": "string"
+      }
+     ]
+    },
+    "primaryType": "Mail",
+    "message": {
+     "from": {
+      "name": "Cow",
+      "wallet": "0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826"
+     },
+     "to": {
+      "name": "Bob",
+      "wallet": "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB"
+     },
+     "contents": "Hello, Bob!"
+    }
+   },
+   "hash": "0xbe609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2"
+  },
+  {
+   "name": "arrays",
+   "data": {
+    "domain": {
+     "name": "Arrays",
+     "chainId": "0x7a69",
+     "salt": "0x1111111111111111111111111111111111111111111111111111111111111111"
+    },
+    "types": {
+     "Item": [
+      {
+       "name": "ids",
+       "type": "uint256[]"
+      },
+      {
+       "name": "tag",
+       "type": "bytes4"
+      },
+      {
+       "name": "blob",
+       "type": "bytes"
+      }
+     ],
+     "Group": [
+      {
+       "name": "items",
+       "type": "Item[]"
+      },
+      {
+       "name": "pair",
+       "type": "int64[2]"
+      },
+      {
+       "name": "grid",
+       "type": "uint8[][]"
+      },
+      {
+       "name": "names",
+       "type": "string[]"
+      },
+      {
+       "name": "flag",
+       "type": "bool"
+      },
+      {
+       "name": "who",
+       "type": "address[]"
+      }
+     ]
+    },
+    "primaryType": "Group",
+    "message": {
+     "items": [
+      {
+       "ids": [
+        1,
+        "2",
+        "0x03"
+       ],
+       "tag": "0xdeadbeef",
+       "blob": "0x0102"
+      },
+      {
+       "ids": [],
+       "tag": "0x00000000",
+       "blob": "0x"
+      }
+     ],
+     "pair": [
+      -5,
+      "9007199254740993"
+     ],
+     "grid": [
+      [
+       1,
+       2
+      ],
+      [],
+      [
+       255
+      ]
+     ],
+     "names": [
+      "a",
+      "\u00df"
+     ],
+     "flag": true,
+     "who": [
+      "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+     ]
+    }
+   },
+   "hash": "0xd33b9c032b61e424c80e994429c0b1e949c53bac0621432b183186141a5a106d"
+  },
+  {
+   "name": "permit2",
+   "data": {
+    "domain": {
+     "name": "Permit2",
+     "chainId": 31337,
+     "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    },
+    "types": {
+     "PermitSingle": [
+      {
+       "name": "details",
+       "type": "PermitDetails"
+      },
+      {
+       "name": "spender",
+       "type": "address"
+      },
+      {
+       "name": "sigDeadline",
+       "type": "uint256"
+      }
+     ],
+     "PermitDetails": [
+      {
+       "name": "token",
+       "type": "address"
+      },
+      {
+       "name": "amount",
+       "type": "uint160"
+      },
+      {
+       "name": "expiration",
+       "type": "uint48"
+      },
+      {
+       "name": "nonce",
+       "type": "uint48"
+      }
+     ]
+    },
+    "primaryType": "PermitSingle",
+    "message": {
+     "details": {
+      "token": "0x1111111111111111111111111111111111111111",
+      "amount": "1461501637330902918203684832716283019655932542975",
+      "expiration": 1767225600,
+      "nonce": 0
+     },
+     "spender": "0x2222222222222222222222222222222222222222",
+     "sigDeadline": "1767225600"
+    }
+   },
+   "hash": "0x3a8d94615c87ef9c78ba2ad98b04faea4d27dd490fa2d850302677a154eb7168"
+  }
+ ],
+ "personal": [
+  {
+   "message": "hello",
+   "hash": "0x50b2c43fd39106bafbba0da34fc430e1f91e3c96ea2acee2bc34119f92b37750"
+  },
+  {
+   "message": "app.example wants you to sign in with your Ethereum account:\n0x5B81D3ce1Ca48be48F154D8AD060Cf9f883E86B2\n\nURI: https://app.example\nVersion: 1\nChain ID: 1\nNonce: 32891756\nIssued At: 2026-11-05T12:00:00Z",
+   "hash": "0x7a02dc2aa8da1d88e3873096a5680df53bcb127b4608a11f6d6c7c98018881bc"
+  }
+ ]
+}
