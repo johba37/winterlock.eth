@@ -90,6 +90,10 @@ class Handler(BaseHTTPRequestHandler):
             safe = abi.checksum(m[1])
             return self.reply(200, {"address": safe, "nonce": s.nonce(safe), "threshold": s.threshold(safe),
                                     "owners": s.owners(safe)})
+        if m := re.fullmatch(r"/api/v1/owners/(0x[0-9a-fA-F]{40})/safes/", u.path):
+            o = m[1].lower()  # the Safes this mock has seen transactions for, among them those this address owns
+            safes = sorted({x["safe"] for x in s.txs.values()})
+            return self.reply(200, {"safes": [x for x in safes if o in [y.lower() for y in s.owners(x)]]})
         if m := re.fullmatch(r"/api/v2/multisig-transactions/(0x[0-9a-fA-F]{64})/", u.path):
             h = m[1].lower()
             return self.reply(200, s.view(h)) if h in s.txs else self.reply(404, {"detail": "Not found."})

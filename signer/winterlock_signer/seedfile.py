@@ -45,9 +45,10 @@ def _key(passphrase: str, salt: bytes, n: int, r: int, p: int) -> bytes:
     return hashlib.scrypt(pw, salt=salt, n=n, r=r, p=p, maxmem=256 * r * n + (1 << 24), dklen=32)
 
 
-def encrypt(seed: bytes, passphrase: str, n: int = SCRYPT_N) -> str:
+def encrypt(seed: bytes, passphrase: str, n: int = None) -> str:
     if len(seed) != 32:
         raise ValueError("a seed is 32 bytes")
+    n = n or SCRYPT_N
     head = {"v": 1, "kdf": "scrypt", "n": n, "r": SCRYPT_R, "p": SCRYPT_P, "salt": secrets.token_hex(16),
             "aead": "chacha20-poly1305", "nonce": secrets.token_hex(12)}
     c = ChaCha20_Poly1305.new(key=_key(passphrase, bytes.fromhex(head["salt"]), n, SCRYPT_R, SCRYPT_P),
@@ -123,7 +124,7 @@ def _fsync_dir(d: str):
         os.close(fd)
 
 
-def write(path: str, seed: bytes, passphrase: str = None, n: int = SCRYPT_N, replace: bool = False):
+def write(path: str, seed: bytes, passphrase: str = None, n: int = None, replace: bool = False):
     """Writes the seed, encrypted unless passphrase is None, through a temporary file and a rename (fsynced), so a
     crash leaves the old file or the new one, never half of one"""
     if passphrase is not None and len(passphrase) < MIN_PASSPHRASE:

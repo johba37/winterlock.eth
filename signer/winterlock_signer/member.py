@@ -111,7 +111,7 @@ class Member:
 
     @staticmethod
     def init(home: str = None, restore_seed: bytes = None, passphrase: str = None, backup: str = None,
-             scrypt_n: int = seedfile.SCRYPT_N, new_seed: bytes = None):
+             scrypt_n: int = None, new_seed: bytes = None):
         """A new signer (a new random seed), or one restored from a seed (its phrase) with an empty key log. The seed
         file is encrypted with `passphrase`; None writes it in plain hex (tests, and the command line's
         --insecure-plaintext-seed). `backup` records how the phrase was checked. `new_seed`: a new signer's seed, when
@@ -180,7 +180,7 @@ class Member:
             except seedfile.SeedFileError as e:
                 raise Refused(str(e)) from None
 
-    def set_passphrase(self, passphrase: str, scrypt_n: int = seedfile.SCRYPT_N):
+    def set_passphrase(self, passphrase: str, scrypt_n: int = None):
         """Re-encrypts the seed file under a new passphrase (or encrypts a plain one)"""
         seed = self._seed
         seedfile.write(self.seed_path, seed, passphrase, n=scrypt_n, replace=True)

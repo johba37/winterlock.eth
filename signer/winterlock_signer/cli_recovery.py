@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 from . import device, member, move, owner, phrase, seedfile
 from .abi import b2h, h2b
-from .cli import (Abort, Ctx, chain_label, confirm_prompt, open_member, out, owner_deployed, safe_state,
+from .cli import (Abort, Ctx, chain_label, open_member, out, owner_deployed, safe_state,
                   stale_log_check)
 from .keylog import Refused
 from .member import Member, default_home, identity_of
@@ -42,6 +42,13 @@ def ask(prompt: str, secret: bool = False) -> str:
 
 
 member.ask_passphrase = lambda prompt: ask(prompt, secret=True)
+
+
+def confirm(args, question):
+    if args.yes:
+        return
+    if ask(f"{question} [y/N] ").strip().lower() not in ("y", "yes"):
+        raise Abort("not confirmed: nothing changed")
 
 
 def home_of(args) -> str:
@@ -361,7 +368,7 @@ def move_export(args):
         out("  (not checked online: add --chain and --rpc to check the log against a chain and its service first)")
     if mo is None:
         out("After this, this device signs nothing, ever: it records the move, writes the bundle, and removes its seed.")
-        confirm_prompt(args, f"Lock this device and write the bundle for move {code}?")
+        confirm(args, f"Lock this device and write the bundle for move {code}?")
     elif mo["request"] == code:
         out(f"This device already moved for {code} on {mo['at']}: writing the same bundle again.")
     elif not args.replace_request:
@@ -369,7 +376,7 @@ def move_export(args):
     else:
         out(f"WARNING: this device moved for {mo['request']} before. Handing over to {code} instead is safe only if "
             f"the device that asked with {mo['request']} never imported its bundle and never will.")
-        confirm_prompt(args, f"Hand this signer over to {code} instead?")
+        confirm(args, f"Hand this signer over to {code} instead?")
     if os.path.exists(m.seed_path):
         m.seed()
     else:
@@ -454,14 +461,14 @@ def cmd_device(args):
                           "trusting it could reuse a one-time key. Use `device fresh-trees` instead.")
         out("Adopting declares this copy the only one in use, complete up to the original's last signature. If the")
         out("original still signs, or signed after this copy was made, two devices could use one key twice.")
-        confirm_prompt(args, "Is the original gone (or never used again) and this copy complete?")
+        confirm(args, "Is the original gone (or never used again) and this copy complete?")
         rec = m.add_device("adopt")
         out(f"Adopted: this key log is now device {rec['id']} on this machine.")
     else:
         out("Fresh trees: every tree in this key log is retired, so a stale or copied log can't reuse a key. Each Safe")
         out(f"then needs `enroll` for a fresh tree ({ENROLL_COST}); approvals given with the old trees for pending")
         out("transactions stop counting once the fresh tree is enrolled, and are given again.")
-        confirm_prompt(args, "Retire every tree in this key log?")
+        confirm(args, "Retire every tree in this key log?")
         rec = m.add_device("fresh-trees", retire=True)
         out(f"Retired the trees; this key log is now device {rec['id']}. Run `enroll` for each Safe.")
 

@@ -13,6 +13,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -25,7 +26,7 @@ SIGNER = os.path.dirname(HERE)
 sys.path.insert(0, os.path.join(SIGNER, "tools"))
 
 import devchain  # noqa: E402
-from winterlock_signer import abi, cli, leansphincs, owner  # noqa: E402
+from winterlock_signer import abi, cli, device, leansphincs, move, owner, phrase  # noqa: E402
 from winterlock_signer.abi import h2b  # noqa: E402
 from winterlock_signer.ethtx import send  # noqa: E402
 from winterlock_signer.rpc import Reverted  # noqa: E402
@@ -212,13 +213,20 @@ class EndToEnd(unittest.TestCase):
     def test_4_restore_starts_a_fresh_tree(self):
         c = self.hash_from(self.cmd("m1", "propose", "--safe", self.safe, "--to", RECIPIENT, "--value", "0.05"))
         self.cmd("m2", "confirm", "--safe-tx-hash", c)  # the old device approves, then is lost
-        backup = os.path.join(self.tmp.name, "m2-seed-backup")
-        shutil.copy(os.path.join(self.homes["m2"], "seed"), backup)
+        backup = os.path.join(self.tmp.name, "m2-phrase")  # the recovery phrase, as written down
+        with open(backup, "w") as f:
+            f.write(" ".join(phrase.to_phrase(h2b(abi.read_file(os.path.join(self.homes["m2"], "seed")).strip()))))
         new_home = os.path.join(self.tmp.name, "m2-restored")
         code, text = self.run_cli(["--home", new_home, "init", "--restore", backup, "--lost",
-                                   "--insecure-plaintext-seed"])
+                                   "--insecure-plaintext-seed", "--chain", "31337", "--rpc", self.chain.url,
+                                   "--service", self.service])
         self.assertEqual(code, 0, text)
         self.assertIn(self.owners["m2"], text)  # same owner address
+        # the report: the Safe found through the service, the old device's tree, the approval that stops counting
+        self.assertIn(f"Safe {self.safe} on local anvil (chain 31337): 2 of 3, next nonce 2", text)
+        self.assertIn("the enrolled tree is the old device's (nonces 0–31)", text)
+        self.assertIn(f"nonce 2 {c}: approved by your old device; stops counting once your fresh tree is enrolled",
+                      text)
         # the restored signer has no log for the enrolled tree, so it won't sign with it
         text = self.cmd("m2", "confirm", "--safe-tx-hash", c, home=new_home, expect=2)
         self.assertIn("isn't in this signer's key log", text)
@@ -291,6 +299,77 @@ class EndToEnd(unittest.TestCase):
         text = self.cmd("m1", "execute", "--file", path, "--offline", expect=1)
         self.assertIn("signature refused by its owner contract", text)
         self.assertIn("not enough valid signatures", text)
+
+    def test_8_move_to_a_new_device(self):
+        """m3 moves to a new device while the old one works: both ends check the key log against the chain and the
+        service, the new device signs with the same enrolled tree (no enroll, no fee) and the old one refuses. Then a
+        whole-machine rollback of the new device (key log and anchor as they were, which no offline check can see)
+        is caught by the online checks of the next move."""
+        old, new = self.homes["m3"], os.path.join(self.tmp.name, "m3-new")
+        online = ["--chain", "31337", "--rpc", self.chain.url, "--service", self.service]
+        pfile = os.path.join(self.tmp.name, "m3-phrase")
+        with open(pfile, "w") as f:
+            f.write(" ".join(phrase.to_phrase(h2b(abi.read_file(os.path.join(old, "seed")).strip()))))
+        # m1's pending proposal from step 5, approved by m3 on the old device
+        pending = [x for x in self.service_txs() if x["nonce"] == self.nonce() and not x["isExecuted"]]
+        h = pending[0]["safeTxHash"]
+        self.cmd("m3", "confirm", "--safe-tx-hash", h)
+        tree_before = owner.read_tree(self.rpc, self.owners["m3"], self.safe)
+
+        def code_in(text):
+            return re.search(r"\b([A-Z2-7]{4}(?:-[A-Z2-7]{4}){3})\b", text)[1]
+
+        def run(argv, expect=0):
+            code, text = self.run_cli(argv)
+            self.assertEqual(code, expect, text)
+            return text
+
+        mc = code_in(run(["--home", new, "move", "start", "--phrase", pfile, "--insecure-plaintext-seed"]))
+        bundle = os.path.join(self.tmp.name, "m3-move.json")
+        text = run(["--home", old, "--yes", "move", "export", "--code", mc, "--out", bundle, *online])
+        self.assertIn("the enrolled tree is in the log, with 1 approval(s) at pending nonces", text)
+        self.assertIn("the service holds no signature by this tree that the log lacks", text)
+        text = run(["--home", new, "move", "import", bundle, *online])
+        self.assertIn("the service holds no signature by this tree that the log lacks", text)
+        self.assertIn("Moved in", text)
+        self.assertEqual(owner.read_tree(self.rpc, self.owners["m3"], self.safe), tree_before)  # no new tree
+        self.assertIn("moved its keys to another device", self.cmd("m3", "confirm", "--safe-tx-hash", h, expect=2))
+        text = self.cmd("m3", "confirm", "--safe-tx-hash", h, home=new)  # the log knows the old device's approval
+        self.assertIn("slot 0 (approval key)", text)
+        self.assertIn("already signed this exact transaction", text)
+        n = self.nonce()
+        self.cmd("m3", "execute", "--safe-tx-hash", h)
+        self.assertEqual(self.nonce(), n + 1)
+        self.homes["m3"] = new
+
+        # the new device's state (key log and anchor) before its next approval, as a VM snapshot would keep it
+        m = Member(new, lock=False)
+        anchor_path = os.path.join(device.anchor_dir(), m.device()["id"] + ".json")
+        m.close()
+        log_path = os.path.join(new, "keylog.jsonl")
+        snapshot = abi.read_file(log_path, "rb"), abi.read_file(anchor_path, "rb")
+        h2 = self.hash_from(self.cmd("m1", "propose", "--safe", self.safe, "--to", RECIPIENT, "--value", "0.02"))
+        self.cmd("m3", "confirm", "--safe-tx-hash", h2, home=new)
+        for path, data in zip((log_path, anchor_path), snapshot):  # rolled back in place: same files, same inode
+            with open(path, "r+b") as f:
+                f.write(data)
+                f.truncate()
+        self.assertIn("device ACTIVE", self.cmd("m3", "status", home=new))  # offline it looks fine
+        newer = os.path.join(self.tmp.name, "m3-newer")
+        mc2 = code_in(run(["--home", newer, "move", "start", "--phrase", pfile, "--insecure-plaintext-seed"]))
+        bundle2 = os.path.join(self.tmp.name, "m3-move-2.json")
+        text = run(["--home", new, "--yes", "move", "export", "--code", mc2, "--out", bundle2, *online], expect=2)
+        self.assertIn("not exported", text)
+        self.assertIn("the key log is stale", text)
+        m = Member(new, lock=False)
+        self.assertEqual(m.state()[0], "active")  # refused before anything was locked
+        m.close()
+        run(["--home", new, "--yes", "move", "export", "--code", mc2, "--out", bundle2])  # without the check
+        text = run(["--home", newer, "move", "import", bundle2, *online], expect=2)
+        self.assertIn("not imported", text)
+        self.assertIn("the key log is stale", text)
+        self.assertTrue(move.pending(newer))  # nothing installed: it still waits
+        self.assertFalse(os.path.exists(os.path.join(newer, "keylog.jsonl")))
 
     def service_txs(self):
         from winterlock_signer.service import Service

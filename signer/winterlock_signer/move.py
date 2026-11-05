@@ -206,7 +206,7 @@ def pending(home: str):
         return None
 
 
-def start(home: str, seed: bytes, passphrase: str = None, scrypt_n: int = seedfile.SCRYPT_N) -> dict:
+def start(home: str, seed: bytes, passphrase: str = None, scrypt_n: int = None) -> dict:
     """Saves the seed (encrypted unless passphrase is None) and a new move request in an empty signer directory"""
     os.makedirs(home, mode=0o700, exist_ok=True)
     os.chmod(home, 0o700)
