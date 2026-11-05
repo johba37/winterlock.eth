@@ -509,6 +509,114 @@ Every member now needs a real stateless key, so tests keep it in storage after o
   - `foundry.toml` now sets `bytecode_hash = "none"`.
   - Checked: a copy of the repository built at another path predicts the same two addresses.
 
+**2026-11-05: Safe owner spike** (`src/safe/WinterlockOwner.sol`, `script/DeploySafeOwner.s.sol`, `test/WinterlockOwner.t.sol`, `test/integration/SafeWinterlockOwner.t.sol`)
+
+The question: can Winterlock be a Safe owner, an EIP-1271 contract owner checked by Safe's ordinary multisig path, so that teams keep their Safe, Safe's app and the Transaction Service? For transactions, yes, at about 90k gas per owner signature. Messages work on-chain but don't fit the Transaction Service.
+
+**Setup.**
+- **Safe's contracts** are submodules at tags v1.4.1 (`bf943f8`) and v1.5.0 (`dc437e8`). `setup.sh` builds them with their release settings (solc 0.7.6, optimizer off, EVM istanbul, as each release's CHANGELOG states), and the tests deploy them from those artifacts and run against both releases.
+  - The bytecode is not byte-identical to the canonical deployments: the code hashes listed in safe-deployments differ. Not investigated; the metadata is the likely cause.
+  - Remappings `safe-v1.4.1/` and `safe-v1.5.0/`; the tests drive both releases through v1.5.0's `ISafe`, since the calls they make have the same ABI in both.
+- **Safe's app deploys v1.4.1 by default:** `LATEST_SAFE_VERSION` defaults to `'1.4.1'` in the wallet's `packages/utils/src/config/constants.ts`. The hosted app can override it through its environment.
+- **The Transaction Service's behaviour** below is read from its source and from safe-eth-py, the library it checks signatures with (both as of 2026-11-05).
+
+**Question 1: what Safe passes to a contract owner (v = 0).**
+- **v1.4.1** calls the legacy `isValidSignature(bytes data, bytes signature)` and wants `0x20c13b0b` (`Safe.sol:315`, `ISignatureValidator.sol:6`).
+  - `data` is the EIP-712 preimage of the hash, `0x1901 ‖ domainSeparator ‖ SafeTx struct hash`, 66 bytes (`encodeTransactionData`, `Safe.sol:410`).
+  - Safe first checks `keccak256(data) == dataHash` (GS027, `Safe.sol:287`).
+- **v1.5.0** calls `isValidSignature(bytes32 dataHash, bytes signature)` and wants `0x1626ba7e` (`checkContractSignature`, `Safe.sol:270`; `ISignatureValidator.sol:7`). The legacy `checkSignatures(bytes32, bytes, bytes)` and `checkNSignatures` overloads remain but ignore `data` (`Safe.sol:355`, `:372`).
+- **Where the data sits:** each signer has a 65-byte static part, in increasing owner order: r = the owner contract's address, s = the offset of its data in the signatures blob, v = 0. The data follows all static parts, as `[length: 32][bytes]`. Safe checks:
+  - s ≥ threshold × 65 (GS021)
+  - s + 32 ≤ blob length (GS022)
+  - s + 32 + data length ≤ blob length (GS023)
+  - (v1.4.1 `Safe.sol:295–306`; v1.5.0 `Safe.sol:316`, `:248`, `:258`)
+- **Size limits:** none on-chain apart from gas. The Transaction Service caps a confirmation and a message signature at 5,000 bytes (`SIGNATURE_LENGTH`, `utils/constants.py`), counting the whole entry: 65 + 32 + the data. The proposer's signature in a new transaction proposal has no cap in its serializer.
+
+**Question 2: the Safe's nonce, before and during execution.**
+- **Safe increments its nonce before it checks signatures,** in both releases: v1.4.1 runs `nonce++` (`Safe.sol:170`) and then `checkSignatures` (`:172`); v1.5.0 passes `nonce++` to `getTransactionHash` (`:145`) and then calls `checkSignatures` (`:147`). During execution an owner that reads the Safe's nonce sees the signed nonce + 1, with the Safe as msg.sender (tested with a probe owner on both releases).
+- **The Transaction Service checks each confirmation with an eth_call straight to the owner contract** (safe-eth-py, `SafeSignatureContract.is_valid`):
+  - first `isValidSignature(bytes32 safeTxHash, data)`
+  - then, because the service passes no Safe version, the legacy entry point with the preimage
+  - msg.sender is not the Safe, and the Safe's nonce is the signed nonce (the next transaction) or lower (a queued one).
+- **So an owner can rely on neither the Safe's nonce nor msg.sender. The binding:**
+  - A transaction signature carries the Safe's address and the ten SafeTx words. The owner recomputes Safe's EIP-712 hash from them (domain: this chain's id and the Safe) and refuses the signature unless it is the hash being checked.
+  - The key index then comes from the SafeTx's own nonce: keyIndex = (nonce − start) × 2 + slot.
+  - The answer doesn't depend on who asks or when. Tested: an eth_call from address 0 before execution, a queued transaction, both entry points, then execution.
+- **Each WOTS key verifies only for a SafeTx of one Safe, on one chain, at one nonce.** The signer keeps D4's rule: slot 0 signs, slot 1 replaces or cancels.
+
+**Question 3: messages.**
+- **Apps ask the Safe `isValidSignature(bytes32 h, sig)`.** The Safe has no such function, so its fallback handler answers. CompatibilityFallbackHandler wraps h in `SafeMessage(bytes message)` with message = `abi.encode(h)`, in the Safe's EIP-712 domain, and has the Safe check its owners:
+  - **v1.4.1:** the handler (`:77–81`) calls the Safe's legacy `isValidSignature(abi.encode(h), sig)`, which comes back through the fallback to `:28–39`. That builds the 66-byte preimage of the SafeMessage hash (`:31`, `:56–59`) and calls `checkSignatures(messageHash, messageData, sig)` (`:36`). The owner gets `isValidSignature(messageData, data)`.
+  - **v1.5.0:** the handler (`:73–86`) builds the same message and calls `checkSignatures(address(0), messageHash, sig)` (`:83`). The owner gets `isValidSignature(messageHash, data)`. The legacy entry point is gone from the handler.
+- **An owner can't tell a message from a transaction by the hash alone:** both are an EIP-712 hash in the Safe's domain. WinterlockOwner's message signature carries keccak256(message). The owner recomputes the SafeMessage hash for the named Safe on this chain, then checks the stateless key's signature of `messageDigest(safe, hash)`.
+- **A message signature can't approve a transaction.** If a member is phished into signing a SafeTx hash as a "message", the owner refuses the result, because that hash is not a SafeMessage hash (tested, with a mutation check).
+- **Nested Safes:** if a team's Safe owns another Safe, the parent's transactions reach the team's Safe as SafeMessages. Members approve them with their stateless keys, so they get no WOTS nonce binding.
+
+**Design: `WinterlockOwner`, one contract per member.**
+- **Keys:** the member's leanSphincs key is its only long-term key (`KEY`, immutable). The contract reuses WotsVerifier and the stateless verifier (D1).
+- **Signatures:**
+  - transaction: `[slot][safe: 20][SafeTx: 10 × 32][WOTS signature][path]`
+  - message: `[0x02][safe: 20][keccak256(message): 32][stateless signature: 5,684]`
+  - Both EIP-1271 entry points answer: bytes32 with `0x1626ba7e`, legacy with `0x20c13b0b`. Malformed input gets `0xffffffff` and never reverts.
+- **Enrolment:** `enroll(safe, root, height, start, signature)` is permissionless. The owner check is a view call (STATICCALL), so it can't store a certificate the way validateUserOp does; a certificate (5.7 KB) wouldn't fit a confirmation anyway. D12's properties hold:
+  - the certificate binds the chain, the owner contract, the Safe, the root, the height and the start
+  - start nonces only grow
+  - only valid certificates are stored
+  - one slot per Safe (root, start in 40 bits, height in 8 bits); the tree seed is derived from the chain, the owner, the Safe and the start
+  - Anyone may send it: a relayer, the member, or the Safe itself in a MultiSend next to `swapOwner` (tested in the upgrade below).
+- **Address:** CREATE2 through the deterministic deployment proxy, with KEY as the salt; the init code holds the code, the parameter set, the verifier's address and KEY. The owner's address is the same on every chain, and so is a Safe that Safe's factory creates with those owners (tested under two chain ids).
+- **No outbound calls** other than to the verifier: an owner contract can't call `approveHash` or anything else.
+
+**Tests.** 8 unit tests, and 15 integration tests run on each release. The full suite passes: 330 tests; the 12 skipped are in WotsVerifier's checksum suites.
+- a 2-of-3 Safe of three owners: enrolment, an ETH and an ERC-20 transfer; one signature short; the same owner twice
+- the Safe's nonce during execution (probe), and the same answer before and during execution
+- a replacement at the same nonce with slot 1 (a cancellation, as Safe's app builds it), after which the original is refused
+- a key used for another nonce is refused, including SafeTx fields that lie to match the key
+- a signature or a certificate for another Safe or another chain is refused
+- messages through the fallback handler; refused for another Safe, message or chain, and across kinds; a phished SafeTx hash is refused
+- **upgrade in place:** a 2-of-3 ECDSA Safe swaps one owner per transaction, each swap in a MultiSend with the new owner's `enroll`. The swaps are signed by two ECDSA owners, then by a WinterlockOwner and an ECDSA owner, then by two WinterlockOwners. The Safe keeps its address, and at the end the ECDSA keys are refused (GS026).
+- the same owner and Safe addresses under another chain id
+- enrolment rules: bindings, start order, field bounds; malformed signatures; the deterministic address
+- **Mutation checks:** a test fails without each of the SafeTx hash check, the SafeMessage check, the start rule, the root alignment, and the chain or the Safe in the certificate digest.
+
+**Gas and sizes** (D6, operation trees of height 10: 512 nonces × 2 slots). Transaction gas as Forge measures it (below), Prague pricing, steady state: nonce ≥ 1, recipient balances nonzero.
+
+| `execTransaction` | v1.4.1 | v1.5.0 |
+|---|---|---|
+| ETH transfer, 2-of-3 ECDSA owners | 65,794 | 65,302 |
+| ETH transfer, 2-of-3 WinterlockOwners | 247,250 (3.76×) | 244,861 (3.75×) |
+| ERC-20 transfer, 2-of-3 ECDSA owners | 72,586 | 72,067 |
+| ERC-20 transfer, 2-of-3 WinterlockOwners | 253,933 (3.50×) | 251,604 (3.49×) |
+
+- **About 90k gas per WinterlockOwner signature.** Calldata is about 24k of it: the ERC-20 transaction carries 4,196 bytes against 644, which costs 53.7k gas against 4.8k at 4 and 16 gas per byte. Execution is the other ~65k: about 55k for the WOTS verification, and about 10k for calling the owner (a cold account and slot, 1.8 KB copied into the call) and recomputing the SafeTx hash.
+- **Compared with Kernel 2-of-3** (+160k over Kernel with ECDSA, 2.12×): the absolute premium is similar, +180k. The ratio is higher because an ECDSA Safe transaction is cheap, with no 4337 overhead.
+- **Sizes:**
+
+  | Per owner | Data | As a confirmation (65 + 32 + data) | Transaction Service cap |
+  |---|---|---|---|
+  | Transaction, height 10 | 1,757 B | 1,854 B | fits (5,000 B) |
+  | Transaction, height 20 | 1,997 B | 2,094 B | fits |
+  | Message (stateless) | 5,737 B | 5,834 B | **too large** |
+
+- **Messages on-chain:** the 2-of-3 signature an app receives is 11,668 bytes. Checking it costs 190.9k gas for the call on v1.5.0 and 233.5k on v1.4.1, whose handler goes through the Safe twice; the app's calldata comes on top.
+- **One-time costs per member and chain:** deploying the owner takes 1.60M gas (7,114 bytes of runtime code); `enroll` takes 251k gas (5,892 bytes of calldata, one new slot), and the same again for each rotation.
+- **How the gas was measured.** This Forge (1.8.3) runs with `isolate = true` by default: every call a test makes at the top level is its own transaction, with intrinsic gas, the EIP-7623 floor, fresh access lists and committed storage. `vm.lastCallGas()` reports that transaction's gas. For a plain storage write it matched an anvil receipt exactly (26,413). Refunds are not subtracted; none of the transactions above earns one. The figures move by a few dozen gas whenever the owner's code changes, since its address, and with it the signatures' bytes, change too.
+
+**Problems and risks.**
+- **Messages don't fit the Transaction Service:** 5,834 bytes against its 5,000-byte cap, on both its message endpoints. Options:
+  - leanSphincs-s for the stateless key: its 4,164-byte signature makes a 4,314-byte entry. D12 chose leanSphincs for its Light-tier signature budget.
+  - approving messages on-chain, with SignMessageLib in a WOTS-signed transaction; the handler then accepts an empty signature
+  - collecting message signatures outside the service
+  - Even then, apps receive 11.7 KB for 2-of-3 and pay 190–230k gas per check. Some off-chain consumers may cap signature sizes.
+- **Enrolment comes first.** Each member needs an `enroll` transaction per Safe and chain (251k gas, 5.9 KB) before the Transaction Service accepts that member's confirmations, because it checks them against chain state. A rotation invalidates confirmations already collected under the old tree.
+- **Deployment is costly:** 1.6M gas per member per chain for a full contract. Under Glamsterdam's state pricing, which made the validator's deployment cost seven times more on Sepolia than on Arbitrum Sepolia, that could reach about 11M on L1. An ERC-1167 clone carrying KEY as an immutable argument would cost under 0.1M gas (estimate) and up to about 3k more per transaction (a delegatecall to the shared implementation, warm after the first owner). Not built.
+- **Who executes:** a WinterlockOwner has no EOA. Once a transaction has its signatures, anyone with gas can execute it: a relayer, or any member's wallet. Unverified: whether Safe's app lets a wallet that isn't an owner execute, and whether it shows confirmations from these owners. Only a live test can tell.
+- **No delegates:** the Transaction Service registers a proposer (delegate) with an owner's EIP-1271 signature over an EIP-712 `Delegate` hash, which WinterlockOwner refuses by design. A proposal must therefore carry a WinterlockOwner's own signature, with that owner as sender.
+- **Typed data of modules gets no answer:** WinterlockOwner signs only SafeTx and SafeMessage. A module that asks the Safe to check its own typed data, such as Safe's 4337 module with its SafeOp, needs its type added, with its own nonce binding.
+- **The lock-down is more than the owners:** the constraint "no ECDSA path left over" applies to modules, the guard and the fallback handler too. The upgrade test checks the owners only.
+- **Safes before v1.3.0** use an EIP-712 domain without a chain id. Not supported.
+- **Forge's incremental build is stale for the owner:** after an edit to `WinterlockOwner.sol`, Forge recompiled that file alone ("Compiling 1 files"), and the tests, which embed its creation code through `SafeOwnerDeployment`, kept the old bytecode. A mutant then passed every test, while the same mutant, recompiled together with the tests, failed its test. A first mutation run was fooled this way. After changing the owner, run `forge build --force`.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
@@ -536,7 +644,7 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 1
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): built with the stateless key and an EIP-712 wrap (D11, above). Open: full ERC-7739 nested typed data, and on-chain pre-approval for high-value permits.
 - 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579, including whether they have an enable path like Kernel's and whether it asks with the account as the sender, so the same lock covers it; whether to refuse or support Kernel's replayable signatures for UserOperations; and the signer's confirmation flow for installing modules (Kernel's enable mode is refused by design). On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
-- Classic Safes: whether to build the Safe-owner (EIP-1271) adapter from D1, for teams that don't use 4337.
+- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike). Open: messages against the Transaction Service's 5,000-byte cap, the per-member deployment cost, and a live test with Safe's app and Transaction Service.
 
 **Infrastructure**
 - Bundler acceptance: answered for the hosted bundlers. Pimlico, Candide and Alchemy accept and include WOTS operations from a production Kernel on Arbitrum Sepolia (stage 2, above). Still open:

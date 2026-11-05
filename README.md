@@ -11,19 +11,20 @@ The page is a single static `index.html` with two self-hosted fonts. It makes no
 | `index.html` | The whole page: markup, styles and the demo script |
 | `fonts/` | Atkinson Hyperlegible Next and Mono (variable, Latin subset) with their SIL Open Font License texts |
 | `docs/decisions.md` | Design decisions, gas measurements and open questions |
-| `contracts/` | Research prototype: WOTS verifier, ERC-7579 validator, tests and gas benchmark (unaudited, not for real funds) |
+| `contracts/` | Research prototype: WOTS verifier, ERC-7579 validator, Safe owner (EIP-1271), tests and gas benchmark (unaudited, not for real funds) |
 
 ## Contracts
 
 ```sh
 cd contracts
-./setup.sh          # submodules, plus ZeroDev Kernel built with its production profile
+./setup.sh          # submodules, plus ZeroDev Kernel and Safe v1.4.1 / v1.5.0 built with their release settings
 forge test          # unit tests per parameter set, Kernel integration tests, verifier-only gas
 ./bench.sh          # local anvil, real handleOps txs, gas table from receipts
 L2_RPC=https://mainnet.base.org ./bench.sh   # also price them on Base (read-only RPC calls)
 ./bench/bundlers/run.sh   # bundler acceptance: geth + Alto + Rundler in Docker, real ERC-7562 checks
 ./bench/bundlers/testnet.sh   # hosted bundlers on Arbitrum Sepolia; needs bench/bundlers/.env (keys, funded test key)
 forge script script/DeployValidator.s.sol --rpc-url $RPC --broadcast   # validator at its deterministic address (D10)
+WINTERLOCK_KEY=0x... forge script script/DeploySafeOwner.s.sol --rpc-url $RPC --broadcast   # a member's Safe owner at its deterministic address
 ./bench/bundlers/multichain.sh   # one account on Ethereum Sepolia and Arbitrum Sepolia, a tree per chain (D10)
 ```
 

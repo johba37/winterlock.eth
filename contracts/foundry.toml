@@ -20,11 +20,16 @@ remappings = [
   "kernel/=lib/kernel/src/",
   "solady/=lib/kernel/lib/solady/src/",
   "ExcessivelySafeCall/=lib/kernel/lib/ExcessivelySafeCall/src/",
+  "safe-v1.4.1/=lib/safe-smart-account-v1.4.1/contracts/",
+  "safe-v1.5.0/=lib/safe-smart-account-v1.5.0/contracts/",
 ]
 fs_permissions = [
   { access = "read-write", path = "./bench" },
   { access = "read", path = "./lib/kernel/out" },
   { access = "read", path = "./test/fixtures" },
+  # Safe's contracts, built with their release settings by setup.sh (solc 0.7.6, optimizer off)
+  { access = "read", path = "./lib/safe-smart-account-v1.4.1/build/forge-out" },
+  { access = "read", path = "./lib/safe-smart-account-v1.5.0/build/forge-out" },
 ]
 additional_compiler_profiles = [{ name = "via-ir", via_ir = true }]
 compilation_restrictions = [{ paths = "src/vendor/sphincs-minus/LeanSphincsAsm.sol", via_ir = true }]

@@ -10,3 +10,9 @@
 [submodule "contracts/lib/kernel"]
 	path = contracts/lib/kernel
 	url = https://github.com/zerodevapp/kernel
+[submodule "contracts/lib/safe-smart-account-v1.4.1"]
+	path = contracts/lib/safe-smart-account-v1.4.1
+	url = https://github.com/safe-global/safe-smart-account
+[submodule "contracts/lib/safe-smart-account-v1.5.0"]
+	path = contracts/lib/safe-smart-account-v1.5.0
+	url = https://github.com/safe-global/safe-smart-account

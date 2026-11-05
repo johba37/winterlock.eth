@@ -46,15 +46,22 @@ library ValidatorDeployment {
     /// Deploys the stateless verifier, then the validator, each unless it already exists; returns the validator's
     /// address either way
     function deploy(uint256 params) internal returns (address validator) {
-        _deploy(VERIFIER_SALT, verifierInitCode());
+        deployVerifier();
         validator = _deploy(SALT, initCode(params));
     }
 
-    function _create2(bytes32 salt, bytes memory code) private pure returns (address) {
+    /// Deploys the stateless verifier unless it exists; returns its address either way
+    function deployVerifier() internal returns (address) {
+        return _deploy(VERIFIER_SALT, verifierInitCode());
+    }
+
+    /// CREATE2 address of `code` deployed by the proxy with `salt`
+    function _create2(bytes32 salt, bytes memory code) internal pure returns (address) {
         return address(uint160(uint256(keccak256(abi.encodePacked(bytes1(0xff), DEPLOYER, salt, keccak256(code))))));
     }
 
-    function _deploy(bytes32 salt, bytes memory code) private returns (address deployed) {
+    /// Deploys `code` through the proxy with `salt` unless it exists; returns its address either way
+    function _deploy(bytes32 salt, bytes memory code) internal returns (address deployed) {
         deployed = _create2(salt, code);
         if (deployed.code.length != 0) return deployed;
         require(DEPLOYER.code.length != 0, "no deterministic deployment proxy on this chain");

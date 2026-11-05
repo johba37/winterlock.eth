@@ -22,5 +22,17 @@
       "name": "v5.0.2",
       "rev": "dbb6104ce834628e473d2173bbc9d47f81a9eec3"
     }
+  },
+  "lib/safe-smart-account-v1.4.1": {
+    "tag": {
+      "name": "v1.4.1",
+      "rev": "bf943f80fec5ac647159d26161446ac5d716a294"
+    }
+  },
+  "lib/safe-smart-account-v1.5.0": {
+    "tag": {
+      "name": "v1.5.0",
+      "rev": "dc437e8fba8b4805d76bcbd1c668c9fd3d1e83be"
+    }
   }
 }
