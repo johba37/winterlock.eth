@@ -118,6 +118,7 @@ class Driver:
         self.signer_rpc = signer_rpc or rpc_url
         self.helper = signer_helper or deployment["signerHelper"]
         self.fund = "1ether"
+        self.tree_index = 0  # which of a member's operation trees (and master key) the helper signs with
         self.transfer_wei = 10**15
         self.fee_mode = "fixed"
 
@@ -173,24 +174,25 @@ class Driver:
         p = "(%d,%d,%d,%d)" % params
         for m in signers:
             root, seed, height, start = cast_values(
-                "call", self.helper, f"tree({PARAMS_TYPE},string,uint256)(bytes32,uint128,uint8,uint64)", p, tag, m,
-                "--rpc-url", self.signer_rpc)
+                "call", self.helper, f"tree({PARAMS_TYPE},string,uint256,uint256)(bytes32,uint128,uint8,uint64)", p,
+                tag, m, self.tree_index, "--rpc-url", self.signer_rpc)
             enrolled = self.call(validator, "tree(address,uint256)(bytes32)", account, m)
             if enrolled.lower() == root.lower():
                 out.append("0x")
                 continue
             digest = self.call(validator, "certificateDigest(address,uint256,bytes32,uint128,uint8,uint64)(bytes32)",
                                account, m, root, seed, height, start)
-            out.append(self.helper_call(f"certificate({PARAMS_TYPE},string,uint256,bytes32)(bytes)", p, tag, m, digest))
+            out.append(self.helper_call(f"certificate({PARAMS_TYPE},string,uint256,uint256,bytes32)(bytes)", p, tag, m,
+                                        self.tree_index, digest))
         return out
 
     def sign(self, op, params, tag, signers, nonce, certs):
         digest = self.user_op_hash(op)
         if params is None:
             return cast("wallet", "sign", "--private-key", ECDSA_PK, digest)
-        return self.helper_call(f"sign({PARAMS_TYPE},string,uint256[],uint256,uint256,bytes[],bytes32)(bytes)",
-                                "(%d,%d,%d,%d)" % params, tag, "[%s]" % ",".join(map(str, signers)), 0, nonce,
-                                "[%s]" % ",".join(certs), digest)
+        return self.helper_call(
+            f"sign({PARAMS_TYPE},string,uint256,uint256[],uint256,uint256,bytes[],bytes32)(bytes)", "(%d,%d,%d,%d)" % params,
+            tag, self.tree_index, "[%s]" % ",".join(map(str, signers)), 0, nonce, "[%s]" % ",".join(certs), digest)
 
     def run_scenario(self, bundler_name, bundler_url, scenario, counterfactual=False):
         """counterfactual: the first op deploys the account through initCode. Otherwise the account is
@@ -207,80 +209,84 @@ class Driver:
                  "deployWithFactory(address,bytes,bytes32)", self.d["kernelFactory"], init, salt, "--rpc-url", self.rpc)
         results = []
         for nonce in ((0,) if counterfactual else (0, 1)):
-            certs = self.certs(self.d[vkey], sender, params, tag, signers)
-            max_fee, prio = self.fees(bundler_url)
-            op = {
-                "sender": sender,
-                "nonce": h(nonce),
-                "callData": self.transfer(self.transfer_wei),
-                # generous limits for the estimation request; bundlers return their own values
-                "callGasLimit": h(1_000_000),
-                "verificationGasLimit": h(2_000_000),
-                "preVerificationGas": h(1_000_000),
-                "maxFeePerGas": h(max_fee),
-                "maxPriorityFeePerGas": h(prio),
-                "signature": dummy_signature(params, signers, certs),
-            }
-            if counterfactual:
-                op["factory"] = self.d["factoryStaker"]
-                op["factoryData"] = cast("calldata", "deployWithFactory(address,bytes,bytes32)",
-                                         self.d["kernelFactory"], init, salt)
-            row = dict(scenario=name, op="deploy (initCode)" if counterfactual else f"transfer n{nonce}",
-                       bundler=bundler_name, sig_bytes=len(op["signature"]) // 2 - 1,
-                       certificates=sum(c != "0x" for c in certs))
-            # Rundler estimates best from zero limits; Alto needs room to simulate. Try zero, then generous.
-            est, errors = None, []
-            for limits in ((0, 0, 0), (1_000_000, 2_000_000, 1_000_000)):
-                op["callGasLimit"], op["verificationGasLimit"], op["preVerificationGas"] = map(h, limits)
-                try:
-                    est = rpc(bundler_url, "eth_estimateUserOperationGas", [op, self.ep])
-                    if int(est["verificationGasLimit"], 16) == 0:
-                        raise RpcError("estimate returned verificationGasLimit 0")
-                    break
-                except (RpcError, KeyError, urllib.error.HTTPError) as e:
-                    errors.append(str(e))
-                    est = None
-            if est:
-                # the estimates unchanged: the validator spends as much gas on the dummy as on the real signature
-                row["estimate"] = "ok"
-                row["est_vgl"] = int(est["verificationGasLimit"], 16)
-                row["est_pvg"] = int(est["preVerificationGas"], 16)
-                for k in ("callGasLimit", "verificationGasLimit", "preVerificationGas"):
-                    op[k] = est[k]
-            else:
-                row["estimate"] = "rejected: " + " / ".join(errors)
-                # fall back to fixed limits so acceptance itself can still be tested
-                op["callGasLimit"] = h(100_000)
-                op["preVerificationGas"] = h(100_000 + 20 * row["sig_bytes"])
-                vgl = ((600_000 if counterfactual else 150_000) + verifier_gas * len(signers)
-                       + 110_000 * row["certificates"])  # a certificate: master verification and storage
-                op["verificationGasLimit"] = h(vgl * 12 // 10)
-            row["vgl"] = int(op["verificationGasLimit"], 16)
-            op["signature"] = self.sign(op, params, tag, signers, nonce, certs)
-            try:
-                op_hash = rpc(bundler_url, "eth_sendUserOperation", [op, self.ep])
-                row["send"] = "accepted"
-            except RpcError as e:
-                row["send"] = f"rejected: {e}"
-                results.append(row)
-                break
-            receipt = None
-            for _ in range(180):
-                receipt = rpc(bundler_url, "eth_getUserOperationReceipt", [op_hash])
-                if receipt:
-                    break
-                time.sleep(1)
-            if receipt:
-                row["included"] = "yes" if receipt.get("success") else "yes, execution failed"
-                row["gas_used"] = int(receipt.get("actualGasUsed", "0x0"), 16)
-                row["gas_cost_wei"] = int(receipt.get("actualGasCost", "0x0"), 16)
-            else:
-                row["included"] = "no (timeout)"
+            factory_data = cast("calldata", "deployWithFactory(address,bytes,bytes32)", self.d["kernelFactory"],
+                                init, salt) if counterfactual else None
+            row = self.submit(bundler_name, bundler_url, sender, nonce, params, tag, signers, self.d[vkey],
+                              verifier_gas, factory_data)
+            row["scenario"] = name
             results.append(row)
-            if not receipt:
+            if row.get("send") != "accepted" or row.get("included") == "no (timeout)":
                 break
         return results
 
+    def submit(self, bundler_name, bundler_url, sender, nonce, params, tag, signers, validator, verifier_gas,
+               factory_data=None):
+        """One UserOperation through a bundler: estimate (dummy signature), sign, send, wait for the receipt.
+        factory_data: deploy the account through the meta factory (initCode) with this operation."""
+        certs = self.certs(validator, sender, params, tag, signers)
+        max_fee, prio = self.fees(bundler_url)
+        op = {
+            "sender": sender,
+            "nonce": h(nonce),
+            "callData": self.transfer(self.transfer_wei),
+            "maxFeePerGas": h(max_fee),
+            "maxPriorityFeePerGas": h(prio),
+            "signature": dummy_signature(params, signers, certs),
+        }
+        if factory_data:
+            op["factory"] = self.d["factoryStaker"]
+            op["factoryData"] = factory_data
+        row = dict(op="deploy (initCode)" if factory_data else f"transfer n{nonce}", bundler=bundler_name,
+                   sig_bytes=len(op["signature"]) // 2 - 1, certificates=sum(c != "0x" for c in certs))
+        # Rundler estimates best from zero limits; Alto needs room to simulate. Try zero, then generous.
+        est, errors = None, []
+        for limits in ((0, 0, 0), (1_000_000, 2_000_000, 1_000_000)):
+            op["callGasLimit"], op["verificationGasLimit"], op["preVerificationGas"] = map(h, limits)
+            try:
+                est = rpc(bundler_url, "eth_estimateUserOperationGas", [op, self.ep])
+                if int(est["verificationGasLimit"], 16) == 0:
+                    raise RpcError("estimate returned verificationGasLimit 0")
+                break
+            except (RpcError, KeyError, urllib.error.HTTPError) as e:
+                errors.append(str(e))
+                est = None
+        if est:
+            # the estimates unchanged: the validator spends as much gas on the dummy as on the real signature
+            row["estimate"] = "ok"
+            row["est_vgl"] = int(est["verificationGasLimit"], 16)
+            row["est_pvg"] = int(est["preVerificationGas"], 16)
+            for k in ("callGasLimit", "verificationGasLimit", "preVerificationGas"):
+                op[k] = est[k]
+        else:
+            row["estimate"] = "rejected: " + " / ".join(errors)
+            # fall back to fixed limits so acceptance itself can still be tested
+            op["callGasLimit"] = h(100_000)
+            op["preVerificationGas"] = h(100_000 + 20 * row["sig_bytes"])
+            vgl = ((600_000 if factory_data else 150_000) + verifier_gas * len(signers)
+                   + 110_000 * row["certificates"])  # a certificate: master verification and storage
+            op["verificationGasLimit"] = h(vgl * 12 // 10)
+        row["vgl"] = int(op["verificationGasLimit"], 16)
+        op["signature"] = self.sign(op, params, tag, signers, nonce, certs)
+        try:
+            op_hash = rpc(bundler_url, "eth_sendUserOperation", [op, self.ep])
+            row["send"] = "accepted"
+        except RpcError as e:
+            row["send"] = f"rejected: {e}"
+            return row
+        receipt = None
+        for _ in range(300):
+            receipt = rpc(bundler_url, "eth_getUserOperationReceipt", [op_hash])
+            if receipt:
+                break
+            time.sleep(1)
+        if receipt:
+            row["included"] = "yes" if receipt.get("success") else "yes, execution failed"
+            row["gas_used"] = int(receipt.get("actualGasUsed", "0x0"), 16)
+            row["gas_cost_wei"] = int(receipt.get("actualGasCost", "0x0"), 16)
+            row["tx"] = (receipt.get("receipt") or {}).get("transactionHash")
+        else:
+            row["included"] = "no (timeout)"
+        return row
 
 def main():
     ap = argparse.ArgumentParser()
@@ -293,6 +299,7 @@ def main():
     ap.add_argument("--signer-helper", help="WotsSignerHelper address on --signer-rpc (default: from deployment)")
     ap.add_argument("--fund", default="1ether", help="value sent to each test account")
     ap.add_argument("--transfer-wei", type=int, default=10**15, help="value each operation transfers")
+    ap.add_argument("--only", help="comma-separated scenario names (default: all)")
     ap.add_argument("--fees", choices=("fixed", "bundler"), default="fixed",
                     help="fixed: 50 gwei / 1 gwei; bundler: each bundler's gas price method")
     args = ap.parse_args()
@@ -303,7 +310,8 @@ def main():
     rows = []
     for spec in args.bundler:
         bname, burl = spec.split("=", 1)
-        runs = [(sc, False) for sc in SCENARIOS] + [(sc, True) for sc in SCENARIOS[:2]]
+        chosen = [sc for sc in SCENARIOS if not args.only or sc[0] in args.only.split(",")]
+        runs = [(sc, False) for sc in chosen] + [(sc, True) for sc in chosen if sc in SCENARIOS[:2]]
         for scenario, counterfactual in runs:
             try:
                 rows += driver.run_scenario(bname, burl, scenario, counterfactual)

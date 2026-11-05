@@ -23,6 +23,8 @@ forge test          # unit tests per parameter set, Kernel integration tests, ve
 L2_RPC=https://mainnet.base.org ./bench.sh   # also price them on Base (read-only RPC calls)
 ./bench/bundlers/run.sh   # bundler acceptance: geth + Alto + Rundler in Docker, real ERC-7562 checks
 ./bench/bundlers/testnet.sh   # hosted bundlers on Arbitrum Sepolia; needs bench/bundlers/.env (keys, funded test key)
+forge script script/DeployValidator.s.sol --rpc-url $RPC --broadcast   # validator at its deterministic address (D10)
+./bench/bundlers/multichain.sh   # one account on Ethereum Sepolia and Arbitrum Sepolia, a tree per chain (D10)
 ```
 
 ## Preview locally

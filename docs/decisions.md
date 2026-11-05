@@ -275,6 +275,41 @@ The validator now installs master trees and stores per-chain operation trees cer
 - **Rundler accepts the storage write in validation** under full ERC-7562 checks: certificate operations were accepted and included, single and 2-of-3, with Rundler's own estimates.
 - **Validation writes storage only for a valid certificate.** An account can call the validator outside the EntryPoint, from a batch or an executor. If an invalid certificate were stored, such a call could install an attacker's tree. So wallets put the real certificate into the dummy signature for gas estimation; the certificate doesn't depend on the operation.
 
+**2026-11-05: D10 across chains (steps 2–4)** (`script/DeployValidator.s.sol`, `test/integration/KernelMultichain.t.sol`, `bench/bundlers/multichain.sh`)
+
+- **Deterministic validator.** `DeployValidator.s.sol` deploys through the deterministic deployment proxy with a fixed salt, so the address depends only on the bytecode and the parameter set. D6 sits at `0xd2B64A501c37957EF154A5971BbEBE417726b535`, now deployed on Ethereum Sepolia and Arbitrum Sepolia with identical code. A change to the source or the compiler settings changes the address, so a release pins both.
+- **Two chains in Foundry.** The Kernel tests run one deployment as two chains, from a state snapshot with different chain ids. They show:
+  - the same account address on both chains, deployed on each by its first WOTS-signed operation
+  - a separate operation tree on each chain, under master keys 0 and 1
+  - one chain's certificate refused on the other
+  - the other chain's tree refused, with or without its certificate
+- **Live.** One account, `0x88edb7859e1986515e721ed42D954E1c7A181a65`, on Ethereum Sepolia and Arbitrum Sepolia, deployed on each chain by its first operation through Pimlico. Each first operation carried that chain's certificate, and each chain has its own tree.
+
+| Live, Pimlico | Ethereum Sepolia | Arbitrum Sepolia |
+|---|---|---|
+| Deploy + certificate + transfer | 1,734,026 gas | 578,776 gas |
+| Next transfer | 431,536 gas | 213,417 gas |
+| Operation tree | master key 0 | master key 1 |
+
+**Glamsterdam on Sepolia.** Sepolia has run Glamsterdam since 2026-10-06; `eth_config` lists the ePBS builder contracts. This is the first measurement of Winterlock under its repricing, which makes new state much more expensive (EIP-8037, part of EIP-8007):
+- **Deploying the validator** took 14.8M gas on Sepolia, against 2.1M on Arbitrum Sepolia. That is close to the 16.7M transaction gas cap. Forge's local simulation still prices the old way and set too low a limit (the transaction ran out of gas), so I deployed with `cast send` to the proxy and an explicit gas limit.
+- **Same chain, ECDSA against D6 on Kernel,** with each bundler's own estimates:
+
+  | Sepolia (Glamsterdam) | Candide | Alchemy | vs ECDSA |
+  |---|---|---|---|
+  | ECDSA transfer | 241,703 | 238,581 | 1.00× |
+  | D6 transfer | 325,160 | 322,063 | 1.35× |
+  | D6 first transfer with certificate, over steady state | +299k | +300k | once per chain and member |
+  | Counterfactual deploy, D6 against ECDSA | 1,510,003 vs 909,197 | rejected (CREATE2 rule) | +601k once |
+
+- **D6 costs only 1.35× ECDSA under Glamsterdam,** against 1.62× on Arbitrum. State access got dearer for every account, and WOTS hashing did not.
+- **New state is where Winterlock now pays:**
+  - A certificate stores two new slots, about 300k gas once per chain.
+  - The account's install data takes three slots (configuration and the master tree) against one for ECDSA.
+  - Together, the first operation on a chain costs about 600k gas more than ECDSA's. A possible saving: pack the operation tree into one slot. For D6 that's root, start, master index and height in 32 bytes, with the tree's public seed derived from the master seed and index.
+- **Preverification gas differs by bundler.** For D6's extra 1.6 KB, Pimlico charged about 110k on Sepolia, Candide and Alchemy about 26k (16 gas per byte).
+- **Funding matters with Pimlico.** Pimlico simulates at its own gas price (about 1.2 gwei on Sepolia, where the base fee is about 1,000 wei). Test accounts funded with 0.001 ETH failed its estimation with AA21 (prefund). That was the cause of three Pimlico failures in this run; the 0.01 ETH-funded live run went through.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7 tests.
@@ -295,11 +330,10 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 - An independent reference implementation and test vectors, in Python or Rust. So far the tests only cross-check against a Solidity signer.
 
 **Accounts and chains**
-- One address on every chain, and tree rotation: decided in D10. The validator is done (step 1, measured above). Still to do:
-  - deploy the validator at the same address on every chain
-  - Kernel tests across two chain ids (same address, separate trees)
-  - the same account live on Ethereum Sepolia and Arbitrum Sepolia
+- One address on every chain, and tree rotation: decided in D10, built and shown live on two testnets (above). Still open:
   - the signer's log of used master keys: where it lives and how it is backed up
+  - one storage slot per operation tree instead of two, which matters under Glamsterdam's pricing of new state
+  - deploying on chains without Cancun opcodes, or with a different deterministic deployer
 - A recovery key: SPHINCS+, a cold WOTS tree, or none.
 - Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum.
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
@@ -315,7 +349,7 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 7
 - The collection service (D8): its API, who may post proposals (spam), how private pending proposals are, and whether to reuse code from Safe's transaction service.
 - Limits and abuse policy for the rescue bundler, how to fund it, and a legal check on sanctions screening (EU/Germany).
 - The signer: software first, key derivation from a seed, tracking used slots. Hardware comes later.
-- Calldata repricing: EIP-7976 is analysed above. Re-run `bench.sh` if the final Glamsterdam pricing differs.
+- Calldata repricing: EIP-7976 is analysed above. Glamsterdam is live on Sepolia (measured above). Re-run `bench.sh` against its final pricing once Foundry's EVM supports it, since local benchmarks still use the old prices.
 
 **Before real funds**
 - An independent cryptographic review of the construction (tweaks, randomizer, target sum, nonce binding) and a security audit of the validator.

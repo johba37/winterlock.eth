@@ -9,3 +9,5 @@ bench/bundlers/logs/
 bench/bundlers/.env
 bench/bundlers/deployment-*.json
 bench/bundlers/results-*.json
+bench/bundlers/results-multichain.json
+bench/bundlers/__pycache__/

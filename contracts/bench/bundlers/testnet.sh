@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Stage 2 bundler acceptance: hosted bundlers (Pimlico, Candide, Alchemy) on Arbitrum Sepolia, against the
-# canonical EntryPoint v0.7 and ZeroDev's deployed Kernel v3.3. Only the Winterlock validators are ours.
+# Stage 2 bundler acceptance: hosted bundlers (Pimlico, Candide, Alchemy) on a public testnet (default Arbitrum
+# Sepolia; CHAIN_ID=11155111 for Ethereum Sepolia), against the canonical EntryPoint v0.7 and ZeroDev's deployed
+# Kernel v3.3. Only the Winterlock validators are ours. ONLY="name,name" limits the scenarios (driver.py).
 #
 # Needs bench/bundlers/.env (git-ignored): PIMLICO_API_KEY, ALCHEMY_API_KEY, DEPLOYER_PRIVATE_KEY of a funded
 # throwaway testnet key. WOTS signing runs on a local anvil: the signer helper derives keys from public tags
@@ -13,8 +14,13 @@ set -a
 . bench/bundlers/.env
 set +a
 
-CHAIN_ID=421614
-RPC="${L2_RPC:-https://sepolia-rollup.arbitrum.io/rpc}"
+CHAIN_ID="${CHAIN_ID:-421614}"
+case "$CHAIN_ID" in
+  421614) ALCHEMY_NET=arb-sepolia ;;
+  11155111) ALCHEMY_NET=eth-sepolia ;;
+  *) echo "unknown chain $CHAIN_ID"; exit 1 ;;
+esac
+RPC="${NODE_RPC:-https://$ALCHEMY_NET.g.alchemy.com/v2/$ALCHEMY_API_KEY}"
 DEPLOYMENT="bench/bundlers/deployment-$CHAIN_ID.json"
 SIGNER_PORT=8547
 SIGNER_RPC="http://127.0.0.1:$SIGNER_PORT"
@@ -38,7 +44,7 @@ fi
 declare -A URLS=(
   [pimlico]="https://api.pimlico.io/v2/$CHAIN_ID/rpc?apikey=${PIMLICO_API_KEY:-}"
   [candide]="https://api.candide.dev/public/v3/$CHAIN_ID"
-  [alchemy]="https://arb-sepolia.g.alchemy.com/v2/${ALCHEMY_API_KEY:-}"
+  [alchemy]="https://$ALCHEMY_NET.g.alchemy.com/v2/${ALCHEMY_API_KEY:-}"
 )
 ARGS=()
 for name in ${BUNDLERS:-pimlico candide alchemy}; do
@@ -55,4 +61,4 @@ done
 
 python3 bench/bundlers/driver.py --rpc "$RPC" --deployment "$DEPLOYMENT" --funder "$DEPLOYER_PRIVATE_KEY" \
   --signer-rpc "$SIGNER_RPC" --signer-helper "$HELPER" --fund "${FUND:-0.003ether}" --transfer-wei 1000000000000 \
-  --fees bundler --out "bench/bundlers/results-$CHAIN_ID.json" "${ARGS[@]}"
+  --fees bundler --out "bench/bundlers/results-$CHAIN_ID.json" ${ONLY:+--only "$ONLY"} "${ARGS[@]}"
