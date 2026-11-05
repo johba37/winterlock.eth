@@ -146,14 +146,19 @@ def send(rpc, account: Account, to, data: bytes, value=0, gas=None, gas_margin=1
          priority_fee=None, max_gas=16_777_216, wait=True, log=print):
     """Signs and sends a transaction from `account`; returns the receipt (or the hash if wait is False)"""
     chain_id = rpc.chain_id()
+    est = None
     if gas is None:
-        gas = min(int(rpc.estimate_gas(account.address, to, data, value) * gas_margin), max_gas)
+        est = rpc.estimate_gas(account.address, to, data, value)
+        if est > max_gas:
+            raise RuntimeError(f"the node estimates {est:,} gas, over the {max_gas:,} transaction cap")
+        gas = min(int(est * gas_margin), max_gas)
     base = rpc.base_fee()
     tip = priority_fee if priority_fee is not None else min(rpc.priority_fee(), max(base, 10**6))
     fee_cap = max_fee if max_fee is not None else 2 * base + tip
     raw = account.sign_1559(chain_id, rpc.nonce(account.address), tip, fee_cap, gas, to, value, data)
     tx_hash = rpc.send_raw(raw)
-    log(f"  sent {tx_hash} (gas limit {gas:,}, fee cap {fee_cap:,} wei/gas, tip {tip:,})")
+    log(f"  sent {tx_hash} (" + (f"estimate {est:,}, " if est is not None else "")
+        + f"gas limit {gas:,}, fee cap {fee_cap:,} wei/gas, tip {tip:,})")
     if not wait:
         return tx_hash
     r = rpc.receipt(tx_hash)

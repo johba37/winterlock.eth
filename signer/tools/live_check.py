@@ -44,7 +44,8 @@ RELEASE = {"singleton": "0x29fcB43b46531BcA003ddC8FCB67FFE91900C762",
            "fallback_handler": "0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99"}
 FUND = 10**13
 TRANSFER = 10**11
-MAX_SPEND = 10**16  # 0.01 ETH, including the funding
+MAX_SPEND = 5 * 10**15  # 0.005 ETH, including the funding
+MAX_BASE_FEE = 10**10  # 10 gwei: Sepolia runs at a few dozen wei; stop rather than pay a spike
 STEPS = ["init", "safe", "enroll", "index", "propose", "confirm", "execute"]
 
 
@@ -117,6 +118,9 @@ def main():
     st.setdefault("gas_account", gas.address)
     st.setdefault("balance_start_wei", rpc.balance(gas.address))
     save()
+    base = rpc.base_fee()
+    if base > MAX_BASE_FEE:
+        raise SystemExit(f"base fee {base:,} wei is above {MAX_BASE_FEE:,}: not starting")
 
     def run(member, *argv):
         args = ["--home", homes[member], "--yes", argv[0], *argv[1:]]
@@ -174,7 +178,7 @@ def main():
                 for i in (0, 1):
                     text = run(i, "enroll", "--safe", st["safe"], *(["--deploy"] if i == 0 else []), "--height", "6")
                     st["onchain"][f"enroll_m{i + 1}"] = [line.strip() for line in text.splitlines()
-                                                         if "gas used" in line]
+                                                         if "gas used" in line or "estimate" in line]
                     save()
                     spent()
             elif step == "index":
@@ -206,7 +210,8 @@ def main():
                                                      if "HTTP" in line)})
             elif step == "execute":
                 text = run(0, "execute", "--safe-tx-hash", st["safe_tx_hash"])
-                st["onchain"]["execute"] = [line.strip() for line in text.splitlines() if "Executed" in line]
+                st["onchain"]["execute"] = [line.strip() for line in text.splitlines()
+                                            if "Executed" in line or "estimate" in line]
                 save()
                 time.sleep(5 if a.fork else 90)
                 status, resp = Service(service).request("GET", f"/v2/multisig-transactions/{st['safe_tx_hash']}/")

@@ -782,8 +782,48 @@ A Python command-line signer for the Safe route.
   - moving to another device; a VM snapshot can still reuse keys, and the online check catches that only when it's online
   - a hard stop at the stateless key's budget
   - WalletConnect and message signing
-  - the port to proxy owners
   - an audit
+
+**2026-11-05: proxy owners, live on Sepolia** (`signer/`, `signer/tools/live_check.py`)
+
+The question: do proxy owners work end to end with a real Safe and Safe's hosted Transaction Service, driven by the signer alone? Yes, as the full-contract owners did, for 0.60M gas per member instead of 11.6M.
+
+- **Setup:** two new signers with new seeds; a new 2-of-2 Safe v1.4.1 on the SafeL2 singleton through Safe's canonical factory, owned by the members' predicted proxy owners and funded with 0.00001 ETH. Rehearsed first on a local anvil fork of Sepolia with a mock service.
+- **Order:** the Safe first, since its owners need not exist yet. Then member 1's `enroll --deploy`: the implementation, the factory, and member 1's owner with its first tree in one `deployAndEnroll`. Then member 2's plain `enroll`, which made its owner the same way.
+- **Addresses**, all as the signer predicted offline:
+  - implementation `0xC4Aa38F766020e66136cd6cb1c547CeCAd175f2e`, factory `0x13D4cB5F9A9D076dB123CE8Eb5f404e2FA01fEa5`; the verifier `0x6Dc4DFBccDe0fbeC30b0a4078aB6f45496Fec254` was already there
+  - owners `0x9Ba62FC5AfeF50566446c6b91C32A9C9451aEA24` (member 1) and `0xe331785F6E7690FC9f9e6C109b7a89D6aca9d3aE` (member 2): 77 bytes of code each, the proxy and the key
+  - Safe `0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07`
+
+| Step (Sepolia, Glamsterdam) | Gas used | Node's estimate | Expected (proxy owners, above) |
+|---|---|---|---|
+| Implementation, once per chain | 11,412,369 | 11,595,854 | about 11.6M |
+| Factory, once per chain | 2,618,037 | 2,661,929 | about 2.7M |
+| `deployAndEnroll`, member 1 | 604,507 | 610,472 | about 0.61M |
+| `deployAndEnroll`, member 2 | 604,477 | 610,442 | about 0.61M |
+| Create the Safe | 1,371,909 | 1,396,021 | |
+| `execTransaction`, 1e11 wei to the deployer, nonce 0 | 388,733 | 397,239 | |
+
+- **Gas limits:** the node's estimate times 1.2. The largest, the implementation's, was 13.9M, under the 16.7M cap.
+- **Against the full-contract owners** (the minimal signer's live run, same chain):
+  - a member's owner and first tree: 0.60M instead of 11.6M (11.2M to deploy, 0.39M to enrol)
+  - the execution: 3.9k more (388,733 against 384,803), the two owners' DELEGATECALLs; 3.5k more in the old-pricing rehearsal (302,577 against 299,035)
+- **Transaction Service:**
+
+  | Call | Status | What it returned |
+  |---|---|---|
+  | `GET /v1/safes/{safe}/` | 200 | indexed at the first poll: both owners, threshold 2, `1.4.1+L2` |
+  | `POST /v2/safes/{safe}/multisig-transactions/` | 201 | member 1's proposal, slot 0 |
+  | `POST /v1/multisig-transactions/{safeTxHash}/confirmations/` | 201 | member 2's confirmation, slot 0 |
+  | `GET /v2/multisig-transactions/{safeTxHash}/`, 90 s after execution | 200 | `isExecuted` and `isSuccessful` true, both confirmations `CONTRACT_SIGNATURE` (1,758 bytes each), the deployer as executor |
+
+- **Transactions:**
+  - implementation `0x8ff033b3bff27042cc16298607c3eb70f479de83313614daeb5f86399883c50c`, factory `0x788e7a89129ef12fb9f07167afc7ce745141e20bfc72b8a5353f33be6c987bdd`
+  - Safe `0x72551f94187d12c6e15b5ab8588e2579f00c65fd42f21ca1d51162e9f1938bc9`, funding `0x3a7e8c64530d9688db236dd35da3c112142402a9b23af84dc860360b13a6b2bb`
+  - `deployAndEnroll` `0xd2b7d2fd1b7b28084f9a169b8eb03fdaebe1b34f5af0f460bcf8da0f0fa8a26e` (member 1), `0x685bd141792dbb426c9389b0153f2279915d03f145ac8e8244465b7d6c38117d` (member 2)
+  - execution `0x0f0040b8ba88605ad5591847244b8e19c95e21c33623871dc272875c2ed6ff46` (SafeTx `0xc9d8851cfb3fbb0fb97d8ed551bbc74e9e1bee06faff88f4cf0a7aa1bb8c1be2`)
+- **Spent:** 0.0000099 ETH, nearly all of it left in the Safe; fees were 3.9e-10 ETH at 23 wei per gas.
+- **Nothing differed from the local run** apart from the gas pricing.
 
 ## Integration notes: Kernel v3.3
 
