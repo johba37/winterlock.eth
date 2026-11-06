@@ -1,11 +1,31 @@
 # winterlock.eth
 
-**Winterlock** gives Ethereum smart accounts signers whose security rests on hash functions alone: one-time WOTS keys for everyday signing, and a stateless hash-based key (leanSphincs) for messages, new key trees and recovery. The aim: an alternative to ECDSA for security-conscious individuals and teams, almost as convenient and only a little more expensive in gas.
+**Winterlock lets a team's Safe be controlled by hash-based signatures instead of ECDSA.** These are signatures a quantum computer can't break, and the Safe, Safe's app and dapps keep working. It's a **research prototype: unaudited, testnet only.**
 
-- **Teams:** Winterlock signers are owners of a [Safe](https://safe.global). Safe does the k-of-n, and teams keep Safe's app and Transaction Service. An existing Safe can switch in place, swapping its owners one at a time, without moving funds.
-- **Individuals:** an ERC-7579 validator on ZeroDev Kernel (ERC-4337).
+**Start here:** the [one-page overview](docs/overview.md) covers how it works, the numbers and what's live.
 
-Both work live on testnets; see `docs/decisions.md` for the decisions (D1–D14), measurements and open questions. Everything here is a **research prototype: unaudited, not for real funds**.
+- **Teams:** each member's owner contract is an owner of a [Safe](https://safe.global). Safe does the k-of-n, and teams keep Safe's app and Transaction Service.
+  - **One-time keys** (WOTS) sign transactions.
+  - **A stateless key** (leanSphincs) signs messages, certifies new key trees and brings a member back after a lost device.
+  - **An existing Safe can switch in place,** swapping its owners one at a time without moving funds.
+- **Individuals:** an ERC-7579 validator on ZeroDev Kernel (ERC-4337), with built-in k-of-n.
+
+**Live on Sepolia:**
+- Safes with Winterlock owners, through Safe's Transaction Service and app.
+- Dapps over WalletConnect: transactions, sign-in, typed data, Permit2.
+- Recovery and moves between devices.
+
+All decisions, measurements and open questions are in [docs/decisions.md](docs/decisions.md).
+
+**Try it as a member of a test Safe** (details under [Signer](#signer)):
+
+```sh
+python3 -m venv signer/.venv && signer/.venv/bin/pip install -r signer/requirements.txt
+signer/winterlock-signer init                                   # your recovery phrase, a three-word check, a passphrase
+signer/winterlock-signer address                                # your owner address: list it when creating the Safe
+signer/winterlock-signer enroll  --chain sepolia --safe 0x...   # creates your owner contract and certifies a key tree
+signer/winterlock-signer connect --chain sepolia --safe 0x...   # use the Safe in a dapp over WalletConnect
+```
 
 This repository also holds the landing page published at winterlock.eth: a single static `index.html` with two self-hosted fonts. It makes no requests to other servers, so it works from any IPFS gateway, from `ipfs://` in Brave, or straight from disk. The hero includes a live Winternitz hash-chain demo that runs entirely in the browser.
 
@@ -15,6 +35,7 @@ This repository also holds the landing page published at winterlock.eth: a singl
 |---|---|
 | `index.html` | The landing page: markup, styles and the demo script |
 | `fonts/` | Atkinson Hyperlegible Next and Mono (variable, Latin subset) with their SIL Open Font License texts |
+| `docs/overview.md` | Winterlock in one page: how it works, numbers, what's live, terms |
 | `docs/decisions.md` | Design decisions, gas measurements and open questions |
 | `docs/notes/` | Longer notes, such as the message-signing options on the Safe route |
 | `docs/ux/` | The MVP proposal for teams and a clickable mockup |
