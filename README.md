@@ -106,6 +106,7 @@ signer/winterlock-signer init --restore --lost --chain sepolia     # lists the a
 signer/winterlock-signer enroll --chain sepolia --safe 0x...
 ```
 
+- **The old device turns up again:** it sees it was replaced and refuses to sign or enroll for that Safe, so it can't undo the restore. `enroll --take-over` overrides that, only if the other device is gone for good.
 - **Phrase or device compromised:** if someone else may have your phrase or your device, restoring doesn't help. The team replaces your owner in the Safe; `init --restore` explains how.
 - **Changing owners** is an ordinary Safe transaction, which the signer decodes and flags: `propose --safe SAFE --to SAFE --data $(cast calldata "swapOwner(address,address,address)" PREV OLD NEW)`, where PREV is the owner listed just before OLD in the Safe's `getOwners()`, or `0x0000000000000000000000000000000000000001` if OLD is first.
 - **Copied or rolled-back key log:** it signs nothing. `device fresh-trees` retires its trees, and `enroll` then certifies fresh ones.

@@ -246,6 +246,26 @@ class EndToEnd(unittest.TestCase):
         self.assertIn("slot 0", self.cmd("m2", "confirm", "--safe-tx-hash", c, home=new_home))
         self.cmd("m3", "execute", "--safe-tx-hash", c)
         self.assertEqual(self.nonce(), 3)
+        # the old device turns up again: it sees that it was replaced and won't undo the restore
+        old_home, restored_root = self.homes["m2"], owner.read_tree(self.rpc, self.owners["m2"], self.safe)[0]
+        text = self.cmd("m2", "status", "--safe", self.safe, home=old_home)
+        self.assertIn("REPLACED (another device enrolled a newer tree)", text)
+        self.assertIn("another device has taken over this owner on this Safe", text)
+        text = self.cmd("m2", "enroll", "--safe", self.safe, home=old_home, expect=2)
+        self.assertIn("another device has taken over", text)
+        self.assertIn("`enroll --take-over`", text)
+        self.assertIn("another device has taken over", self.cmd(
+            "m2", "propose", "--safe", self.safe, "--to", RECIPIENT, "--value", "0.01", home=old_home, expect=2))
+        self.assertEqual(owner.read_tree(self.rpc, self.owners["m2"], self.safe)[0], restored_root)  # untouched
+        # --take-over, both ways: each fresh tree starts after the one it replaces, so no key is ever shared
+        _, _, _, restored_start = owner.read_tree(self.rpc, self.owners["m2"], self.safe)
+        self.assertIn("WARNING: another device has taken over",
+                      self.cmd("m2", "enroll", "--safe", self.safe, "--take-over", home=old_home))
+        _, _, _, old_again = owner.read_tree(self.rpc, self.owners["m2"], self.safe)
+        self.assertGreater(old_again, restored_start)
+        self.assertIn("REPLACED", self.cmd("m2", "status", "--safe", self.safe, home=new_home))
+        self.cmd("m2", "enroll", "--safe", self.safe, "--take-over", home=new_home)
+        self.assertGreater(owner.read_tree(self.rpc, self.owners["m2"], self.safe)[3], old_again)
         self.homes["m2"] = new_home
 
     def test_5_stale_key_log_is_caught(self):

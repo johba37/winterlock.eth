@@ -140,6 +140,21 @@ def parse_value(s: str) -> int:
 
 # --- shared checks before a transaction signature ---
 
+TAKEN_OVER = ("another device has taken over this owner on this Safe: the Safe holds a newer key tree (root {root}, "
+              "from nonce {start}) that this signer didn't make, after a restore or a move on another device. Stop "
+              "using this device for this Safe.")
+
+
+def taken_over(m: Member, chain: int, safe: str, root, start: int) -> bool:
+    """Whether another device has taken over this member on this Safe: the enrolled tree isn't in this key log, and
+    it is newer than every tree this key log made for the Safe. A key log with no tree for the Safe (a fresh restore)
+    isn't taken over: certifying a fresh tree is its next step."""
+    if root is None or m.log.tree_by_root(chain, safe, b2h(root)):
+        return False
+    mine = m.log.trees(chain, safe)
+    return bool(mine) and max(t["start"] for t in mine) < start
+
+
 def signing_tree(m: Member, ctx: Ctx, safe: str):
     """The key log's record of the tree enrolled on-chain for this member and Safe, or Refused"""
     if not owner_deployed(ctx, m):
@@ -150,6 +165,8 @@ def signing_tree(m: Member, ctx: Ctx, safe: str):
         raise Refused("no tree is enrolled for you on this Safe: run `enroll`" +
                       (" (a tree is waiting for its enrolment)" if mine else ""))
     rec = m.log.tree_by_root(ctx.chain, safe, b2h(root))
+    if rec is None and taken_over(m, ctx.chain, safe, root, start):
+        raise Refused(TAKEN_OVER.format(root=b2h(root), start=start))
     if rec is None:
         if mine and max(t["start"] for t in mine) > start:
             raise Refused("your newest tree isn't enrolled yet: run `enroll` to send its certificate")
@@ -402,6 +419,15 @@ def cmd_enroll(args):
         + ("" if is_owner else f"; {m.owner} is NOT an owner yet (enrolling first is fine)"))
     out("Enrolled tree: " + (f"root {b2h(root)}, nonces {start}–{start + owner.capacity(height) - 1}" if root
                              else "none"))
+    if taken_over(m, ctx.chain, safe, root, start):
+        msg = TAKEN_OVER.format(root=b2h(root), start=start)
+        if not args.take_over:
+            raise Refused(msg + " Enrolling here would retire that device's tree, and its approvals would stop "
+                          "counting. Only if that device is gone for good: `enroll --take-over`.")
+        out(f"WARNING: {msg}")
+        out("--take-over: a fresh tree here retires that device's tree. If that device still signs, its approvals "
+            "stop counting; if it's in someone else's hands, a fresh tree doesn't help: the team replaces this owner.")
+        confirm_prompt(args, "Take over from the other device?")
     if root is not None and m.log.tree_by_root(ctx.chain, safe, b2h(root)) and not args.rotate:
         out("Already enrolled with a tree from this signer's key log; nothing to do (--rotate starts a new tree).")
         return
@@ -692,6 +718,8 @@ def cmd_status(args):
                     state = " retired"
                 elif onchain[0] is None:
                     state = " not enrolled yet"
+                elif taken_over(m, chain, safe, onchain[0], onchain[3]):
+                    state = " REPLACED (another device enrolled a newer tree)"
                 else:
                     state = " not enrolled (the Safe has another tree for this owner)"
             if m.log.retired(r):
@@ -703,7 +731,10 @@ def cmd_status(args):
                 used_pct = 100 * (cap - left) / cap
                 out(f"    Safe nonce {safe_nonce}: {left} of {cap} nonces left ({used_pct:.0f}% used)"
                     + ("  -> rotate soon: `enroll --rotate`" if used_pct >= 80 else ""))
-        if onchain is not None and onchain[0] is not None and not m.log.tree_by_root(chain, safe, b2h(onchain[0])):
+        if onchain is not None and taken_over(m, chain, safe, onchain[0], onchain[3]):
+            out("  WARNING: " + TAKEN_OVER.format(root=b2h(onchain[0])[:18] + "…", start=onchain[3]) + " If that "
+                "device is gone for good, `enroll --take-over` certifies a fresh tree here.")
+        elif onchain is not None and onchain[0] is not None and not m.log.tree_by_root(chain, safe, b2h(onchain[0])):
             out(f"  WARNING: the enrolled tree {b2h(onchain[0])[:18]}… isn't in this key log: another device signs for "
                 "this owner (after a move or a restore). If that device is your signer now, stop using this one. If "
                 "this one is, `enroll` certifies a fresh tree here, and the other device's approvals stop counting.")
@@ -747,6 +778,9 @@ def build_parser():
     sp.add_argument("--height", type=int, default=DEFAULT_HEIGHT,
                     help=f"tree height: 2^(height-1) nonces (default {DEFAULT_HEIGHT})")
     sp.add_argument("--rotate", action="store_true", help="replace the enrolled tree with a fresh one")
+    sp.add_argument("--take-over", action="store_true",
+                    help="enroll although another device has taken over this owner on this Safe (only if that device "
+                         "is gone for good)")
     sp.add_argument("--deploy", action="store_true",
                     help="deploy the verifier, implementation and factory if this chain lacks them (once per chain)")
     sp.add_argument("--out", help="where to write the calldata when there is no gas account")
