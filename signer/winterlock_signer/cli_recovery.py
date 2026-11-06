@@ -1,6 +1,7 @@
 """The signer's commands for backup, recovery and devices (cli.py registers them):
 
-  init        a new signer: shows the recovery phrase once, checks three of its words, asks for a passphrase
+  init        a new signer: shows the recovery phrase once, hides it (on a terminal), checks three of its words
+              against the written copy, asks for a passphrase
   init --restore   a signer from its phrase on a new device; asks what happened to the old one:
                    it still works -> a move (no fee); lost -> fresh trees (a fee per Safe and chain);
                    someone else may have it -> no restore: the team replaces this member
@@ -56,11 +57,18 @@ def home_of(args) -> str:
     return args.home or default_home()
 
 
-def clear_screen():
-    if sys.stdout.isatty():
-        sys.stdout.write("\033[H\033[2J\033[3J")
-        sys.stdout.flush()
-        out("(screen and scrollback cleared)")
+CLEAR = "\033[H\033[2J\033[3J"  # cursor home, clear the screen, clear the scrollback
+
+
+def clear_screen(note="(screen and scrollback cleared)") -> bool:
+    """Clears the terminal and its scrollback; False (and nothing done) when the output isn't a terminal"""
+    if not sys.stdout.isatty():
+        return False
+    sys.stdout.write(CLEAR)
+    sys.stdout.flush()
+    if note:
+        out(note)
+    return True
 
 
 # --- the phrase ---
@@ -99,18 +107,41 @@ def show_phrase(words):
     out("")
 
 
-def backup_check(words, positions=None):
-    """Asks for a few words at random positions until they match. There is no skip; giving up saves nothing."""
+def hide_phrase() -> bool:
+    """Takes the phrase off the screen before the check, since words copied from the screen prove nothing about the
+    written copy: on a terminal, once the member says it's written down, the screen and scrollback are cleared"""
+    if not sys.stdout.isatty():
+        out("(The output isn't a terminal, so the phrase can't be hidden from it. Type the words from your written "
+            "copy, not from the screen.)")
+        return False
+    ask("When the 24 words are written down, press Enter to hide them: ")
+    return clear_screen(note=None)
+
+
+def _numbers(positions) -> str:
+    ps = [f"#{p}" for p in positions]
+    return ps[0] if len(ps) == 1 else ", ".join(ps[:-1]) + " and " + ps[-1]
+
+
+def backup_check(words, shown=True, positions=None):
+    """Asks for a few words at random positions until they match, with the phrase hidden first if it is `shown`.
+    There is no skip; giving up saves nothing."""
     positions = positions or phrase.check_positions()
-    out(f"Backup check: from your written copy, type words {', '.join(f'#{p}' for p in positions)}.")
     for attempt in range(5):
+        if shown or attempt == 0:
+            if shown and hide_phrase():
+                out("The phrase is now hidden (screen and scrollback cleared).")
+            shown = False
+            out(f"Backup check: from your written copy, type words {_numbers(positions)}.")
         wrong = [p for p in positions if not phrase.matches(words, p, ask(f"  word #{p}: "))]
         if not wrong:
             out("  Correct.")
             return
-        out(f"  Word {', '.join(f'#{p}' for p in wrong)} doesn't match. Check your copy.")
+        out(f"  Word {_numbers(wrong)} doesn't match. Check your copy." if len(wrong) == 1 else
+            f"  Words {_numbers(wrong)} don't match. Check your copy.")
         if ask("  Show the phrase again? [y/N] ").strip().lower() in ("y", "yes"):
             show_phrase(words)
+            shown = True
     raise Abort("the backup check didn't pass: nothing was saved")
 
 
@@ -155,8 +186,8 @@ def cmd_init(args):
         seed = os.urandom(32)
         words = phrase.to_phrase(seed)
         show_phrase(words)
-        backup_check(words)
-        clear_screen()
+        backup_check(words)  # hides the phrase first
+        clear_screen()  # the words typed for the check
         pw = new_passphrase()
         t0 = time.time()
         m = Member.init(home, passphrase=pw, backup="init", new_seed=seed)
@@ -274,8 +305,8 @@ def cmd_backup(args):
     words = phrase.to_phrase(m.seed())
     if not args.check:
         show_phrase(words)
-    backup_check(words)
-    clear_screen()
+    backup_check(words, shown=not args.check)
+    clear_screen()  # the words typed for the check
     m.log.append({"t": "backup", "how": "check" if args.check else "shown"})
     out("Recovery phrase checked; `status` shows when.")
 

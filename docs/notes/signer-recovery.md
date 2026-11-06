@@ -21,8 +21,13 @@ This note covers how they are built (`phrase.py`, `seedfile.py`, `device.py`, `m
 
 Encoding and checksum come from `mnemonic`, the reference implementation that BIP-39 cites. The tests check it against BIP-39's published vectors.
 
-**Backup check.** `init` draws the seed, shows the phrase once, and asks for three words at random positions. There is no skip: a failed or abandoned check saves nothing, so the words written down are simply discarded. On a terminal, the screen and scrollback are cleared afterwards.
-- `backup` shows the phrase again and checks it; `backup --check` only checks.
+**Backup check.** `init` draws the seed and shows the phrase once. The check comes after the phrase is gone, since words copied from the screen would prove nothing about the written copy:
+- **Hidden first:** on a terminal, the member presses Enter once the words are written down. The screen and scrollback are cleared, and the signer says so ("The phrase is now hidden"). Only then does it ask for three words at random positions, from the written copy.
+- **A wrong word:** the member may see the phrase again. It is hidden again before the next try.
+- **No skip:** a failed or abandoned check saves nothing, so the words written down are simply discarded.
+- **Afterwards:** the screen is cleared once more, taking the three typed words with it.
+- **Not a terminal** (output to a pipe or a file): nothing can be cleared. The signer says so and asks for the words from the written copy anyway.
+- `backup` shows the phrase again, hides it the same way, and checks it; `backup --check` only checks.
 - Each check is recorded in the key log, and `status` shows its date. After 90 days, `status` asks for a new check.
 - Typing the phrase for a restore or a move counts as a check.
 - Input is forgiving: case, numbering, commas, and four-letter abbreviations, which are unique in the English list. A mistake is named (which word, or "checksum").
@@ -158,11 +163,11 @@ Remedies, which `status` and every refusal name:
 
 ## Tests
 
-84 in all, 46 of them from before.
+85 in all, 46 of them from before.
 - `test_phrase.py` (13): BIP-39 vectors, parsing, the seed file, and unlocking.
 - `test_device.py` (7): copies, rollbacks, adoption, fresh trees, and logs from before device records.
 - `test_move.py` (10): the protocol and each failure mode above.
-- `test_cli_recovery.py` (7): the command line with a scripted terminal.
+- `test_cli_recovery.py` (8): the command line with a scripted terminal, which also plays a real terminal to check that the phrase is off the screen while its words are typed.
 - End to end on anvil (one new step):
   - a move of a member, checked against the chain and the mock Transaction Service
   - the moved device's earlier approval executing without a new tree
