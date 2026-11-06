@@ -32,6 +32,7 @@ from . import abi, collect, messages, owner, safelibs, walletconnect
 from .abi import b2h, checksum, h2b, word
 from .keccak import keccak256
 from .keylog import Refused
+from .rpc import RpcError
 from .safe import DANGEROUS, SafeTx, contract_signature
 from .service import ServiceError
 from .walletconnect import (DEFAULT_RELAY, UNSUPPORTED_CHAINS, UNSUPPORTED_NAMESPACE_KEY, USER_REJECTED,
@@ -48,6 +49,7 @@ READ_METHODS = ["eth_accounts", "eth_requestAccounts", "eth_chainId", "net_versi
 SUPPORTED = set(SIGN_METHODS + READ_METHODS)
 EVENTS = {"chainChanged", "accountsChanged"}
 SUCCESS_TOPIC = b2h(keccak256(b"ExecutionSuccess(bytes32,uint256)"))
+LOG_LOOKBACK = 64  # blocks before the proposal's: covers nodes that lag behind the one that answered
 FAILURE_TOPIC = b2h(keccak256(b"ExecutionFailure(bytes32,uint256)"))
 MARGIN = 10  # answer this many seconds before the dapp's request expires
 _DANGEROUS_SELECTORS = {abi.selector(s) for s in DANGEROUS}
@@ -322,10 +324,16 @@ class Bridge:
         return hx
 
     def execution(self, h: str):
-        """(transaction hash, succeeded) once the Safe has executed SafeTx `h`, else None"""
-        frm = self.submitted.get(h.lower(), {}).get("block", 0)
-        logs = self.rpc.call("eth_getLogs", [{"address": self.safe, "fromBlock": hex(frm), "toBlock": "latest",
-                                              "topics": [[SUCCESS_TOPIC, FAILURE_TOPIC]]}])
+        """(transaction hash, succeeded) once the Safe has executed SafeTx `h`, else None. A failed log query counts
+        as not executed yet, so the caller asks again: public RPC endpoints balance across nodes, and one that is a
+        block behind refuses a range starting at the block another node gave as the latest when `h` was proposed."""
+        frm = max(0, self.submitted.get(h.lower(), {}).get("block", 0) - LOG_LOOKBACK)
+        try:
+            logs = self.rpc.call("eth_getLogs", [{"address": self.safe, "fromBlock": hex(frm), "toBlock": "latest",
+                                                  "topics": [[SUCCESS_TOPIC, FAILURE_TOPIC]]}])
+        except RpcError as e:
+            self.ui.show(f"  (the node refused the log query, asking again: {str(e)[:120]})")
+            return None
         for lg in logs:
             # v1.4.1 indexes the hash (topic 1); v1.3.0 puts it in the data
             got = lg["topics"][1] if len(lg["topics"]) > 1 else "0x" + lg["data"][2:66]

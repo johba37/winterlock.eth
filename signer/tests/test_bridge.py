@@ -127,6 +127,23 @@ class Handling(unittest.TestCase):
         self.assertEqual(asked, ["Sign this message with your stateless key? [y/N] "])
         self.assertTrue(any("OFF-CHAIN" in line for line in self.shown))
 
+    def test_execution_watch_survives_a_lagging_node(self):
+        """A node behind the one that gave the proposal's block refuses the log range: not executed yet, no error"""
+        from winterlock_signer.rpc import RpcError
+        h = "0x" + "33" * 32
+        self.bridge.submitted[h] = {"nonce": 7, "block": 1000, "calls": 1}
+        seen = []
+
+        def call(method, params=()):
+            if method == "eth_getLogs":
+                seen.append(params[0]["fromBlock"])
+                raise RpcError("eth_getLogs: invalid block range params")
+            return None
+        self.ctx.rpc.call = call
+        self.assertIsNone(self.bridge.execution(h))
+        self.assertEqual(seen, [hex(1000 - 64)])  # looks back a little, too
+        self.assertIsNone(self.handle("eth_getTransactionReceipt", [h]))
+
     def test_unknown_hash_lookups_pass_through(self):
         self.assertIsNone(self.handle("eth_getTransactionReceipt", ["0x" + "22" * 32]))
         self.assertEqual(self.ctx.rpc.calls[-1][0], "eth_getTransactionReceipt")
