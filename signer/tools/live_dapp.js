@@ -105,14 +105,17 @@ async function main() {
     const { types, domain, message, primaryType } = sc.permit2;
     const t = Object.fromEntries(Object.entries(types).filter(([k]) => k !== 'EIP712Domain'));
     const hash = hashTypedData({ domain, types: t, primaryType, message });
-    let viemOk;
-    try {
-      viemOk = await chain.verifyTypedData({ address: safe, domain, types: t, primaryType, message, signature: sig });
-    } catch (e) {
-      viemOk = `threw: ${e.shortMessage || e.message}`;
-    }
-    return { answeredMs: answered, signature: sig, viemVerifyTypedData: viemOk,
-             isValidSignature: await erc1271(chain, safe, hash, sig) };
+    const viem = async (signature) => {
+      try {
+        return await chain.verifyTypedData({ address: safe, domain, types: t, primaryType, message, signature });
+      } catch (e) {
+        return `threw: ${e.shortMessage || e.message}`;
+      }
+    };
+    // the answer, and for comparison the empty signature that owner v1 answered with (viem refuses it)
+    return { answeredMs: answered, bytes: (sig.length - 2) / 2, signature: sig, viemVerifyTypedData: await viem(sig),
+             viemWithEmptySignature: await viem('0x'), isValidSignature: await erc1271(chain, safe, hash, sig),
+             isValidSignatureEmpty: await erc1271(chain, safe, hash, '0x') };
   });
 
   await client.disconnect({ topic: session.topic, reason: { code: 6000, message: 'done' } });

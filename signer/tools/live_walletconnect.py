@@ -10,11 +10,11 @@ with member 1's `connect` and sees the team's Safe. Member 2 and the gas account
                asking the wallet for the receipt of the SafeTx hash, gets the execution's receipt.
   permit2      eth_signTypedData_v4 of a Permit2 PermitSingle. Member 1 proposes the approval through SignMessageLib;
                member 2 confirms, the gas account executes, and the dapp gets the v2 owners' approved signatures (0x
-               with fewer v2 owners than the threshold). It reports what viem makes of it.
+               with fewer v2 owners than the threshold). It reports what viem makes of it, and of 0x.
 Member 2 signs only those two transactions (checked against the scenario): anything else in the Safe's queue is left.
 
 Needs: a DIR with two signer homes m1 and m2 whose owners are the Safe's owners, enrolled on it (as tools/
-live_check.py leaves them); Node, and a node_modules with @walletconnect/sign-client and viem (--node-modules).
+live_check.py and tools/live_devices.py leave them); Node, and a node_modules with @walletconnect/sign-client and viem (--node-modules).
 Environment (set -a; . contracts/bench/bundlers/.env; set +a): ALCHEMY_API_KEY, DEPLOYER_PRIVATE_KEY (the gas
 account: a throwaway testnet key), SAFE_API_KEY, WALLETCONNECT_PROJECT_ID. Nothing secret is printed: output passes
 tools/live_check.py's redaction, plus the project ID. Results go to DIR/walletconnect-<time>.json.
