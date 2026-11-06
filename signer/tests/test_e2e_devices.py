@@ -267,9 +267,42 @@ class Devices(unittest.TestCase):
         self.assertIn("local anvil (chain 31337): already revoked (generation 1)", text)
         self.assertIn(f"chain {B}: REVOKED (generation 1)", text)
         self.assertEqual(self.dev(self.b.rpc), (self.key, 1, False))
-        # member 1 approves from the member key's home instead
-        self.cmd("m1", "confirm", h)
-        self.cmd("m3", "execute", h)
+        self.assertIn(f"{self.owners['m1']} (no longer counts)", self.cmd("m3", "queue", "--safe", self.safe))
+        self.assertIn("your owner's confirmation no longer counts", self.cmd("m1", "queue", "--safe", self.safe))
+        # member 1 approves from the member key's home instead. The service keeps device 1's confirmation (as the
+        # hosted one does: the first per owner), so the signature goes into a proposal file
+        path = os.path.join(self.tmp.name, "pending-m1.json")
+        text = self.cmd("m1", "confirm", h, "--out", path)
+        self.assertIn("Note: the service holds your owner's earlier confirmation (device 1's), which no longer counts",
+                      text)
+        self.assertIn("HTTP 201", text)
+        self.assertIn("still holds your owner's earlier confirmation (device 1's), which no longer counts, and kept it",
+                      text)
+        self.assertIn(f"Your signature is in {path}, with the other members' confirmations that count (2 in all)", text)
+        self.assertIn("your signature is in the proposal file, not in the service", text)
+        self.assertEqual(self.confirmation(h)[:2], b"\x00\x01")  # still device 1's at the service
+        with open(path) as f:
+            doc = json.load(f)
+        self.assertEqual(doc["safeTxHash"], h)
+        self.assertEqual({s["owner"] for s in doc["signatures"]}, {self.owners["m1"], self.owners["m2"]})
+        mine = next(s for s in doc["signatures"] if s["owner"] == self.owners["m1"])
+        self.assertTrue(owner.is_valid_signature(self.rpc, self.owners["m1"], h2b(h),
+                                                 parse_signature(h2b(mine["signature"]))[1]))
+        # proposing the same transaction again (the same key, so the same signature) meets the same service
+        nonce = int(self.service_tx(h)["nonce"])
+        path2 = os.path.join(self.tmp.name, "pending-m1-proposed.json")
+        text = self.cmd("m1", "propose", "--safe", self.safe, "--to", RECIPIENT, "--value", "0.01", "--nonce",
+                        str(nonce), "--out", path2)
+        self.assertIn("you already signed this exact transaction with it", text)
+        self.assertIn("your signature is in the proposal file, not in the service", text)
+        # the service's confirmations alone don't execute; the file does, with the service's added
+        text = self.cmd("m3", "execute", h, expect=1)
+        self.assertIn("execute with `--file` and that file", text)
+        text = self.cmd("m3", "execute", h, "--file", path)
+        self.assertIn(f"2 signatures in {path}, 2 confirmations at the service", text)
+        self.assertNotIn("refused by its owner contract", text)  # member 1 counted once, from the file
+        self.assertIn("Signatures: 2 valid of 2 needed", text)
+        self.assertIn(f"Executed nonce {nonce}", text)
 
     def test_5_certified_again(self):
         text = self.device("m1", "certify", "--device", "1", "--key", b2h(self.key), "--check-code", self.code,

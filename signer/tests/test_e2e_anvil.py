@@ -246,9 +246,15 @@ class EndToEnd(unittest.TestCase):
         self.assertFalse(owner.is_valid_signature(self.rpc, self.owners["m2"], h2b(c), data))
         text = self.cmd("m3", "execute", "--safe-tx-hash", c, expect=1)
         self.assertIn("not enough valid signatures", text)
-        text = self.cmd("m2", "confirm", "--safe-tx-hash", c, home=new_home)
+        # the restored home confirms again; the service keeps the old device's confirmation (the first per owner,
+        # as the hosted service does), so the new signature goes into a proposal file that executes
+        path = os.path.join(self.tmp.name, "restored-confirmation.json")
+        text = self.cmd("m2", "confirm", "--safe-tx-hash", c, "--out", path, home=new_home)
         self.assertIn("your first of two keys for nonce 2 (slot 0)", text)  # the fresh key tree's
-        self.cmd("m3", "execute", "--safe-tx-hash", c)
+        self.assertIn("Note: the service holds your owner's earlier confirmation (device 0's)", text)
+        self.assertIn("your signature is in the proposal file, not in the service", text)
+        self.assertIn("execute with `--file`", self.cmd("m3", "execute", "--safe-tx-hash", c, expect=1))
+        self.cmd("m3", "execute", "--safe-tx-hash", c, "--file", path)
         self.assertEqual(self.nonce(), 3)
         # the old device turns up again: it sees that it was replaced and won't undo the restore
         old_home, restored_root = self.homes["m2"], owner.read_tree(self.rpc, self.owners["m2"], self.safe)[0]

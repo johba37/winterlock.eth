@@ -298,7 +298,8 @@ def lost_report(m, ctx, safes):
         for tx in txs:
             if any((c.get("owner") or "").lower() == m.owner.lower() for c in tx.get("confirmations") or []):
                 out(f"  nonce {tx['nonce']} {tx.get('safeTxHash')}: approved by your old device; stops counting once "
-                    "your fresh key tree is enrolled: approve it again")
+                    "your fresh key tree is enrolled: approve it again (Safe's service keeps the old confirmation, so "
+                    "`confirm` writes a proposal file for whoever executes)")
 
 
 # --- backup and passphrase ---

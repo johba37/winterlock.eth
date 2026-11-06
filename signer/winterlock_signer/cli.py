@@ -386,6 +386,83 @@ def add_file_signature(doc, owner_addr, sig_hex):
     doc["signatures"].append({"owner": owner_addr, "signature": sig_hex})
 
 
+# --- what the service keeps ---
+
+KEPT_OLD = ("Safe's Transaction Service still holds your owner's earlier confirmation{dev}, which no longer counts, and "
+            "kept it: the service keeps the first confirmation of each owner and doesn't replace it (after a revoke, a "
+            "restore or a rotation).")
+
+
+def confirmation_counts(ctx, c: dict, h: bytes):
+    """Whether a confirmation as the service lists it counts now: a contract signature by its owner's
+    isValidSignature (eth_call); True for an ECDSA signature (not checked here); None if it doesn't parse"""
+    try:
+        o, data, is_contract = parse_signature(h2b(c.get("signature") or ""))
+    except (ValueError, TypeError):
+        return None
+    if not is_contract:
+        return True
+    try:
+        return owner.is_valid_signature(ctx.rpc, o, h, data)
+    except Reverted:
+        return False
+
+
+def _held(ctx, h: bytes, owner_addr: str):
+    """(the signature the service holds for owner_addr on SafeTx h, or None; the service's record)"""
+    rec = ctx.service.transaction(b2h(h))
+    held = next((c.get("signature") for c in rec.get("confirmations") or []
+                 if (c.get("owner") or "").lower() == owner_addr.lower()), None)
+    return held, rec
+
+
+def check_service_kept(ctx, m, safe: str, t, h: bytes, sig: bytes, out_path: str = None) -> bool:
+    """After a proposal or confirmation was accepted: whether the service now holds this signature for the member's
+    owner. Safe's service keeps an owner's first confirmation (get_or_create), so a second one, after the first
+    stopped counting, is answered 201 and dropped. Then this writes a proposal file with this signature and the
+    service's other confirmations that count, for `execute --file`, and says so. True when nothing more is needed."""
+    held, rec, err = None, None, None
+    for _ in range(3):  # a confirmation just stored may take a moment to show
+        try:
+            held, rec = _held(ctx, h, m.owner)
+            err = None
+        except ServiceError as e:
+            err = e
+        if held is not None:
+            break
+        time.sleep(2)
+    if held is not None and held.lower() == b2h(sig).lower():
+        return True
+    if held is not None:
+        _, data, is_contract = parse_signature(h2b(held))
+        dev = signature_device(held)
+        if is_contract and owner.is_valid_signature(ctx.rpc, m.owner, h, data):
+            out("  the service holds another confirmation of your owner that counts" +
+                (f" (device {dev}'s)" if dev is not None else "") + ": your owner is counted once; nothing more to do")
+            return True
+        out("  WARNING: " + KEPT_OLD.format(dev=f" (device {dev}'s)" if dev is not None else ""))
+    else:
+        out("  WARNING: the service doesn't show your confirmation" + (f" ({err})" if err else "") + ".")
+    path = out_path or f"safetx-{b2h(h)[:12]}.json"
+    doc = {"chain": ctx.chain, "safe": safe, "safeTx": t.to_json(), "safeTxHash": b2h(h), "signatures": []}
+    if os.path.exists(path):
+        old = load_file(path)
+        if old.get("chain") == ctx.chain and (old.get("safeTxHash") or "").lower() == b2h(h).lower():
+            doc["signatures"] = old.get("signatures") or []
+    for c in (rec or {}).get("confirmations") or []:
+        o = c.get("owner") or ""
+        if o.lower() != m.owner.lower() and confirmation_counts(ctx, c, h) and \
+                o.lower() not in [s["owner"].lower() for s in doc["signatures"]]:
+            add_file_signature(doc, abi.address(o), c["signature"])
+    add_file_signature(doc, m.owner, b2h(sig))
+    save_file(path, doc)
+    out(f"  Your signature is in {path}, with the other members' confirmations that count "
+        f"({len(doc['signatures'])} in all). Whoever executes runs `execute --file {path}`, which adds the "
+        "confirmations the service has: send them the file. Safe's app executes with the service's confirmations, "
+        "so it can't execute this transaction.")
+    return False
+
+
 # --- commands ---
 
 def cmd_init(args):
@@ -550,7 +627,8 @@ def cmd_enroll(args):
                         + [t["start"] + 1 for t in m.log.trees(ctx.chain, safe)])
         if root is not None:
             out("A fresh key tree replaces the enrolled one. Confirmations already given with the old one for "
-                "pending nonces stop counting; members confirm those again.")
+                "pending nonces stop counting; confirm those again (Safe's service keeps the old confirmation, so "
+                "`confirm` writes a proposal file for whoever executes).")
         if args.height < 1:
             raise Abort("--height is at least 1: a key tree covers 2^(height-1) nonces")
         end = new_start + owner.capacity(args.height) - 1
@@ -645,6 +723,10 @@ def cmd_propose(args):
         out(f"  POST proposal -> HTTP {status}" + ("" if status in (200, 201) else f": {str(resp)[:400]}"))
         if status not in (200, 201):
             raise Abort("the service didn't accept the proposal (your key use stays recorded)")
+        if not check_service_kept(ctx, m, safe, t, h, sig, args.out):
+            out(f"Proposed {b2h(h)} at nonce {t.nonce}, signed with {key_words(slot)}; your signature is in the "
+                "proposal file, not in the service")
+            return
     out(f"Proposed {b2h(h)} at nonce {t.nonce}, signed with {key_words(slot)}")
 
 
@@ -726,6 +808,14 @@ def cmd_confirm(args):
         out(f"Your owner has already confirmed it: device {other}'s signature counts for {m.owner}. Nothing to sign "
             "(the Safe counts each owner once).")
         return
+    stale = [c for c in have if (c.get("owner") or "").lower() == m.owner.lower()
+             and confirmation_counts(ctx, c, h) is False]
+    if stale and not args.file:
+        dev = signature_device(stale[0]["signature"])
+        out("Note: the service holds your owner's earlier confirmation" + (f" (device {dev}'s)" if dev is not None
+                                                                          else "")
+            + ", which no longer counts. Safe's service keeps an owner's first confirmation, so if it doesn't take "
+            "this one, your signature goes into a proposal file for whoever executes.")
     safe, h, rec, slot = prepare(m, ctx, safe, t, expect_hash=h)
     confirm_prompt(args, "Sign this transaction?")
     data = sign_and_check(m, ctx, safe, t, rec, slot, h)
@@ -739,6 +829,10 @@ def cmd_confirm(args):
         out(f"  POST confirmation -> HTTP {status}" + ("" if status in (200, 201) else f": {str(resp)[:400]}"))
         if status not in (200, 201):
             raise Abort("the service didn't accept the confirmation (your key use stays recorded)")
+        if not check_service_kept(ctx, m, safe, t, h, sig, args.out):
+            out(f"Confirmed {b2h(h)} at nonce {t.nonce}, signed with {key_words(slot)}; your signature is in the "
+                "proposal file, not in the service")
+            return
     out(f"Confirmed {b2h(h)} at nonce {t.nonce}, signed with {key_words(slot)}")
 
 
@@ -767,6 +861,7 @@ def cmd_queue(args):
         ok = b2h(h).lower() == (x.get("safeTxHash") or "").lower()
         lines, warnings = decode(t, safe)
         confs = x.get("confirmations") or []
+        void = [confirmation_counts(ctx, c, h) is False for c in confs]
         mine = [c for c in confs if (c.get("owner") or "").lower() == m.owner.lower()]
         by = sorted({d for d in (signature_device(c.get("signature") or "0x") for c in mine) if d is not None})
         out(f"- nonce {t.nonce}  {b2h(h)}" + ("" if ok else "  HASH MISMATCH: the service's hash differs"))
@@ -774,7 +869,11 @@ def cmd_queue(args):
             out(f"    {line}")
         for w in warnings:
             out(f"    WARNING: {w}")
-        out(f"    signatures {len(confs)} of {threshold}: " + ", ".join(c.get("owner", "?") for c in confs))
+        out(f"    signatures {len(confs) - sum(void)} of {threshold}: "
+            + ", ".join(c.get("owner", "?") + (" (no longer counts)" if v else "") for c, v in zip(confs, void)))
+        if mine and all(v for c, v in zip(confs, void) if c in mine):
+            out("    your owner's confirmation no longer counts (a revoked or replaced device, or an earlier key "
+                "tree): `confirm` signs again")
         if rec:
             used = {}
             for slot in (0, 1):
@@ -802,22 +901,37 @@ def cmd_execute(args):
     if t.nonce != safe_nonce:
         raise Abort(f"the Safe is at nonce {safe_nonce}; this transaction has nonce {t.nonce}")
     show_tx(None, ctx, safe, t, h, safe_nonce, threshold, owners)
-    sigs = []
-    for c in src.get("confirmations") or src.get("signatures") or []:
+    found = list(src.get("confirmations") or src.get("signatures") or [])
+    if args.file and ctx.service:  # a proposal file, and what the service has for it: other members may confirm there
+        try:
+            more = ctx.service.transaction(b2h(h)).get("confirmations") or []
+            out(f"  {plural(len(found), 'signature')} in {args.file}, {plural(len(more), 'confirmation')} at the "
+                "service")
+            found += more
+        except ServiceError as e:
+            out(f"  (service: {e}; the file's signatures only)")
+    sigs, counted, refused = [], set(), []
+    for c in found:  # each owner once: its first signature that counts (the file's before the service's)
         try:
             o, data, is_contract = parse_signature(h2b(c["signature"]))
         except (ValueError, KeyError):
             continue
         o = o or abi.address(c["owner"])
-        if o.lower() not in [x.lower() for x in owners]:
+        if o.lower() not in [x.lower() for x in owners] or o.lower() in counted:
             continue
         if is_contract and not owner.is_valid_signature(ctx.rpc, o, h, data):
             out(f"  {o}: signature refused by its owner contract (another tree, a revoked or replaced device, or not "
                 "enrolled): skipped")
+            refused.append(o)
             continue
+        counted.add(o.lower())
         sigs.append((o, data, is_contract))
     out(f"Signatures: {len(sigs)} valid of {threshold} needed: " + ", ".join(s[0] for s in sigs))
     if len(sigs) < threshold:
+        if any(o.lower() not in counted for o in refused):
+            out("  A member whose confirmation no longer counts confirms again from another home (after a revoke, a "
+                "restore or a rotation). Safe's service keeps the old confirmation, so their `confirm` writes a "
+                "proposal file with the new signature: execute with `--file` and that file.")
         raise Abort("not enough valid signatures")
     blob = pack(sorted(sigs, key=lambda s: int(s[0], 16))[:threshold])
     gas = ctx.gas_account()
@@ -1032,6 +1146,8 @@ def build_parser():
     sp = sub.add_parser("confirm", help="sign a proposed Safe transaction")
     chain_opts(sp)
     safe_tx_hash_opts(sp)
+    sp.add_argument("--out", help="where to write a proposal file if the service keeps an earlier confirmation of "
+                                  "your owner (default: safetx-HASH.json here)")
     sp = sub.add_parser("queue", help="pending transactions, decoded")
     chain_opts(sp)
     sp.add_argument("--safe", required=True, help=safe_help)

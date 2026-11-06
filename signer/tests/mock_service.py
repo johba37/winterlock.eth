@@ -3,8 +3,11 @@ shapes the signer uses (as the hosted service answered them in the live run, doc
 service makes before it stores a signature: the SafeTx hash recomputed by the Safe, the signer an owner, and a
 contract signature checked with an eth_call of the owner's isValidSignature (safe-eth-py's SafeSignatureContract).
 
-Differences from the hosted service, all unverified there: a second confirmation by the same owner replaces the
-first (after a restore); no delegates, messages, pagination or indexing delay.
+A second confirmation by the same owner, through either endpoint, is answered 201 and changes nothing: the first one
+stays, as in the hosted service (its serializers store confirmations with get_or_create per SafeTx hash and owner;
+seen live on Sepolia on 2026-11-06, docs/decisions.md, "Owner v2, live on Sepolia").
+
+Differences from the hosted service, unverified there: no delegates, messages, pagination or indexing delay.
 
 usage: python -m tests.mock_service --rpc URL --port PORT
 """
@@ -52,6 +55,14 @@ class Store:
         if not owner.is_valid_signature(self.rpc, o, h, data):
             return None, f"No valid signature found for signer={o}"
         return o, None
+
+    @staticmethod
+    def add_confirmation(x, o, signature, now):
+        """The hosted service's get_or_create: an owner's first confirmation stays; a later one is dropped"""
+        if any(c["owner"] == o for c in x["confirmations"]):
+            return
+        x["confirmations"].append({"owner": o, "signature": signature, "signatureType": "CONTRACT_SIGNATURE",
+                                   "submissionDate": now})
 
     def executed(self, safe, h):
         frm = hex(self.txs[h.lower()]["_block"]) if h.lower() in self.txs else "latest"
@@ -132,9 +143,7 @@ class Handler(BaseHTTPRequestHandler):
             now = time.strftime("%Y-%m-%dT%H:%M:%S.%fZ", time.gmtime())
             x = s.txs.setdefault(h.lower(), dict(t.to_json(), safe=safe, safeTxHash=h, proposer=o, submissionDate=now,
                                                  confirmations=[], _block=int(s.rpc.call("eth_blockNumber"), 16)))
-            x["confirmations"] = [c for c in x["confirmations"] if c["owner"] != o]
-            x["confirmations"].append({"owner": o, "signature": body["signature"], "signatureType": "CONTRACT_SIGNATURE",
-                                       "submissionDate": now})
+            s.add_confirmation(x, o, body["signature"], now)
             return self.reply(201, None)
         if m := re.fullmatch(r"/api/v1/multisig-transactions/(0x[0-9a-fA-F]{64})/confirmations/", u.path):
             h = m[1].lower()
@@ -147,9 +156,7 @@ class Handler(BaseHTTPRequestHandler):
             if err:
                 return self.reply(400, {"signature": [err]})
             now = time.strftime("%Y-%m-%dT%H:%M:%S.%fZ", time.gmtime())
-            x["confirmations"] = [c for c in x["confirmations"] if c["owner"] != o]
-            x["confirmations"].append({"owner": o, "signature": body["signature"], "signatureType": "CONTRACT_SIGNATURE",
-                                       "submissionDate": now})
+            s.add_confirmation(x, o, body["signature"], now)
             return self.reply(201, {"signature": body["signature"]})
         self.reply(404, {"detail": "Not found."})
 
