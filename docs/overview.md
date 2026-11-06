@@ -40,6 +40,8 @@ flowchart LR
 
 Checking one one-time signature costs about 55k gas, and a stateless signature 52.8k. Gas figures are from Foundry under Prague pricing, unless they name Sepolia. Details are in [decisions.md](decisions.md).
 
+These are the owners live today (v1). **Owner v2 is built but not deployed:** a 2-of-3 transaction costs about 7k more (WOTS verification moved into a shared contract to keep the owner's code deployable), and about 2k more per signature from a device key. Its shared contracts would take about 20M gas once per chain on Sepolia, on top of the stateless verifier already there (an estimate).
+
 ## Live on Sepolia
 
 - **Safe:** Safe v1.4.1 Safes with Winterlock owners work end to end through Safe's hosted Transaction Service.
@@ -71,7 +73,7 @@ Checking one one-time signature costs about 55k gas, and a stateless signature 5
 
 ## Not yet
 
-- **Dapps that verify with viem** reject the empty signature that on-chain approvals (permits) answer with. The fix is a new owner signature kind. It changes every owner's address, so it's planned together with several devices per member.
+- **Dapps that verify with viem** reject the empty signature that on-chain approvals (permits) answer with. The fix is a new owner signature kind. It changes every owner's address, so it comes with several devices per member in owner v2: built and tested, not deployed yet. The signer's support comes next.
 - **A hardware signer.** Hashing speed on secure elements needs measuring first.
 - **An audit.**
 - **Frame transactions (EIP-8141).** The same keys and signer would fit a native account. Not built yet.

@@ -1,6 +1,6 @@
 # The next owner version: design note (proposal, 2026-11-06)
 
-**Status:** a proposal for review. Nothing is built. It changes WinterlockOwner's code, so every owner's address changes. Today that touches only test Safes on Sepolia.
+**Status:** decisions 1–3, 5 and 6 approved; 4 dropped (below). **Phase 1, the contracts and their tests, built on 2026-11-06, not deployed** (decisions.md, "2026-11-06: Owner v2, contracts"). One change from this note: WOTS verification moved into a shared contract (see Costs). It changes WinterlockOwner's code, so every owner's address changes. Today that touches only test Safes on Sepolia.
 
 ## Why a new version
 
@@ -89,13 +89,20 @@ ERC-8403's shape suits the EIP-8141 account better, where the account itself hol
 
 ## Costs (estimates, checked when built)
 
+The measured figures (Forge, Prague pricing) are in decisions.md, "2026-11-06: Owner v2, contracts".
+
 - **Per signature:** one byte more. For devices 1–3, one more storage read (2.1k gas) for the device record. Device 0 costs no more than today.
+  - **Measured:** about 2.2k per device-key signature, as estimated. Device 0 does cost more than v1, but because of the shared WOTS verifier below: about 7k per 2-of-3 transaction.
 - **Approved kind:** about 3k gas per owner, for a storage read in the Safe. That's far cheaper than any signature.
+  - **Measured:** about 13–15k per owner through the Safe, since each owner's check is a cold call into its proxy and back into the Safe. Two approved signatures still cost an app less than a quarter of a stateless 2-of-3 check.
 - **Certifying a device:** like an enrolment, a 5.9 KB transaction with one leanSphincs-keccak check. About 0.25M gas under Prague pricing. On Sepolia, with Glamsterdam's surcharge on new storage, about 0.5M (an enrolment there costs 0.39M).
+  - **Measured:** 250,570 under Prague, exactly EIP-7623's calldata floor. Sepolia not measured.
 - **Revoking a device:** about 0.2M.
+  - **Measured:** 249,350, also the calldata floor: the 5.7 KB revocation costs as much as a certificate.
 - **The implementation's size is a hard limit.**
   - **Today:** 7.2 KB of code costs 11.4M gas to deploy on Sepolia, and the node's estimate × 1.2 has to stay under the 16.7M transaction cap. That leaves about 8.5–9 KB.
   - **If the new code doesn't fit:** move WOTS verification into a shared verifier contract, like the stateless one. That saves several KB, for a few thousand gas per signature.
+  - **Built that way:** with WOTS inline, v2 came to 10.3 KB. With `SharedWotsVerifier` (2.5 KB, its own deterministic deployment) it is 8,144 bytes: about 13.0M gas to deploy on Sepolia (estimate), 15.6M at × 1.2. The call costs about 4.4k for the first signature in a transaction and 1.7k after.
 
 ## The signer
 
@@ -126,8 +133,8 @@ Dropped:
 4. **A verifier per device.** A shortlist of verifiers can't be enforced on-chain without either a fixed list, which removes the flexibility, or an admin, which adds a trusted party. And a bad verifier is no worse than a bad key, which the member key can certify anyway. The real guard is the pairing check: comparing the device key's check code on both devices before certifying.
 
 The order:
-1. the contracts and their tests, including a viem check of a permit against a forked Safe
-2. the signer
+1. the contracts and their tests (built on 2026-11-06); the viem check of a permit against a forked Safe moved to step 2
+2. the signer, with that viem check
 3. deployment on Sepolia and swapping the test Safes' owners
 4. a live run with a real dapp
 5. the normative spec, written from this note and the code

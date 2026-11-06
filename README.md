@@ -62,12 +62,14 @@ Deterministic deployments: the addresses depend only on the code, so they are th
 ```sh
 # the Kernel validator and its stateless verifier
 forge script script/DeployValidator.s.sol --rpc-url $RPC --broadcast
-# Safe route: the stateless verifier, the owner implementation and its factory (once per chain), and with
-# WINTERLOCK_KEY a member's owner
+# Safe route, owner v2: the stateless verifier, the shared WOTS verifier, the owner implementation and its factory
+# (once per chain), and with WINTERLOCK_KEY a member's owner
 WINTERLOCK_KEY=0x... forge script script/DeploySafeOwner.s.sol --rpc-url $RPC --broadcast
 ```
 
-On chains with Glamsterdam's pricing of new state (Sepolia since October 2026), add `--skip-simulation --slow`: Forge's own simulation still prices the old way and would set gas limits too low.
+On chains with Glamsterdam's pricing of new state (Sepolia since October 2026), add `--skip-simulation --slow --gas-estimate-multiplier 120`: Forge's own simulation still prices the old way and would set gas limits too low, and at its default 130% the v2 implementation's limit would pass the transaction gas cap.
+
+**Owner v2** (device keys, and an approved signature kind for dapps that verify with viem; [design](docs/notes/owner-v2.md)) is built and tested in Forge but not deployed on any network yet; the check with viem itself comes with the signer. The signer and the Sepolia test Safes still use v1, whose contracts stay deployed and keep working.
 
 ## Signer
 
