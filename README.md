@@ -102,7 +102,7 @@ signer/winterlock-signer message --chain sepolia --file safe-message-....json   
 cd signer && .venv/bin/python -m winterlock_signer.collect --rpc $WINTERLOCK_RPC   # optional collection endpoint
 ```
 
-The design and its limits are described in [docs/notes/walletconnect.md](docs/notes/walletconnect.md).
+This works live on Sepolia through Reown's relay, with a dapp built on the official SDK: sign-in, transfers and Permit2 (`signer/tools/live_walletconnect.py`). The design, its limits and the live results are described in [docs/notes/walletconnect.md](docs/notes/walletconnect.md).
 
 ## Preview locally
 

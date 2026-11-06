@@ -34,7 +34,7 @@ The needed subset is small, so it is implemented natively, as the rest of the si
   - against a scripted dapp
   - optionally (`WINTERLOCK_WC_JS`), against dapps built on the official `@walletconnect/sign-client` 2.21.0 and 2.26.0. Since 2.21.6, the dapp proposes through the relay method `wc_proposeSession`.
   - all of these through a stand-in relay
-- **Not tested against Reown's relay** (see "A live test needs").
+- **Live, against Reown's relay,** on Sepolia on 2026-11-06 (see "Live test").
 
 ## What the dapp gets
 
@@ -155,20 +155,31 @@ The flow:
 - **Libraries:** only Safe v1.4.1's SignMessageLib and MultiSendCallOnly are recognised, at their canonical addresses by default. They work with Safes from v1.3.0 on, whose storage layout matches.
 - **Mixed Safes:** in a Safe with ECDSA and Winterlock owners, the ECDSA owners can't sign message files. The threshold has to come from Winterlock owners.
 - **One session at a time:** one dapp per `connect`, and sessions live in memory. The key log stays locked while connected, so the member's other commands wait.
-- **The approval flow on Reown's relay:** the wallet approves with `irn_publish`, as sign-client did up to 2.21.5. Wallets on sign-client 2.21.6 and later use the relay method `wc_approveSession`. That Reown's relay still accepts the older flow is inferred, since older SDKs remain deployed. It isn't tested.
+- **The approval flow on Reown's relay:** the wallet approves with `irn_publish`, as sign-client did up to 2.21.5. Wallets on sign-client 2.21.6 and later use the relay method `wc_approveSession`. Reown's relay accepts the older flow, also from a dapp on SDK 2.26.0 (live test). It could be retired some day, so moving to `wc_approveSession` stays on the list.
 - **X25519 timing:** this X25519 is not constant-time, because it uses Python integers. It is used only for ephemeral session keys.
 - **`--yes` on `connect`** signs everything the rules allow without asking. It is meant for tests and scripts.
 - **Not covered:** ERC-7739 (nested typed data), and EIP-2612 tokens that accept only ECDSA, which no Safe can sign.
 
-## A live test needs
+## Live test
 
-- **A Reown project ID** (cloud.reown.com, free), in `WALLETCONNECT_PROJECT_ID`. The relay refuses connections without one; Reown documents 401 and 403.
-- **A WalletConnect dapp** on the chain of a Winterlock Safe, for example Sepolia: a sign-in demo, and Permit2 at its canonical address.
-- **The members' signers,** with `SAFE_API_KEY` for Safe's Transaction Service and a gas account for execution.
-- **What to look at:**
-  - that Reown's relay accepts the approval through `irn_publish`
-  - how the dapp handles an 11.7 KB signature
-  - what a viem-based dapp does with `0x`
+`signer/tools/live_walletconnect.py` runs it. A dapp on the official SDK (`tools/live_dapp.js`) pairs with member 1's `connect` through Reown's relay and sees the team's Safe. The script plays member 2 and the gas account: it signs message files and confirms and executes only the two transactions the run expects. The dapp checks each answer against the chain with viem.
+
+**Needs:**
+- a directory with two signer homes, `m1` and `m2`, whose owners are enrolled on the Safe (as `tools/live_check.py` leaves them)
+- `WALLETCONNECT_PROJECT_ID` (cloud.reown.com, free), `SAFE_API_KEY`, `ALCHEMY_API_KEY`, and a gas account's key in `DEPLOYER_PRIVATE_KEY`
+- Node, and a `node_modules` holding `@walletconnect/sign-client` and `viem` (`--node-modules`), not part of this repository
+
+```sh
+set -a; . contracts/bench/bundlers/.env; set +a
+signer/.venv/bin/python signer/tools/live_walletconnect.py --dir DIR --safe SAFE --node-modules PATH/node_modules
+```
+
+**Results** (2026-11-06, Sepolia, 2-of-2 Safe `0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07`; sign-client 2.26.0, viem 2.57.16):
+- **Pairing:** the session was up in about 1 s. Reown's relay accepts the approval through `irn_publish`.
+- **Sign-in:** the dapp got the 11,668-byte combined signature through the relay 7 s after asking. viem's `verifyMessage` accepts it, and refuses it for a changed message.
+- **Transfer:** the dapp got the SafeTx hash at once. After member 2 confirmed and the gas account executed it (290,889 gas), the dapp's `eth_getTransactionReceipt` for the SafeTx hash returned the execution's receipt, which matches the chain's.
+- **Permit2:** the dapp got `0x` 26 s after asking, once the approval had executed (400,441 gas). The Safe's `isValidSignature(hash, 0x)` returns the magic value; viem's `verifyTypedData` returns false. This confirms the viem limit above.
+- **The SDK refuses a dapp's own `eth_chainId` request** because it isn't a session method. Dapps read the chain and account from the session, so the wallet needs no change.
 
 ## Tests
 

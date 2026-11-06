@@ -97,11 +97,10 @@ Open:
 - **Messages that apps check on-chain** (permits, Permit2): the team approves the message in an ordinary WOTS-signed Safe transaction through SignMessageLib. The app then checks it with an empty signature.
 - **Messages that apps check off-chain** (sign-in with Ethereum): members sign with their stateless keys; Winterlock's collection service (D8) gathers and serves the signatures. They verify on-chain through the Safe's `isValidSignature`.
 - **Both need the signer to answer apps itself, over WalletConnect,** because Safe's app doesn't reliably pass message results back.
-- **Built:** the WalletConnect bridge in the signer, and SignMessageLib built with Safe's release settings (see "WalletConnect bridge" under Measurements).
+- **Built:** the WalletConnect bridge in the signer, and SignMessageLib built with Safe's release settings (see "WalletConnect bridge" under Measurements). Both paths work live on Sepolia through Reown's relay (see "WalletConnect, live on Sepolia").
 - **To build:**
-  - an owner signature kind that defers to the Safe's own approval, because viem refuses empty signatures (designed in docs/notes/walletconnect.md; it changes the owner's code, so every owner address)
+  - an owner signature kind that defers to the Safe's own approval, because viem refuses empty signatures, confirmed live (designed in docs/notes/walletconnect.md; it changes the owner's code, so every owner address)
   - a revocation library, if the team wants to withdraw approvals
-  - a live test against WalletConnect's real relay (needs a Reown project ID)
 - **Not covered:** EIP-2612 permits that accept only ECDSA, which no smart account can sign.
 
 ## Constraints that every design must respect
@@ -850,10 +849,25 @@ The signer answers dapps over WalletConnect v2 as the team's Safe. It implements
 - **Locked devices refuse dapps too:** message signing goes through the same check as transactions, so a moved or locked device signs nothing.
 - **Open:**
   - viem refuses `0x`, so on-chain approvals need the owner signature kind in D14's to-do list
-  - a live test against Reown's relay
   - one dapp session at a time
   - the dapp's name and URL aren't verified, so the sign-in check compares only what the dapp claims
 - **Tests:** 42 new signer tests; together with the recovery work, 126 pass.
+
+**2026-11-06: WalletConnect, live on Sepolia** (`signer/tools/live_walletconnect.py`, `live_dapp.js`)
+
+A scripted dapp on the official SDK (`@walletconnect/sign-client` 2.26.0) paired through Reown's relay with member 1's `connect`, for the 2-of-2 test Safe of proxy owners (`0x68f6…ef07`). The script played member 2 and the gas account, and the dapp checked every answer against Sepolia with viem 2.57.16. Two runs; numbers from the second.
+
+| Step | What the dapp got | Checked by the dapp |
+|---|---|---|
+| Pairing | a session in 1.0 s, with the Safe as its account | — |
+| Sign-in (`personal_sign`) | the Safe's combined signature, 11,668 bytes, 7.2 s after asking (both members sign in about 1 s each) | viem's `verifyMessage`: valid; for a changed message: invalid. The Safe's `isValidSignature`: the magic value |
+| Transfer (`eth_sendTransaction`) | the SafeTx hash at once; after member 2 confirmed and the gas account executed (290,889 gas), the receipt of the SafeTx hash from the wallet | the receipt matches the chain's |
+| Permit2 (`eth_signTypedData_v4`) | `0x` once the SignMessageLib approval executed (400,441 gas), 26 s after asking | `isValidSignature(hash, 0x)`: the magic value. viem's `verifyTypedData`: invalid, as expected |
+
+- **Reown's relay accepts the wallet's approval through `irn_publish`,** although SDK 2.26.0 dapps propose through `wc_proposeSession`. This was the open question in the bridge's notes.
+- **The relay carries the 11.7 KB answer** without trouble.
+- **The SDK refuses a dapp's own `eth_chainId` request** because it isn't a session method. Dapps read the chain and account from the session, so the wallet needs no change.
+- **Cost:** about 11.8M wei in fees for the two executions, at Sepolia's base fee of about 30 wei.
 
 ## Integration notes: Kernel v3.3
 
@@ -882,7 +896,7 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 1
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): built with the stateless key and an EIP-712 wrap (D11, above). Open: full ERC-7739 nested typed data, and on-chain pre-approval for high-value permits.
 - 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579, including whether they have an enable path like Kernel's and whether it asks with the account as the sender, so the same lock covers it; whether to refuse or support Kernel's replayable signatures for UserOperations; and the signer's confirmation flow for installing modules (Kernel's enable mode is refused by design). On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
-- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike), and works live on Sepolia with Safe's Transaction Service for transactions (see 2026-11-05, Safe owner, live on Sepolia). Safe's app shows such a Safe with no change (checked by hand). Members' owners are now cheap proxies (above). Open: messages (options measured, recommendation above) and the signer's WalletConnect support.
+- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike), and works live on Sepolia with Safe's Transaction Service for transactions (see 2026-11-05, Safe owner, live on Sepolia). Safe's app shows such a Safe with no change (checked by hand). Members' owners are now cheap proxies (above). Messages follow D14, and the signer answers dapps over WalletConnect, live on Sepolia (2026-11-06). Open: the owner signature kind for viem (D14).
 
 **Infrastructure**
 - Bundler acceptance: answered for the hosted bundlers. Pimlico, Candide and Alchemy accept and include WOTS operations from a production Kernel on Arbitrum Sepolia (stage 2, above). Still open:
