@@ -189,18 +189,83 @@ class Handling(unittest.TestCase):
         """A node behind the one that gave the proposal's block refuses the log range: not executed yet, no error"""
         from winterlock_signer.rpc import RpcError
         h = "0x" + "33" * 32
-        self.bridge.submitted[h] = {"nonce": 7, "block": 1000, "calls": 1}
+        self.bridge.submitted[h] = {"nonce": 6, "block": 1000, "calls": 1}  # the Safe is at nonce 7: passed
         seen = []
 
         def call(method, params=()):
             if method == "eth_getLogs":
                 seen.append(params[0]["fromBlock"])
                 raise RpcError("eth_getLogs: invalid block range params")
-            return None
+            return hex(1010) if method == "eth_blockNumber" else None
         self.ctx.rpc.call = call
         self.assertIsNone(self.bridge.execution(h))
-        self.assertEqual(seen, [hex(1000 - 64)])  # looks back a little, too
+        self.assertEqual(seen[0], hex(1000 - 64))  # looks back a little, too
+        self.assertTrue(any("the node refused the log query" in line for line in self.shown))
         self.assertIsNone(self.handle("eth_getTransactionReceipt", [h]))
+
+    def chain_with_logs(self, executed_at, h, limit=None):
+        """eth_getLogs over blocks up to self.head, with the Safe's ExecutionSuccess for `h` at `executed_at`, from a
+        node that refuses ranges over `limit` blocks as Alchemy's free tier does (its message, 2026-11-06)"""
+        from winterlock_signer.bridge import SUCCESS_TOPIC
+        from winterlock_signer.rpc import RpcError
+        self.queries = []
+
+        def call(method, params=()):
+            if method == "eth_blockNumber":
+                return hex(self.head)
+            if method == "eth_getLogs":
+                f = params[0]
+                lo, hi = int(f["fromBlock"], 16), int(f["toBlock"], 16)
+                self.queries.append((lo, hi))
+                if limit and hi - lo + 1 > limit:
+                    raise RpcError("eth_getLogs at https://eth-sepolia.g.alchemy.com: Under the Free tier plan, you "
+                                   "can make eth_getLogs requests with up to a 10 block range.")
+                self.assertEqual(f["address"], SAFE)
+                return [{"topics": [SUCCESS_TOPIC, h], "data": "0x" + "00" * 32, "transactionHash": "0x" + "ee" * 32}
+                        ] if lo <= executed_at <= hi <= self.head else []
+            raise AssertionError(method)
+        self.ctx.rpc.call = call
+
+    def test_execution_found_under_a_ten_block_limit(self):
+        """Live on Sepolia (2026-11-06), Alchemy refused the bridge's log query (the proposal's block minus 64 to the
+        latest) on every poll, so the dapp never got its receipt"""
+        h = "0x" + "44" * 32
+        self.bridge.submitted[h] = {"nonce": 6, "block": 1000, "calls": 1}
+        self.head = 1100
+        self.chain_with_logs(1050, h, limit=10)
+        self.assertEqual(self.bridge.execution(h), ("0x" + "ee" * 32, True))
+        self.assertEqual(self.queries[0], (936, 1100))  # refused, then 10 blocks at a time from 936
+        self.assertEqual(self.queries[1:3], [(936, 945), (946, 955)])
+        self.assertTrue(all(hi - lo + 1 <= 10 for lo, hi in self.queries[1:]))
+        self.assertEqual(self.queries[-1], (1046, 1055))
+        n = len(self.queries)
+        self.assertEqual(self.bridge.execution(h), ("0x" + "ee" * 32, True))  # remembered: no more queries
+        self.assertEqual(len(self.queries), n)
+
+    def test_execution_waits_for_the_nonce_and_resumes(self):
+        h = "0x" + "55" * 32
+        self.bridge.submitted[h] = {"nonce": 7, "block": 1000, "calls": 1}  # the Safe is at nonce 7: not yet
+        self.head = 1020
+        self.chain_with_logs(1030, h)
+        self.assertIsNone(self.bridge.execution(h))
+        self.assertEqual(self.queries, [])  # nothing to look for before the Safe's nonce passes
+        self.bridge.submitted[h]["nonce"] = 6
+        self.assertIsNone(self.bridge.execution(h))  # passed, but the execution isn't in these blocks
+        self.assertEqual(self.queries, [(936, 1020)])
+        self.assertEqual(self.bridge.submitted[h]["scanned"], 1020 - 4 + 1)  # the last 4 blocks are scanned again
+        self.assertEqual(self.bridge.calls_status(h)["status"], 100)  # not "replaced" yet: maybe a lagging node
+        self.head = 1040
+        self.assertEqual(self.bridge.execution(h), ("0x" + "ee" * 32, True))
+        self.assertEqual(self.queries[-1], (1017, 1040))
+
+    def test_replaced_once_the_logs_are_settled(self):
+        h = "0x" + "66" * 32
+        self.bridge.submitted[h] = {"nonce": 6, "block": 1000, "calls": 1}
+        self.head = 1020
+        self.chain_with_logs(10**9, h)  # never executed: another transaction took nonce 6
+        self.assertEqual(self.bridge.calls_status(h)["status"], 100)
+        self.head = 1030
+        self.assertEqual(self.bridge.calls_status(h)["status"], 400)
 
     def test_unknown_hash_lookups_pass_through(self):
         self.assertIsNone(self.handle("eth_getTransactionReceipt", ["0x" + "22" * 32]))

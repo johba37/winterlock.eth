@@ -53,6 +53,10 @@ SUPPORTED = set(SIGN_METHODS + READ_METHODS)
 EVENTS = {"chainChanged", "accountsChanged"}
 SUCCESS_TOPIC = b2h(keccak256(b"ExecutionSuccess(bytes32,uint256)"))
 LOG_LOOKBACK = 64  # blocks before the proposal's: covers nodes that lag behind the one that answered
+LOG_SPAN = 1000  # blocks per eth_getLogs query at first; 10 once a node refuses a range, then halved
+NARROW_SPAN = 10  # Alchemy's free tier allows 10 blocks per eth_getLogs query (seen live on 2026-11-06)
+LOG_QUERIES = 40  # eth_getLogs queries per lookup at most; the next lookup goes on from there
+SETTLED = 4  # blocks behind the head that every node of a load-balanced endpoint has: the scan resumes from there
 FAILURE_TOPIC = b2h(keccak256(b"ExecutionFailure(bytes32,uint256)"))
 MARGIN = 10  # answer this many seconds before the dapp's request expires
 _DANGEROUS_SELECTORS = {abi.selector(s) for s in DANGEROUS}
@@ -168,7 +172,8 @@ class Bridge:
         self.wait_for_execution = wait_for_execution
         self.poll = poll
         self.dapp = dapp or {}
-        self.submitted = {}  # SafeTx hash -> {"nonce", "block", "calls"}
+        self.submitted = {}  # SafeTx hash -> {"nonce", "block", "calls"}, and "scanned" and "executed" once looked up
+        self.log_span = LOG_SPAN
         self.stop = threading.Event()
 
     # --- dispatch ---
@@ -327,21 +332,48 @@ class Bridge:
         return hx
 
     def execution(self, h: str):
-        """(transaction hash, succeeded) once the Safe has executed SafeTx `h`, else None. A failed log query counts
-        as not executed yet, so the caller asks again: public RPC endpoints balance across nodes, and one that is a
-        block behind refuses a range starting at the block another node gave as the latest when `h` was proposed."""
-        frm = max(0, self.submitted.get(h.lower(), {}).get("block", 0) - LOG_LOOKBACK)
-        try:
-            logs = self.rpc.call("eth_getLogs", [{"address": self.safe, "fromBlock": hex(frm), "toBlock": "latest",
-                                                  "topics": [[SUCCESS_TOPIC, FAILURE_TOPIC]]}])
-        except RpcError as e:
-            self.ui.show(f"  (the node refused the log query, asking again: {str(e)[:120]})")
+        """(transaction hash, succeeded) once the Safe has executed SafeTx `h`, which this signer proposed, else None.
+        - Nothing is looked up while the Safe's nonce hasn't passed the transaction's.
+        - Then the Safe's ExecutionSuccess and ExecutionFailure logs are scanned forward from a little before the
+          proposal's block. Each lookup goes on where the last one stopped, but scans the last SETTLED blocks again,
+          which a node behind the others may not have had.
+        - Nodes limit the block range of a log query (Alchemy's free tier to 10 blocks), so a refused query is asked
+          again over 10 blocks, then fewer. A query still refused counts as not executed yet, and the caller asks
+          again: public endpoints balance across nodes, and one that is behind refuses a range past its head."""
+        sub = self.submitted.get(h.lower())
+        if sub is None:
             return None
-        for lg in logs:
-            # v1.4.1 indexes the hash (topic 1); v1.3.0 puts it in the data
-            got = lg["topics"][1] if len(lg["topics"]) > 1 else "0x" + lg["data"][2:66]
-            if got.lower() == h.lower():
-                return lg["transactionHash"], lg["topics"][0] == SUCCESS_TOPIC
+        if sub.get("executed"):
+            return sub["executed"]
+        try:
+            if abi.dec_uint(self.rpc.eth_call(self.safe, abi.calldata("nonce()"))) <= sub["nonce"]:
+                return None
+            head = int(self.rpc.call("eth_blockNumber"), 16)
+        except (RpcError, TypeError, ValueError):
+            return None
+        sub.setdefault("passed_at", head)  # the nonce had passed by this block (give or take a lagging node)
+        start = sub.setdefault("scanned", max(0, sub["block"] - LOG_LOOKBACK))
+        for _ in range(LOG_QUERIES):
+            if start > head:
+                break
+            end = min(head, start + self.log_span - 1)
+            try:
+                logs = self.rpc.call("eth_getLogs", [{"address": self.safe, "fromBlock": hex(start),
+                                                      "toBlock": hex(end), "topics": [[SUCCESS_TOPIC, FAILURE_TOPIC]]}])
+            except RpcError as e:
+                if self.log_span > 1:
+                    self.log_span = NARROW_SPAN if self.log_span > NARROW_SPAN else self.log_span // 2
+                    continue
+                self.ui.show(f"  (the node refused the log query, asking again: {str(e)[:120]})")
+                return None
+            for lg in logs or []:
+                # v1.4.1 indexes the hash (topic 1); v1.3.0 puts it in the data
+                got = lg["topics"][1] if len(lg["topics"]) > 1 else "0x" + lg["data"][2:66]
+                if got.lower() == h.lower():
+                    sub["executed"] = (lg["transactionHash"], lg["topics"][0] == SUCCESS_TOPIC)
+                    return sub["executed"]
+            sub["scanned"] = max(sub["scanned"], min(end, head - SETTLED) + 1)
+            start = end + 1
         return None
 
     def calls_status(self, bid):
@@ -351,8 +383,11 @@ class Bridge:
         out = {"version": "2.0.0", "id": h, "chainId": hex(self.chain), "atomic": True}
         ex = self.execution(h)
         if not ex:
+            sub = self.submitted[h]
             nonce = abi.dec_uint(self.rpc.eth_call(self.safe, abi.calldata("nonce()")))
-            out["status"] = 400 if nonce > self.submitted[h]["nonce"] else 100
+            # replaced: another transaction used the nonce, and the logs up to well past that show no execution
+            replaced = nonce > sub["nonce"] and sub.get("scanned", 0) > sub.get("passed_at", 1 << 62) + SETTLED
+            out["status"] = 400 if replaced else 100
             return out
         r = self.rpc.call("eth_getTransactionReceipt", [ex[0]])
         receipt = {k: r.get(k) for k in ("blockHash", "blockNumber", "gasUsed", "transactionHash")}
