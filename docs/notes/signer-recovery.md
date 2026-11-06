@@ -108,7 +108,7 @@ Remedies, which `status` and every refusal name:
 
 **Lost:** today's behaviour, explained.
 - **Fresh trees:** the key log starts empty, so the old trees are never used.
-- **Cost:** a fresh tree per Safe and chain, one `enroll` each, about 0.25M gas and 5.9 KB of calldata.
+- **Cost:** a fresh tree per Safe and chain, one `enroll` each, about 0.25M gas (392,088 on Sepolia under Glamsterdam's pricing) and 5.9 KB of calldata.
 - **Pending approvals:** the old device's approvals of pending transactions stop counting once the fresh tree is enrolled, and must be given again.
 - **Message for the team:** the signer prints a short one, including "tell me if you see an approval I didn't make".
 - **Report:** with `--chain` and `--rpc`, it lists per Safe the enrolled tree and the pending approvals that will stop counting. Safes are named with `--safe`, or found through the service's owner endpoint.

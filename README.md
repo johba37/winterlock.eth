@@ -55,17 +55,40 @@ A minimal signer for members of a Safe whose owners are Winterlock contracts.
 - **Backup:** a 24-word recovery phrase (BIP-39) is the only backup. `init` shows it once and checks three of its words. On the device, the seed is encrypted with a passphrase.
 - **One device at a time:** the key log is bound to its device. A copied or rolled-back key log signs nothing, and a move locks the old device for good.
 
+Each member runs their own signer. It lives in `~/.winterlock-signer`; `--home DIR` (or `WINTERLOCK_HOME`) picks another directory, for example to try several members on one machine.
+
 ```sh
 python3 -m venv signer/.venv && signer/.venv/bin/pip install -r signer/requirements.txt
 signer/winterlock-signer init            # a new signer: write down the phrase, confirm three words, set a passphrase
-signer/winterlock-signer address         # your owner address, the same on every chain
-export WINTERLOCK_RPC=... WINTERLOCK_GAS_KEY=... SAFE_API_KEY=...
-signer/winterlock-signer enroll  --chain sepolia --safe 0x...   # certify a key tree; creates your owner if needed
-signer/winterlock-signer propose --chain sepolia --safe 0x... --to 0x... --value 0.01
-signer/winterlock-signer confirm --chain sepolia --safe-tx-hash 0x...
-signer/winterlock-signer execute --chain sepolia --safe-tx-hash 0x...
-cd signer && .venv/bin/python -m unittest discover -s tests -t .   # tests
+signer/winterlock-signer address         # your owner address, the same on every chain: give it to whoever creates the Safe
+export WINTERLOCK_RPC=https://...        # the chain's JSON-RPC URL
+export WINTERLOCK_GAS_KEY=0x...          # the private key of any funded account: it pays for enroll and execute, and isn't an owner
+export SAFE_API_KEY=...                  # Safe's Transaction Service API key, from developer.safe.global
 ```
+
+**The Safe.** Its owners are the members' owner addresses. They don't have to exist on-chain yet: each member's first `enroll` creates theirs. Any way of creating a Safe works, Safe's web app included. With `cast`, from Safe's canonical v1.4.1 deployments (the same addresses on every chain; about 1.5M gas on Sepolia for three owners):
+
+```sh
+FACTORY=0x4e1DCf7AD4e460CfD30791CCC4F9c8a4f820ec67 SAFE_L2=0x29fcB43b46531BcA003ddC8FCB67FFE91900C762 SALT=$RANDOM
+HANDLER=0xfd0732Dc9E303f09fCEf3a7388Ad10A83459Ec99 ZERO=0x0000000000000000000000000000000000000000
+SETUP=$(cast calldata "setup(address[],uint256,address,bytes,address,address,uint256,address)" \
+  "[0xOWNER1,0xOWNER2,0xOWNER3]" 2 $ZERO 0x $HANDLER $ZERO 0 $ZERO)   # the owner addresses, then the threshold
+cast call $FACTORY "createProxyWithNonce(address,bytes,uint256)(address)" $SAFE_L2 $SETUP $SALT --rpc-url $WINTERLOCK_RPC   # its address
+cast send $FACTORY "createProxyWithNonce(address,bytes,uint256)" $SAFE_L2 $SETUP $SALT --rpc-url $WINTERLOCK_RPC --private-key $WINTERLOCK_GAS_KEY
+```
+
+Then each member enrolls, and the team signs through Safe's Transaction Service:
+
+```sh
+signer/winterlock-signer enroll  --chain sepolia --safe 0x...   # once per Safe: certify a key tree; creates your owner if needed
+signer/winterlock-signer propose --chain sepolia --safe 0x... --to 0x... --value 0.01   # the value in ETH
+signer/winterlock-signer queue   --chain sepolia --safe 0x...   # pending transactions, decoded, with their SafeTx hashes
+signer/winterlock-signer confirm --chain sepolia --safe-tx-hash 0x...
+signer/winterlock-signer execute --chain sepolia --safe-tx-hash 0x...   # anyone, once enough members have signed
+(cd signer && .venv/bin/python -m unittest discover -s tests -t .)   # tests; the on-chain ones skip without anvil and contracts/setup.sh
+```
+
+The owner contracts' factory is deployed on Sepolia. On a chain without it, `enroll` says so, and `enroll --deploy` deploys it once for that chain.
 
 **Backup, recovery and new devices.** `status` shows the device state (active, locked or moved) and when the phrase was last checked. It also warns if the key log looks like a copy or a restored backup.
 
@@ -75,15 +98,16 @@ signer/winterlock-signer passphrase          # change the seed file's passphrase
 
 # A new device, and the old one still works: a move keeps the same key trees, with no fee
 signer/winterlock-signer move start                                # new device: type the phrase; it shows a move code
-signer/winterlock-signer move export --code CODE --out move.json   # old device: locks itself for good, writes the bundle
+signer/winterlock-signer move export --code CODE --out move.json --chain sepolia   # old device: checks its log, locks itself for good, writes the bundle
 signer/winterlock-signer move import move.json --chain sepolia     # new device: checks the bundle against the chain and the service
 
-# The old device is lost: restore with fresh trees, one enroll per Safe and chain (about 0.25M gas each)
+# The old device is lost: restore with fresh trees, one enroll per Safe and chain (about 0.25M gas each; 0.39M on Sepolia)
 signer/winterlock-signer init --restore --lost --chain sepolia     # lists the approvals that stop counting
 signer/winterlock-signer enroll --chain sepolia --safe 0x...
 ```
 
 - **Phrase or device compromised:** if someone else may have your phrase or your device, restoring doesn't help. The team replaces your owner in the Safe; `init --restore` explains how.
+- **Changing owners** is an ordinary Safe transaction, which the signer decodes and flags: `propose --safe SAFE --to SAFE --data $(cast calldata "swapOwner(address,address,address)" PREV OLD NEW)`, where PREV is the owner listed just before OLD in the Safe's `getOwners()`, or `0x0000000000000000000000000000000000000001` if OLD is first.
 - **Copied or rolled-back key log:** it signs nothing. `device fresh-trees` retires its trees, and `enroll` then certifies fresh ones.
 - **More:** design, threat model and limits are in `docs/notes/signer-recovery.md`.
 
@@ -99,7 +123,7 @@ signer/winterlock-signer enroll --chain sepolia --safe 0x...
 export WALLETCONNECT_PROJECT_ID=...      # from cloud.reown.com; Reown's relay requires one
 signer/winterlock-signer connect --chain sepolia --safe 0x...   # paste the dapp's wc: URI when asked (it isn't shown)
 signer/winterlock-signer message --chain sepolia --file safe-message-....json   # another member signs a message
-cd signer && .venv/bin/python -m winterlock_signer.collect --rpc $WINTERLOCK_RPC   # optional collection endpoint
+(cd signer && .venv/bin/python -m winterlock_signer.collect --rpc $WINTERLOCK_RPC)   # optional collection endpoint
 ```
 
 This works live on Sepolia through Reown's relay, with a dapp built on the official SDK: sign-in, transfers and Permit2 (`signer/tools/live_walletconnect.py`). The design, its limits and the live results are described in [docs/notes/walletconnect.md](docs/notes/walletconnect.md).
