@@ -1,6 +1,6 @@
 <h1><img src="docs/brand/plate.svg" alt="winterlock.eth" width="340"></h1>
 
-**Winterlock lets a team's Safe be controlled by hash-based signatures instead of ECDSA.** These are signatures a quantum computer can't break, and the Safe, Safe's app and dapps keep working. It's a **research prototype: unaudited, testnet only.**
+**Winterlock lets a team's Safe be controlled by hash-based signatures instead of ECDSA.** These are signatures a quantum computer can't break, and the Safe, Safe's app and dapps keep working. It's a **research prototype: unaudited, testnet only.** To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 **Start here:** the [one-page overview](docs/overview.md) covers how it works, the numbers and what's live.
 
@@ -37,6 +37,7 @@ This repository also holds the landing page published at winterlock.eth: a singl
 | `fonts/` | Atkinson Hyperlegible Next and Mono (variable, Latin subset) with their SIL Open Font License texts |
 | `docs/brand/` | The look: mark, lockups, colours, and the stencil lettering generator |
 | `docs/overview.md` | Winterlock in one page: how it works, numbers, what's live, terms |
+| `SECURITY.md` | How to report a vulnerability privately, and what's in scope |
 | `docs/decisions.md` | Design decisions, gas measurements and open questions |
 | `docs/notes/` | Longer notes, such as the message-signing options on the Safe route |
 | `docs/ux/` | The MVP proposal for teams and a clickable mockup |

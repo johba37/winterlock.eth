@@ -67,6 +67,7 @@ Checking one one-time signature costs about 55k gas, and a stateless signature 5
   - It checks Safe's service for signatures it doesn't know.
 - **Strength:** NIST category 1 overall, set by the stateless key's 16-byte hashes. The one-time keys use 24-byte hashes.
 - **Not audited.** Testnet only.
+- **Found a vulnerability?** Report it privately: see [SECURITY.md](../SECURITY.md).
 
 ## Not yet
 
