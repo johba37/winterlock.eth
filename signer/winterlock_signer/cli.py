@@ -686,20 +686,27 @@ def cmd_status(args):
             last = max((s["nonce"] for s in signs), default=None)
             state = ""
             if onchain is not None:
-                state = " ENROLLED" if onchain[0] is not None and b2h(onchain[0]) == r["root"] else \
-                    (" not enrolled yet" if r is trees[-1] else " retired")
+                if onchain[0] is not None and b2h(onchain[0]) == r["root"]:
+                    state = " ENROLLED"
+                elif r is not trees[-1]:
+                    state = " retired"
+                elif onchain[0] is None:
+                    state = " not enrolled yet"
+                else:
+                    state = " not enrolled (the Safe has another tree for this owner)"
             if m.log.retired(r):
                 state += " RETIRED HERE (never signs again: `enroll` certifies a fresh tree)"
             out(f"  tree {r['root'][:18]}… height {r['height']}, nonces {r['start']}–{r['start'] + cap - 1}{state}: "
-                f"{len(signs)} keys used ({spare} spare), last nonce signed {last}")
+                f"{len(signs)} keys used ({spare} spare), last nonce signed {'none' if last is None else last}")
             if safe_nonce is not None and state == " ENROLLED":
                 left = r["start"] + cap - max(safe_nonce, r["start"])
                 used_pct = 100 * (cap - left) / cap
                 out(f"    Safe nonce {safe_nonce}: {left} of {cap} nonces left ({used_pct:.0f}% used)"
                     + ("  -> rotate soon: `enroll --rotate`" if used_pct >= 80 else ""))
         if onchain is not None and onchain[0] is not None and not m.log.tree_by_root(chain, safe, b2h(onchain[0])):
-            out(f"  WARNING: the enrolled tree {b2h(onchain[0])[:18]}… isn't in this key log (another device or a "
-                "restore): run `enroll` to certify a fresh tree")
+            out(f"  WARNING: the enrolled tree {b2h(onchain[0])[:18]}… isn't in this key log: another device signs for "
+                "this owner (after a move or a restore). If that device is your signer now, stop using this one. If "
+                "this one is, `enroll` certifies a fresh tree here, and the other device's approvals stop counting.")
 
 
 # --- argument parsing ---
@@ -733,9 +740,10 @@ def build_parser():
     cli_recovery.add_parsers(sub, chain_opts, COMMANDS)
     sp = sub.add_parser("address", help="owner address and stateless key")
     chain_opts(sp, service=False)
+    safe_help = "the Safe's address"
     sp = sub.add_parser("enroll", help="certify an operation tree for a Safe and send enroll")
     chain_opts(sp, service=False)
-    sp.add_argument("--safe", required=True)
+    sp.add_argument("--safe", required=True, help=safe_help)
     sp.add_argument("--height", type=int, default=DEFAULT_HEIGHT,
                     help=f"tree height: 2^(height-1) nonces (default {DEFAULT_HEIGHT})")
     sp.add_argument("--rotate", action="store_true", help="replace the enrolled tree with a fresh one")
@@ -744,32 +752,32 @@ def build_parser():
     sp.add_argument("--out", help="where to write the calldata when there is no gas account")
     sp = sub.add_parser("propose", help="sign a new Safe transaction and post it")
     chain_opts(sp)
-    sp.add_argument("--safe", required=True)
-    sp.add_argument("--to")
+    sp.add_argument("--safe", required=True, help=safe_help)
+    sp.add_argument("--to", help="the address the Safe calls or pays")
     sp.add_argument("--value", default="0", help="in ETH (0.01) or wei (1000wei)")
-    sp.add_argument("--data", default="0x")
-    sp.add_argument("--operation", type=int, default=0, choices=(0, 1))
-    sp.add_argument("--allow-delegatecall", action="store_true")
+    sp.add_argument("--data", default="0x", help="calldata, hex (default: none)")
+    sp.add_argument("--operation", type=int, default=0, choices=(0, 1), help="0 call (default), 1 delegatecall")
+    sp.add_argument("--allow-delegatecall", action="store_true", help="needed with --operation 1")
     sp.add_argument("--nonce", type=int, help="default: the next free nonce; an existing one makes a replacement")
     sp.add_argument("--cancel", action="store_true", help="propose Safe's on-chain rejection at --nonce")
     sp.add_argument("--out", help="also write a proposal file for peer-to-peer signing")
     sp = sub.add_parser("confirm", help="sign a proposed Safe transaction")
     chain_opts(sp)
-    sp.add_argument("--safe-tx-hash")
+    sp.add_argument("--safe-tx-hash", help="the proposal's SafeTx hash (`queue` lists them)")
     sp.add_argument("--file", help="proposal file (peer to peer)")
     sp = sub.add_parser("queue", help="pending transactions, decoded")
     chain_opts(sp)
-    sp.add_argument("--safe", required=True)
-    sp.add_argument("--file")
+    sp.add_argument("--safe", required=True, help=safe_help)
+    sp.add_argument("--file", help="proposal file (peer to peer)")
     sp = sub.add_parser("execute", help="send execTransaction with the collected signatures")
     chain_opts(sp)
-    sp.add_argument("--safe-tx-hash")
-    sp.add_argument("--file")
+    sp.add_argument("--safe-tx-hash", help="the proposal's SafeTx hash (`queue` lists them)")
+    sp.add_argument("--file", help="proposal file (peer to peer)")
     from .bridge import add_commands
     add_commands(sub, chain_opts)  # connect, message
     sp = sub.add_parser("status", help="key usage and tree health")
     chain_opts(sp, service=False)
-    sp.add_argument("--safe")
+    sp.add_argument("--safe", help="only this Safe")
     return p
 
 

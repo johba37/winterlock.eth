@@ -686,7 +686,7 @@ def cmd_message(args):
 def add_commands(sub, chain_opts):
     sp = sub.add_parser("connect", help="answer a dapp over WalletConnect as the team's Safe")
     chain_opts(sp)
-    sp.add_argument("--safe", required=True)
+    sp.add_argument("--safe", required=True, help="the team's Safe: the account the dapp sees")
     sp.add_argument("uri", nargs="?", help="the app's wc: URI, or - to read it from stdin (default: asked for, "
                                            "not shown)")
     sp.add_argument("--relay", help=f"WalletConnect relay (default {DEFAULT_RELAY}, which needs "

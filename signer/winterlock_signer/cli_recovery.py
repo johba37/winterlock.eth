@@ -26,7 +26,8 @@ from .keylog import Refused
 from .member import Member, default_home, identity_of
 from .service import ServiceError
 
-ENROLL_COST = "about 0.25M gas and 5.9 KB of calldata (a few dollars on Ethereum, about a cent on an L2)"
+ENROLL_COST = ("about 0.25M gas (0.39M with Glamsterdam's pricing, as on Sepolia) and 5.9 KB of calldata (a few "
+               "dollars on Ethereum, about a cent on an L2)")
 CHECK_EVERY_DAYS = 90
 HOW = {"init": "created here", "restore": "restored from the recovery phrase, with fresh trees",
        "move-in": "moved in from another device", "adopt": "an adopted copy", "upgrade": "bound on first use",
@@ -183,8 +184,9 @@ def compromised_guidance(own):
     out("This is not something a restore can fix. Whoever has your phrase or your device can sign as you, and a")
     out("restore would only give them company. What to do:")
     out("  1. Tell your team now. Ask them to stop approving anything you propose until this is settled.")
-    out(f"  2. They replace your owner {own} in each Safe with a Safe transaction (swapOwner), signed by the")
-    out("     other members. Until it executes, your old owner still counts toward the threshold.")
+    out(f"  2. They replace your owner {own} in each Safe with a Safe transaction")
+    out("     (swapOwner), signed by the other members. Until it executes, your old owner still counts toward the")
+    out("     threshold.")
     out("  3. Make a new signer with a NEW phrase (`init` in an empty --home); give the team its owner address")
     out("     (`address`) for the swap, and `enroll` it on each Safe.")
     out("  4. Don't reuse the old phrase anywhere.")
@@ -217,9 +219,9 @@ def restore(args, home):
     out("    that hasn't executed stops counting. Approve those again with this signer.")
     out("  - If the old device turns up, don't use it: its trees are retired once the fresh ones are enrolled.")
     out("Tell your team:")
-    out(f'  "I lost my Winterlock signer and restored it from my recovery phrase (owner {m.owner}). My approvals of')
-    out("  pending transactions stop counting once my new key tree is enrolled; I'll approve them again. If you see")
-    out('  an approval from me that I didn\'t make, tell me at once: then replace me as an owner."')
+    out(f'  "I lost my Winterlock signer and restored it from my recovery phrase (owner {m.owner}).')
+    out("  My approvals of pending transactions stop counting once my new key tree is enrolled; I'll approve them")
+    out('  again. If you see an approval from me that I didn\'t make, tell me at once: then replace me as an owner."')
     if args.chain and (args.rpc or os.environ.get("WINTERLOCK_RPC")):
         lost_report(m, Ctx(args), args.safe)
 
@@ -300,9 +302,11 @@ def start_move(args, home, seed):
     out(f"    {req['request']}")
     out("")
     out("On your OLD device, run:")
-    out(f"    winterlock-signer move export --code {req['request']} --out winterlock-move.json")
+    out(f"    winterlock-signer move export --code {req['request']} --out winterlock-move.json --chain CHAIN")
     out("It locks the old device for good and writes the bundle. Bring the file here, then run:")
-    out("    winterlock-signer move import winterlock-move.json")
+    out("    winterlock-signer move import winterlock-move.json --chain CHAIN")
+    out("With --chain (sepolia, for example), each step first checks the key log against that chain and its")
+    out("Transaction Service.")
     out("Changed your mind (or the old device doesn't work after all)? `move cancel`, then `init --restore --lost`.")
 
 
@@ -364,7 +368,8 @@ def move_export(args):
     if args.chain and (args.rpc or os.environ.get("WINTERLOCK_RPC")):
         check_online(m, Ctx(args), "export")
     elif mo is None:
-        out("  (not checked online: add --chain and --rpc to check the log against a chain and its service first)")
+        out("  (not checked online: add --chain, with --rpc or WINTERLOCK_RPC, to check the log against a chain and "
+            "its Transaction Service first)")
     if mo is None:
         out("After this, this device signs nothing, ever: it records the move, writes the bundle, and removes its seed.")
         confirm(args, f"Lock this device and write the bundle for move {code}?")
@@ -384,7 +389,7 @@ def move_export(args):
     payload = move.export(m, code, args.out, args.replace_request)
     out(f"Wrote {args.out}: {len(payload['log'])} key log records, encrypted with a key from your recovery phrase.")
     out("This device is now locked for good and its seed file is removed. On the new device run:")
-    out(f"    winterlock-signer move import {os.path.basename(args.out)}")
+    out(f"    winterlock-signer move import {os.path.basename(args.out)} --chain {args.chain or 'CHAIN'}")
 
 
 def move_import(args):
@@ -407,8 +412,9 @@ def move_import(args):
             view = SimpleNamespace(owner=payload["owner"], key=h2b(payload["key"]), log=staged)
             check_online(view, Ctx(args), "import")
         else:
-            out("  Not checked online. With --chain and --rpc, the import first checks the log against that chain and "
-                "its Transaction Service" + (" (recommended: this bundle is over a day old)" if age > 86400 else ""))
+            out("  Not checked online. With --chain (and --rpc or WINTERLOCK_RPC), the import first checks the log "
+                "against that chain and its Transaction Service"
+                + (" (recommended: this bundle is over a day old)" if age > 86400 else ""))
     except BaseException:
         staged.close()
         move.unstage(home)
@@ -488,8 +494,8 @@ def status_lines(m) -> list:
                      "that signs binds it)")
     for _, p in m.problems:
         lines.append(f"  WARNING: {p}")
-    if why:
-        lines.append(f"    {why}")
+    if why:  # a copy's reason repeats the warnings above: only what to do
+        lines.append(f"    {member.COPY_REMEDY if why.startswith('this key log looks like a copy') else why}")
     lines.append(f"  seed file {seedfile.describe(m.seed_path)}")
     b = m.log.last("backup")
     if b:
