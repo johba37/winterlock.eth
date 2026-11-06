@@ -115,16 +115,19 @@ ERC-8403's shape suits the EIP-8141 account better, where the account itself hol
 - **v1 stays usable:** the v1 contracts are immutable and keep working, so nothing breaks before the swap.
 - **Not in this version:** the Kernel validator for individuals. It can follow with the same model.
 
-## Decisions to approve
+## Decisions
 
-1. **Device keys without the phrase,** with the member key kept offline. Recommended: it is what makes revocation, and slow hardware for the member key, worthwhile.
-2. **At most four devices** (the member key plus three).
-3. **Device certificates per chain,** not one for all chains.
-4. **A verifier per device,** for other stateless schemes later.
+Approved on 2026-11-06:
+1. **Only the member key comes from the recovery phrase.** Device keys don't hold the phrase.
+2. **At most four devices:** the member key plus three.
+3. **Device certificates per chain.**
 5. **The approved kind (`0x03`)** for permits checked with viem.
 6. **A table, not an ERC-8403 root,** in the Safe owner.
 
-Once these are approved, the order is:
+Open:
+4. **A verifier per device:** who chooses it, and how a shortlist is enforced.
+
+Once the open one is settled, the order is:
 1. the contracts and their tests, including a viem check of a permit against a forked Safe
 2. the signer
 3. deployment on Sepolia and swapping the test Safes' owners
