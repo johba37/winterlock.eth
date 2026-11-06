@@ -27,6 +27,7 @@ flowchart LR
   - The stateless key certifies each tree on-chain.
   - A fresh tree takes over before the old one runs out. The default tree covers 512 nonces.
 - **Safe's contracts, Transaction Service and web app are unchanged.** Members sign with the Winterlock signer. Anyone can execute, including from Safe's app.
+- **Owner v2 (built, not deployed) adds device keys.** The stateless key from the phrase becomes the member key. It certifies, on each chain, up to three device keys that a member's other devices make without the phrase, and revokes a lost one. Each device keeps its own key trees, so the phrase can stay offline while laptops and phones sign.
 
 ## Numbers
 
@@ -40,7 +41,7 @@ flowchart LR
 
 Checking one one-time signature costs about 55k gas, and a stateless signature 52.8k. Gas figures are from Foundry under Prague pricing, unless they name Sepolia. Details are in [decisions.md](decisions.md).
 
-These are the owners live today (v1). **Owner v2 is built but not deployed:** a 2-of-3 transaction costs about 7k more (WOTS verification moved into a shared contract to keep the owner's code deployable), and about 2k more per signature from a device key. Its shared contracts would take about 20M gas once per chain on Sepolia, on top of the stateless verifier already there (an estimate).
+These are the owners live today (v1). **Owner v2 is built, contracts and signer, but not deployed:** a 2-of-3 transaction costs about 7k more (WOTS verification moved into a shared contract to keep the owner's code deployable), and about 2k more per signature from a device key. Certifying or revoking a device key costs about 0.25M gas per chain. Its shared contracts would take about 20M gas once per chain on Sepolia, on top of the stateless verifier already there (an estimate).
 
 ## Live on Sepolia
 
@@ -73,7 +74,8 @@ These are the owners live today (v1). **Owner v2 is built but not deployed:** a 
 
 ## Not yet
 
-- **Dapps that verify with viem** reject the empty signature that on-chain approvals (permits) answer with. The fix is a new owner signature kind. It changes every owner's address, so it comes with several devices per member in owner v2: built and tested, not deployed yet. The signer's support comes next.
+- **Dapps that verify with viem** reject the empty signature that on-chain approvals (permits) answer with today. Owner v2's approved signatures fix it: built in the contracts and the signer, and accepted by viem on a local chain. Not deployed yet, since it changes every owner's address; it comes with device keys.
+- **Device keys on Sepolia.** Owner v2 lets a member's laptop and phone sign without the recovery phrase, and a lost one be revoked on-chain. Built and tested locally, not deployed yet.
 - **A hardware signer.** Hashing speed on secure elements needs measuring first.
 - **An audit.**
 - **Frame transactions (EIP-8141).** The same keys and signer would fit a native account. Not built yet.
@@ -84,7 +86,10 @@ These are the owners live today (v1). **Owner v2 is built but not deployed:** a 
 - **Member:** a person on the team.
 - **Signer:** the Winterlock program on the member's device.
 - **Owner:** the member's owner contract, the address listed in the Safe.
-- **Stateless key:** the member's leanSphincs-keccak key: the keccak version of leanSPHINCS, since keccak is the hash the EVM computes cheaply. It certifies key trees, signs messages, and is the way back after a lost device. "leanSPHINCS" on its own, as in EIP-8288, means the version with a hash that's cheap to prove in zero knowledge.
+- **Stateless key:** a leanSphincs-keccak key: the keccak version of leanSPHINCS, since keccak is the hash the EVM computes cheaply. It certifies key trees and signs messages. "leanSPHINCS" on its own, as in EIP-8288, means the version with a hash that's cheap to prove in zero knowledge.
+- **Member key:** the member's stateless key from the recovery phrase, fixed in the owner contract (device 0). It is the way back after a lost device, and in owner v2 it certifies and revokes device keys.
+- **Device key (owner v2):** a stateless key that one of the member's devices makes from its own random seed, without the phrase, certified on-chain by the member key on each chain. It certifies that device's key trees and signs messages, until it is revoked. A member has at most three.
+- **Device home:** the signer's directory on such a device: its device key, its own key log, no phrase.
 - **Key tree:** one-time keys for a range of Safe nonces, certified on-chain.
 - **Key log:** the signer's record of which one-time keys it has used.
 - **Gas account:** any funded account that pays for enrolling and executing. It isn't an owner.

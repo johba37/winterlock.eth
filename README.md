@@ -6,7 +6,7 @@
 
 - **Teams:** each member's owner contract is an owner of a [Safe](https://safe.global). Safe does the k-of-n, and teams keep Safe's app and Transaction Service.
   - **One-time keys** (WOTS) sign transactions.
-  - **A stateless key** (leanSphincs-keccak) signs messages, certifies new key trees and brings a member back after a lost device.
+  - **A stateless key** (leanSphincs-keccak) signs messages, certifies new key trees and brings a member back after a lost device. In owner v2 this is **the member key**, from the recovery phrase; it can also certify **device keys** for a member's other devices, which sign without holding the phrase and can be revoked on-chain.
   - **An existing Safe can switch in place,** swapping its owners one at a time without moving funds.
 - **Individuals:** an ERC-7579 validator on ZeroDev Kernel (ERC-4337), with built-in k-of-n.
 
@@ -25,6 +25,9 @@ signer/winterlock-signer init                                   # your recovery 
 signer/winterlock-signer address                                # your owner address: list it when creating the Safe
 signer/winterlock-signer enroll  --chain sepolia --safe 0x...   # creates your owner contract and certifies a key tree
 signer/winterlock-signer connect --chain sepolia --safe 0x...   # use the Safe in a dapp over WalletConnect
+# owner v2 (this branch, local chains only so far): a second device without the phrase
+signer/winterlock-signer --home ~/.winterlock-laptop device new --owner 0x... --device 1   # on the new device: key and check code
+signer/winterlock-signer device certify --device 1 --key 0x... --chain sepolia             # on the phrase's home: compare the code
 ```
 
 This repository also holds the landing page published at winterlock.eth: a single static `index.html` with two self-hosted fonts. It makes no requests to other servers, so it works from any IPFS gateway, from `ipfs://` in Brave, or straight from disk. The hero includes a live Winternitz hash-chain demo that runs entirely in the browser.
@@ -69,7 +72,7 @@ WINTERLOCK_KEY=0x... forge script script/DeploySafeOwner.s.sol --rpc-url $RPC --
 
 On chains with Glamsterdam's pricing of new state (Sepolia since October 2026), add `--skip-simulation --slow --gas-estimate-multiplier 120`: Forge's own simulation still prices the old way and would set gas limits too low, and at its default 130% the v2 implementation's limit would pass the transaction gas cap.
 
-**Owner v2** (device keys, and an approved signature kind for dapps that verify with viem; [design](docs/notes/owner-v2.md)) is built and tested in Forge but not deployed on any network yet; the check with viem itself comes with the signer. The signer and the Sepolia test Safes still use v1, whose contracts stay deployed and keep working.
+**Owner v2** (device keys, and an approved signature kind for dapps that verify with viem; [design](docs/notes/owner-v2.md)) is built and tested, contracts and signer, on local chains, with viem accepting its approved answers; it is not deployed on any network yet. **On this branch the signer is for v2 only.** The Sepolia test Safes still have v1 owners, whose contracts stay deployed and keep working; for them, use the signer at `main`.
 
 ## Signer
 
@@ -78,7 +81,8 @@ A minimal signer for members of a Safe whose owners are Winterlock contracts.
 - **Safety:** it keeps a key log that is saved before any signature leaves it, refuses to reuse a key, and computes every hash it signs itself.
 - **Service:** it posts to Safe's Transaction Service.
 - **Backup:** a 24-word recovery phrase (BIP-39) is the only backup. `init` shows it once and checks three of its words. On the device, the seed is encrypted with a passphrase.
-- **One device at a time:** the key log is bound to its device. A copied or rolled-back key log signs nothing, and a move locks the old device for good.
+- **One copy of each key log:** a key log is bound to its machine. A copied or rolled-back key log signs nothing, and a move locks the old machine for good.
+- **Device keys (owner v2):** the home with the phrase holds the member key (device 0). Up to three more devices each get a device home with its own key, certified and revoked on-chain by the member key, per chain. So the phrase can stay offline while laptops and phones sign.
 
 Each member runs their own signer. It lives in `~/.winterlock-signer`; `--home DIR` (or `WINTERLOCK_HOME`) picks another directory, for example to try several members on one machine.
 
@@ -113,7 +117,7 @@ signer/winterlock-signer execute --chain sepolia --safe-tx-hash 0x...   # anyone
 (cd signer && .venv/bin/python -m unittest discover -s tests -t .)   # tests; the on-chain ones skip without anvil and contracts/setup.sh
 ```
 
-The owner contracts' factory is deployed on Sepolia. On a chain without it, `enroll` says so, and `enroll --deploy` deploys it once for that chain.
+v1's owner contracts are deployed on Sepolia; v2's aren't yet. On a chain without them, `enroll` says so, and `enroll --deploy` deploys them once for that chain (four shared contracts in v2: the two verifiers, the implementation and the factory).
 
 **Backup, recovery and new devices.** `status` shows the device state (active, locked or moved) and when the phrase was last checked. It also warns if the key log looks like a copy or a restored backup.
 
@@ -137,12 +141,40 @@ signer/winterlock-signer enroll --chain sepolia --safe 0x...
 - **Copied or rolled-back key log:** it signs nothing. `device fresh-trees` retires its trees, and `enroll` then certifies fresh ones.
 - **More:** design, threat model and limits are in `docs/notes/signer-recovery.md`.
 
+### Device keys (owner v2)
+
+A member's other devices sign without the recovery phrase. Each has a **device home** with its own device key; the **member key's home** (the one with the phrase) certifies it on each chain, and revokes it if the device is lost.
+
+```sh
+# 1. On the new device: a device home for your owner (`address` on the phrase's home shows it) and a device number 1-3
+signer/winterlock-signer --home ~/.winterlock-laptop device new --owner 0x... --device 1
+#    it shows the device key and a check code of five words
+
+# 2. On the member key's home: certify that key, on each chain (several --chain, each with its --rpc in order)
+signer/winterlock-signer device certify --device 1 --key 0x... --chain sepolia
+#    it shows the check code for what it certifies: sign only if the new device shows the same five words
+
+# 3. On the new device: one key tree per Safe and chain, then it signs as you do today
+signer/winterlock-signer --home ~/.winterlock-laptop enroll  --chain sepolia --safe 0x...
+signer/winterlock-signer --home ~/.winterlock-laptop confirm --chain sepolia 0x...
+signer/winterlock-signer --home ~/.winterlock-laptop status  --chain sepolia   # ACTIVE, REVOKED or REPLACED, in words
+
+# A device is lost: revoke it on every chain where it was certified (the report says where it was, and wasn't)
+signer/winterlock-signer device revoke --device 1 --chain sepolia --rpc $SEPOLIA_RPC --chain base-sepolia --rpc $BASE_RPC
+signer/winterlock-signer device list --chain sepolia             # the member's devices, from the contract
+```
+
+- **Revocations are per chain,** like certificates: a device revoked on one chain still signs on the others. `revoke` covers every chain the key log certified the device on and fails while any of them lacks an RPC.
+- **What a revoke stops:** everything the device signed on that chain, its confirmations of pending transactions included. Confirm those again from another home.
+- **A device home has no phrase:** no `backup`, no `move` and no restore. A lost device, or a forgotten passphrase on one, means revoke and pair a new one.
+- **Costs:** a certificate or a revocation is one transaction per chain, about 0.25M gas, paid by any gas account; the device then enrolls a key tree per Safe and chain, as members do.
+
 ### Connect to a dapp
 
 `connect` pairs the signer with a dapp over WalletConnect v2. The dapp sees the team's Safe as its account. Each request is decoded and shown, and is signed only after you agree.
 - **Transactions** (`eth_sendTransaction`, `wallet_sendCalls`): you sign one as a member, and it is proposed to Safe's Transaction Service like `propose`. The dapp gets the SafeTx hash. The other members confirm and execute as usual.
 - **Sign-in and other off-chain messages:** your stateless key signs, and a message file is written. The other members sign it with `message` and send it back, or post their signatures to a collection endpoint. Once enough members have signed, the dapp gets the Safe's combined signature.
-- **Permits and other messages checked on-chain:** a Safe transaction approves the message through Safe's SignMessageLib. After it executes, the dapp gets `0x`.
+- **Permits and other messages checked on-chain:** a Safe transaction approves the message through Safe's SignMessageLib. After it executes, the dapp gets the owners' approved signatures (owner v2: 150 bytes each, which viem accepts), or `0x` if the Safe has too few v2 owners.
 - **Refused:** requests the signer can't decode or that look like an attack (a bare hash, `eth_sign`, another site's sign-in, the Safe's own typed data).
 
 ```sh

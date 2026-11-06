@@ -1,6 +1,6 @@
 # The next owner version: design note (proposal, 2026-11-06)
 
-**Status:** decisions 1–3, 5 and 6 approved; 4 dropped (below). **Phase 1, the contracts and their tests, built on 2026-11-06, not deployed** (decisions.md, "2026-11-06: Owner v2, contracts"). One change from this note: WOTS verification moved into a shared contract (see Costs). It changes WinterlockOwner's code, so every owner's address changes. Today that touches only test Safes on Sepolia.
+**Status:** decisions 1–3, 5 and 6 approved; 4 dropped (below). **Phase 1, the contracts and their tests, built on 2026-11-06, not deployed** (decisions.md, "2026-11-06: Owner v2, contracts"). **Phase 2, the signer, built the same day,** with viem accepting the approved answers on a local chain (decisions.md, "2026-11-06: Owner v2, signer"). One change from this note: WOTS verification moved into a shared contract (see Costs). It changes WinterlockOwner's code, so every owner's address changes. Today that touches only test Safes on Sepolia.
 
 ## Why a new version
 
@@ -106,12 +106,13 @@ The measured figures (Forge, Prague pricing) are in decisions.md, "2026-11-06: O
 
 ## The signer
 
-- **Today's commands stay the same for device 0.**
-- **`device new`,** on a new device: makes a seed and a device key, and prints the key with a short check code.
-- **`device certify` and `device revoke`,** on whatever holds the phrase: sign the device certificate or revocation and send it (any gas account), for each chain.
-- **Each device keeps its own key log** for its own trees. The rules for moves and restores stay as they are.
-- **The enroll guard becomes on-chain revocation.** After a restore or a lost device, revoke the old device instead of relying on its signer noticing that it was replaced.
-- **Permits:** once the on-chain approval has executed, answer the dapp with the approved signatures instead of `0x`.
+Built as proposed (phase 2; [signer-recovery.md](signer-recovery.md), "Device keys"):
+- **Today's commands stay the same for device 0,** the member key's home.
+- **`device new`,** on a new device: makes a seed and a device key, and prints the key with a short check code (five BIP-39 words from the owner, the device number and the key).
+- **`device certify` and `device revoke`,** on whatever holds the phrase: sign the device certificate or revocation and send it (any gas account), for each chain. `certify` shows the check code first; `revoke` defaults to every chain the key log certified the device on and reports per chain. `device list` shows the table.
+- **Each device keeps its own key log** for its own trees. The rules for moves and restores stay as they are for the member key's home; a device home has neither: it is replaced by a new device.
+- **The enroll guard becomes on-chain revocation** for device keys. For the member key itself, which can't be revoked, the guard stays.
+- **Permits:** once the on-chain approval has executed, the dapp gets the approved signatures instead of `0x`, or `0x` with a warning if the Safe has too few v2 owners.
 
 ## Migration
 

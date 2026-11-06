@@ -1,5 +1,7 @@
 # The signer answers dapps over WalletConnect (2026-11-05)
 
+**Owner v2 (2026-11-06):** a device home connects like the member key's home, signing with its device key. On-chain approvals now answer with the owners' approved signatures, which viem accepts (below, "Approved answers"). Sizes below are v2's unless marked v1.
+
 D14 needs the signer to answer apps itself, because Safe's app doesn't reliably pass message results back. `winterlock-signer connect` does this. A member pairs the signer with a dapp over WalletConnect v2, and the dapp sees the team's Safe as its account, as with Safe's own WalletConnect support. Each request is decoded and shown, and is signed only after the member agrees.
 
 Code: `signer/winterlock_signer/` `walletconnect.py` and `ws.py` (protocol), `bridge.py` (requests, the `connect` and `message` commands), `messages.py` and `eip712.py` (D14's decision), `safelibs.py` (delegatecall targets), `collect.py` (collection endpoint).
@@ -43,8 +45,8 @@ The needed subset is small, so it is implemented natively, as the rest of the si
 | `eth_sendTransaction` | Builds a SafeTx (a call) and signs it with the member's WOTS key under the key log's slot rules. Proposes it to the Transaction Service, or writes a proposal file when offline. | The SafeTx hash, right after the proposal. With `--wait-for-execution`: the transaction hash if the Safe executes it before the request expires, otherwise the SafeTx hash. |
 | `wallet_sendCalls` (EIP-5792) | One call, or a batch as a delegatecall to MultiSendCallOnly | `{id: SafeTx hash}`. `wallet_getCallsStatus` reports 100 (pending), 200 (executed, with the receipt), 400 (replaced at its nonce) or 500 (reverted). |
 | `eth_getTransactionReceipt`, `eth_getTransactionByHash` for a SafeTx hash the signer gave out | Maps it to the execution | Before execution: `null`, or a pending placeholder transaction. After: the real receipt and transaction. |
-| Message, off-chain path | Signs the SafeMessage with the stateless key and gathers the others' signatures (below). Combines k of them and checks them with the Safe's `isValidSignature` (eth_call). | The combined signature, 11,668 bytes for 2 of 3, once k members have signed. If the request expires first, the dapp gets an error; asking again later is answered at once from the collected signatures. |
-| Message, on-chain path | Proposes a SafeTx that delegatecalls `SignMessageLib.signMessage(abi.encode(h))`. Watches the Safe's `signedMessages` for it. | `0x` once the approval has executed, if that happens before the request expires. Otherwise an error naming the SafeTx; asking again after execution is answered with `0x` at once. |
+| Message, off-chain path | Signs the SafeMessage with this home's stateless key (the member key, or a device key) and gathers the others' signatures (below). Combines k of them and checks them with the Safe's `isValidSignature` (eth_call). | The combined signature, 11,670 bytes for 2 of 3 (v1: 11,668), once k members have signed. If the request expires first, the dapp gets an error; asking again later is answered at once from the collected signatures. |
+| Message, on-chain path | Proposes a SafeTx that delegatecalls `SignMessageLib.signMessage(abi.encode(h))`. Watches the Safe's `signedMessages` for it. | Once the approval has executed, if that happens before the request expires: k approved signatures of v2 owners, 150 bytes each, checked with the Safe's `isValidSignature`. With fewer than k v2 owners, `0x` and a warning. Otherwise an error naming the SafeTx; asking again after execution is answered at once. |
 | Refused | Nothing is signed | Error 4001 with the reason. 4200 for an unsupported method, 5100 for another chain. |
 
 **Why the SafeTx hash.** Safe's app does the same, read from `safe-wallet-monorepo` (`apps/web/src/services/safe-wallet-provider`):
@@ -54,8 +56,8 @@ The needed subset is small, so it is implemented natively, as the rest of the si
 Waiting for execution instead rarely works. A team needs k members, and sign-client's default request expiry is 5 minutes. Dapps that poll their own RPC for a receipt of the SafeTx hash never find one. That is the same as with Safe's app. EIP-5792 dapps get a proper status.
 
 **Where it differs from Safe's app:**
-- **On-chain message signing:** when Safe's app signs a message on-chain (`SignMessageOnChainFlow`), no code path answers the dapp over WalletConnect. This is read from its source, not tested. The bridge waits for the approval and answers with `0x`.
-- **Off-chain message signing:** Safe's app goes through the Transaction Service's message API, which refuses Winterlock's 5,834-byte owner signatures. The bridge gathers them itself.
+- **On-chain message signing:** when Safe's app signs a message on-chain (`SignMessageOnChainFlow`), no code path answers the dapp over WalletConnect. This is read from its source, not tested. The bridge waits for the approval and answers with the approved signatures (v1: `0x`).
+- **Off-chain message signing:** Safe's app goes through the Transaction Service's message API, which refuses Winterlock's 5,835-byte owner signatures (v1: 5,834). The bridge gathers them itself.
 
 ## Which path a message takes
 
@@ -96,7 +98,7 @@ Unlimited allowances and deadlines in the past are flagged.
 
 A wrong guess fails safe:
 - **An off-chain signature also verifies on-chain.** Permit2 accepts it, at about 380k gas per use (`safe-messages.md`, option C).
-- **An on-chain approval answers `0x`.** A server that verifies with viem refuses it.
+- **An on-chain approval answers with approved signatures** (v2), which a server that verifies with viem accepts. v1 answered `0x`, which viem refuses.
 
 **Delegatecall targets.** The signer delegatecalls only Safe v1.4.1's SignMessageLib and MultiSendCallOnly. It checks their code before each use:
 - The runtime code must match the release build with its CBOR metadata removed. The pin is in `safe_libs.json`, made by `tools/pin_safe_libs.py`.
@@ -134,8 +136,8 @@ The flow:
 
 ## Limits and open issues
 
-**viem refuses `0x`.** This affects the on-chain path for apps that verify off-chain with viem. The fix is a contract change, described here and not built.
-- **A new WinterlockOwner signature kind**, for example `0x03`, that defers to the Safe's own approval: `[0x03][safe: 20][keccak256(message): 32]`.
+**Approved answers (owner v2): viem refused `0x`.** This affected the on-chain path for apps that verify off-chain with viem. The fix, described here first, is built in owner v2 and the signer, and checked with viem on a local chain (below); not deployed yet.
+- **A new WinterlockOwner signature kind**, `0x03`, that defers to the Safe's own approval: `[0x03][safe: 20][keccak256(message): 32]`.
 - **The owner's check:**
   - It recomputes the SafeMessage hash for that Safe on this chain, as kind `0x02` does.
   - It requires that this is the hash being checked.
@@ -147,6 +149,12 @@ The flow:
 - **Costs:**
   - **New owner addresses:** any change to WinterlockOwner's code changes the implementation's address, and with it the factory's and every owner's. Teams would swap each member's owner, as in the upgrade in place.
   - **ECDSA owners can't defer:** in a Safe that still has ECDSA owners, those owners have no such kind, so it doesn't help there.
+- **What the bridge does** (`messages.approved_answer`):
+  - It takes the Safe's owners whose code is a v2 owner of the pinned implementation (the factory's 77-byte proxy, checked offline), lowest address first, and builds k approved signatures in Safe's encoding: r = owner, s = offset, v = 0, then the length and the 53 bytes.
+  - It checks them with the Safe's `isValidSignature` before releasing them, as it does for every answer.
+  - With fewer than k v2 owners (v1 or ECDSA owners), or if the Safe refused them, it answers `0x` and warns the member that viem refuses it.
+  - Any member's bridge can build them: no key signs them, so a member who has already approved can answer later without signing anything.
+- **Checked with viem** (`tests/test_e2e_walletconnect.py`, `tests/viem_verify.js`, viem 2.57.16): a 2-of-3 Safe v1.4.1 of v2 owners on anvil approves a Permit2 PermitSingle through SignMessageLib, driven over WalletConnect. `verifyTypedData` accepts the 300-byte answer and refuses `0x`, and refuses the same answer for a permit the Safe hasn't approved. The test runs when `WINTERLOCK_NODE_MODULES` or `NODE_PATH` names a `node_modules` with viem.
 
 **Other limits:**
 - **Dapp metadata is unverified** (no Verify API). A phishing site can claim another site's URL. The sign-in domain check only compares the message with the dapp's claim.
@@ -174,7 +182,7 @@ set -a; . contracts/bench/bundlers/.env; set +a
 signer/.venv/bin/python signer/tools/live_walletconnect.py --dir DIR --safe SAFE --node-modules PATH/node_modules
 ```
 
-**Results** (2026-11-06, Sepolia, 2-of-2 Safe `0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07`; sign-client 2.26.0, viem 2.57.16):
+**Results** (2026-11-06, Sepolia, owner v1, 2-of-2 Safe `0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07`; sign-client 2.26.0, viem 2.57.16):
 - **Pairing:** the session was up in about 1 s. Reown's relay accepts the approval through `irn_publish`.
 - **Sign-in:** the dapp got the 11,668-byte combined signature through the relay 7 s after asking. viem's `verifyMessage` accepts it, and refuses it for a changed message.
 - **Transfer:** the dapp got the SafeTx hash at once. After member 2 confirmed and the gas account executed it (290,889 gas), the dapp's `eth_getTransactionReceipt` for the SafeTx hash returned the execution's receipt, which matches the chain's.
@@ -189,7 +197,9 @@ signer/.venv/bin/python signer/tools/live_walletconnect.py --dir DIR --safe SAFE
 
 ## Tests
 
-42 new tests; the suite runs 88, and skips one unless Node and the SDK are available.
+**Owner v2 (2026-11-06):** `test_bridge.py` adds the approved answer and its fallback to `0x`; `test_e2e_walletconnect.py` expects the approved answer for the permit and adds the viem check (skipped without viem).
+
+**2026-11-05:** 42 new tests; the suite runs 88, and skips one unless Node and the SDK are available.
 - `test_walletconnect.py` (15):
   - known answers
   - WebSocket frames

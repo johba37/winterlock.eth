@@ -11,6 +11,8 @@ This note covers how they are built (`phrase.py`, `seedfile.py`, `device.py`, `m
 - "lost" restores with fresh trees, for a fee per network
 - "someone may have my phrase" is a member replacement, not a recovery
 
+**Owner v2 (2026-11-06) adds device keys** ([owner-v2.md](owner-v2.md); `cli_devices.py`). Everything below about the phrase, moves and restores applies to **the member key's home**: the signer home that holds the phrase's seed, device 0. **A device home** holds a device key without the phrase. It is never restored or moved: a lost one is revoked and a new device paired (see "Device keys", below).
+
 ## Recovery phrase
 
 **24 BIP-39 English words that encode the 32-byte seed itself.** The seed is the phrase's BIP-39 entropy (`to_entropy`): 256 bits plus BIP-39's 8-bit checksum. It is not BIP-39's PBKDF2 seed, and there is no BIP-39 passphrase. Why:
@@ -45,7 +47,9 @@ The `seed` file holds a JSON object:
 - **Changing it:** `passphrase` changes it. `passphrase --forgot` sets a new one from the phrase and keeps the key log, so a forgotten passphrase costs no fresh trees.
 - **Opt-out, for tests only:** `init --insecure-plaintext-seed` writes the old format (plain hex) and shows no phrase. `status` flags plain seed files, legacy ones included.
 
-## Device states
+## Key log states
+
+These states describe one copy of a key log on one machine, whatever kind of home it is. Device numbers (owner v2's devices 0 to 3) are another thing: `status` says "key log ACTIVE on this machine" for the first and "device 1 ACTIVE at generation 1" for the second.
 
 New key-log records:
 - **`device`:** a random device id, and how the log came here (init, restore, move-in, adopt, fresh-trees, or upgrade for logs from before). With `"retire": true`, every earlier tree is retired.
@@ -54,7 +58,7 @@ New key-log records:
 
 The states:
 
-| State | Meaning | Signs? |
+| Key log state | Meaning | Signs? |
 |---|---|---|
 | active | the bound, current copy | yes |
 | locked | a move started and didn't finish; or the key log looks like a copy | nothing; the message says what to do |
@@ -107,9 +111,39 @@ Remedies, which `status` and every refusal name:
 | A copied or rolled-back key log as the source | Export is refused: it would hand on a possibly stale log. |
 | Changing one's mind | `move cancel` on the new device. Then `init --restore --lost`, if the old device turned out to be dead after all. |
 
+## Device keys (owner v2)
+
+**What a device home holds:** a random 32-byte device seed, encrypted with a passphrase like the phrase's seed; the member's owner address; its device number (1, 2 or 3); and its own key log, bound to the machine as above. Its device key is a leanSphincs-keccak key from the seed (label `winterlock.signer.device-key.v1`). There is no phrase and nothing to back up.
+
+**Pairing:**
+1. **New device: `device new --owner OWNER --device N`.** It asks for a passphrase, makes the device home, and shows the device key and its **check code**: five BIP-39 words from keccak256("winterlock.device-pairing.v1" ‖ owner ‖ device ‖ key).
+2. **The member key's home: `device certify --device N --key KEY --chain CHAIN [--chain CHAIN2 --rpc URL2 ...]`.** It shows the check code of what it is about to certify and asks whether the new device shows the same words (or compares `--check-code WORDS`). The same words mean the same owner, device number and key; a substituted key would need about 2^54 key generations to match. Only then does the member key sign the certificate, per chain, recorded in the key log first. Where the owner doesn't exist yet, the factory creates it first. Each certificate is one transaction from any gas account, about 0.25M gas.
+3. **The device home: `enroll` per Safe and chain.** From then on it proposes, confirms, executes and answers dapps like the member key's home, with its own key trees.
+
+**Revoking: `device revoke --device N`** on the member key's home.
+- **Per chain, everywhere by default:** a device revoked on one chain still signs on the others (owner-v2.md, decision 3). So `revoke` covers every chain the key log certified the device on, plus any named with `--chain`, each with its RPC (`--rpc` in the same order, or `WINTERLOCK_RPC_<chain id>`).
+- **A per-chain report:** REVOKED, already revoked, never certified, or **NOT REVOKED: no RPC**. The command fails while any chain may still have the device active.
+- **What stops counting:** everything the device signed on that chain, including its confirmations of transactions not yet executed. The member confirms those again from another home.
+- **Chains the key log doesn't know:** a member key's home restored from the phrase starts with an empty log, so it can't know where a device was certified. Name the chains with `--chain`; `device list --chain ...` shows the table per chain.
+
+**What a device home sees:** `status` (with `--chain`) lists the member's devices from the contract and says plainly whether this home's device is ACTIVE, REVOKED, REPLACED (the device number now holds another key) or not certified. Every command that signs refuses with the same sentence.
+
+**Certifying again:** each certificate raises the device's generation. A tree or message of an earlier generation no longer verifies, so after a revoke and a new certificate, the device home runs `enroll` again. Certifying a revoked key again is allowed, with a warning; for a lost or stolen device, pair a new one instead.
+
+**One owner counts once:** two homes of a member are one owner to the Safe. `confirm` on one home sees the other's valid signature at the service and doesn't spend a one-time key on it.
+
+**What a device home doesn't do:**
+- **`backup` and `passphrase --forgot`:** there is no phrase. A forgotten passphrase means revoking the device and pairing a new one.
+- **`move`:** its key never leaves the device. Make a new device home on the new machine, certify it, and revoke the old one. That costs a certificate per chain and an `enroll` per Safe and chain (about 0.25M gas each) instead of the move's nothing. A move would carry the device's seed between machines, which is what device keys avoid.
+- **Certify or revoke devices:** only the member key does.
+
+**A copied device home** is caught by the same binding checks. Its remedy differs: the device key now exists twice, so if the other copy is out of reach, revoke the device and pair a new one.
+
 ## Lost device
 
-`init --restore` asks what happened: the old device still works (a move), it is lost (a restore), or someone else may have the phrase or device. Flags `--move` and `--lost` skip the question.
+**A lost device home** (device 1–3): on the member key's home, `device revoke --device N`, then pair a new device. Nothing is restored.
+
+**The member key's home:** `init --restore` asks what happened: the old device still works (a move), it is lost (a restore), or someone else may have the phrase or device. Flags `--move` and `--lost` skip the question.
 
 **Lost:** today's behaviour, explained.
 - **Fresh trees:** the key log starts empty, so the old trees are never used.
@@ -149,7 +183,9 @@ Remedies, which `status` and every refusal name:
 
   Peer-to-peer signatures (`--offline` files) are invisible to it. This remains the one way to reuse a key by accident.
 - **Copying the new device's whole state** (the pending request and its anchor) before the import.
-- **Anyone with the phrase.** They can restore, move or certify trees. The remedy is a member replacement.
+- **Anyone with the phrase.** They can restore, move or certify trees, and certify device keys of their own. The remedy is a member replacement.
+- **A stolen device home, until it is revoked:** the thief signs as that device within the Safe's threshold, on every chain where it is still certified. They can't certify or revoke devices.
+- **A revocation that misses a chain:** on a chain the member key's home didn't name and doesn't know, the device keeps signing.
 - **Malware on an unlocked device.** It can read the seed from memory and sign.
 - **`WINTERLOCK_PASSPHRASE`.** It is visible to the same user's processes.
 - **Deleted seed files.** SSDs, copy-on-write file systems and backups may keep old blocks of the removed seed file (still encrypted).
@@ -163,7 +199,9 @@ Remedies, which `status` and every refusal name:
 
 ## Tests
 
-85 in all, 46 of them from before.
+**Owner v2 (2026-11-06):** `test_device.py` adds 5 for device homes offline; `test_e2e_devices.py` (7) pairs, signs, revokes on two chains, certifies again and replaces a device on two anvils (decisions.md, "2026-11-06: Owner v2, signer").
+
+**2026-11-05:** 85 in all, 46 of them from before.
 - `test_phrase.py` (13): BIP-39 vectors, parsing, the seed file, and unlocking.
 - `test_device.py` (7): copies, rollbacks, adoption, fresh trees, and logs from before device records.
 - `test_move.py` (10): the protocol and each failure mode above.
