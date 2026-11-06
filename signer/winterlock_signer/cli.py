@@ -360,7 +360,7 @@ def cmd_address(args):
     out(f"stateless key    {b2h(m.key)}")
     budget = STATELESS_BUDGET.get(STATELESS_B)
     out("parameters       one-time keys: WOTS, D6 (n = 24, w = 16, target sum 431, keccak); stateless key: "
-        f"leanSphincs, kept subtree of height {STATELESS_B}" + (f" (about {budget:,} signatures)" if budget else ""))
+        f"leanSphincs-keccak, kept subtree of height {STATELESS_B}" + (f" (about {budget:,} signatures)" if budget else ""))
     for label, (_, addr, _, _) in zip(("verifier", "implementation", "factory"), shared_contracts()):
         out(f"{label:17}{addr}")
     out(f"contract code    pinned at {owner.PINNED_COMMIT}")

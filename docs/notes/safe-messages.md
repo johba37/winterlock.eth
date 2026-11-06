@@ -1,5 +1,7 @@
 # Safe messages with WinterlockOwner owners (2026-11-05)
 
+Both stateless candidates below are keccak versions: leanSphincs here is leanSphincs-keccak, and leanSphincs-s is leanSphincs-s-keccak (see D12's naming note).
+
 On the Safe route (D13) a member's message signature is a 5,834-byte Transaction Service entry (65 + 32 + data), over the service's 5,000-byte cap. Three options, measured on 2-of-3 Safes. Gas is for v1.5.0 / v1.4.1, from Forge with Prague pricing.
 
 | | A. leanSphincs-s as the stateless key | B. On-chain approval (SignMessageLib) | C. Stateless signature outside Safe's service |

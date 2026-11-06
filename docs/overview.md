@@ -8,7 +8,7 @@ Every Ethereum account today rests on ECDSA, which a large quantum computer woul
 
 ```mermaid
 flowchart LR
-    phrase["Recovery phrase<br/>24 words"] --> stateless["Stateless key<br/>(leanSphincs)"]
+    phrase["Recovery phrase<br/>24 words"] --> stateless["Stateless key<br/>(leanSphincs-keccak)"]
     phrase --> tree["Key tree<br/>one-time keys,<br/>two per Safe nonce"]
     stateless -- "certifies, on-chain" --> tree
     tree -- "signs" --> tx["Safe transaction"]
@@ -19,7 +19,7 @@ flowchart LR
 ```
 
 - **Each member has a recovery phrase.** From it, the member's signer derives two kinds of key:
-  - **A stateless key** (leanSphincs) can sign many times. It certifies key trees and signs messages. Its signature is 5.7 KB.
+  - **A stateless key** (leanSphincs-keccak) can sign many times. It certifies key trees and signs messages. Its signature is 5.7 KB.
   - **Key trees** of one-time keys (WOTS) sign transactions. Their signature is 1.2 KB plus a short proof that the key belongs to the tree, and it's cheaper to check.
 - **One owner contract per member is listed in the Safe as that member's owner.** When the Safe checks signatures, it asks the owner contract, which verifies the hash-based signature (EIP-1271).
   - The owner contract is a 77-byte proxy, and its address follows from the stateless key, so it's the same on every chain.
@@ -74,13 +74,14 @@ Checking one one-time signature costs about 55k gas, and a stateless signature 5
 - **A hardware signer.** Hashing speed on secure elements needs measuring first.
 - **An audit.**
 - **Frame transactions (EIP-8141).** The same keys and signer would fit a native account. Not built yet.
+- **EIP-8288's 3,000-gas check** covers leanSPHINCS with a ZK-friendly hash, not our keccak key. A second stateless key with that hash, derived from the same recovery phrase and certified by today's key, would let members move without a new backup. Nothing to build until EIP-8288 settles its hash.
 
 ## Terms
 
 - **Member:** a person on the team.
 - **Signer:** the Winterlock program on the member's device.
 - **Owner:** the member's owner contract, the address listed in the Safe.
-- **Stateless key:** the member's leanSphincs key. It certifies key trees, signs messages, and is the way back after a lost device.
+- **Stateless key:** the member's leanSphincs-keccak key: the keccak version of leanSPHINCS, since keccak is the hash the EVM computes cheaply. It certifies key trees, signs messages, and is the way back after a lost device. "leanSPHINCS" on its own, as in EIP-8288, means the version with a hash that's cheap to prove in zero knowledge.
 - **Key tree:** one-time keys for a range of Safe nonces, certified on-chain.
 - **Key log:** the signer's record of which one-time keys it has used.
 - **Gas account:** any funded account that pays for enrolling and executing. It isn't an owner.

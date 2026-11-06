@@ -6,7 +6,7 @@
 
 - **Teams:** each member's owner contract is an owner of a [Safe](https://safe.global). Safe does the k-of-n, and teams keep Safe's app and Transaction Service.
   - **One-time keys** (WOTS) sign transactions.
-  - **A stateless key** (leanSphincs) signs messages, certifies new key trees and brings a member back after a lost device.
+  - **A stateless key** (leanSphincs-keccak) signs messages, certifies new key trees and brings a member back after a lost device.
   - **An existing Safe can switch in place,** swapping its owners one at a time without moving funds.
 - **Individuals:** an ERC-7579 validator on ZeroDev Kernel (ERC-4337), with built-in k-of-n.
 
@@ -71,7 +71,7 @@ On chains with Glamsterdam's pricing of new state (Sepolia since October 2026), 
 ## Signer
 
 A minimal signer for members of a Safe whose owners are Winterlock contracts.
-- **Keys:** WOTS and leanSphincs are implemented natively, checked byte for byte against the Solidity signers and the upstream known answers.
+- **Keys:** WOTS and leanSphincs-keccak are implemented natively, checked byte for byte against the Solidity signers and the upstream known answers.
 - **Safety:** it keeps a key log that is saved before any signature leaves it, refuses to reuse a key, and computes every hash it signs itself.
 - **Service:** it posts to Safe's Transaction Service.
 - **Backup:** a 24-word recovery phrase (BIP-39) is the only backup. `init` shows it once and checks three of its words. On the device, the seed is encrypted with a passphrase.

@@ -193,7 +193,7 @@ def cmd_init(args):
         m = Member.init(home, passphrase=pw, backup="init", new_seed=seed)
     out(f"Created a signer in {m.home} ({time.time() - t0:.1f} s)")
     out(f"  owner address  {m.owner}  (the same on every chain)")
-    out(f"  stateless key  {b2h(m.key)}  (leanSphincs: it certifies your key trees and signs messages)")
+    out(f"  stateless key  {b2h(m.key)}  (leanSphincs-keccak: it certifies your key trees and signs messages)")
     out("  Your recovery phrase restores it on a new device; `move` takes it there with its key trees, without a fee.")
     out("  Check the phrase now and then with `backup --check`.")
     m.close()
