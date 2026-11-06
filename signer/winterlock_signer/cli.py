@@ -65,9 +65,18 @@ def out(*a):
 
 # --- context ---
 
-def chain_id_of(s: str) -> int:
+def chain_id_of(s: str, rpc_url: str = None) -> int:
     if s is None:
-        raise Abort("--chain is required (a name such as sepolia, or a chain id)")
+        hint = ""
+        if rpc_url:  # the member's RPC knows its chain: name it, but don't pick it for them
+            try:
+                cid = Rpc(rpc_url, timeout=10).chain_id()
+                name = next((n for n, i in CHAINS.items() if i == cid), str(cid))
+                hint = f" Your RPC ({safe_url(rpc_url)}) is {chain_label(cid)}: --chain {name}."
+            except (RpcError, OSError, ValueError):
+                pass
+        raise Abort("which chain is the Safe on? Add --chain with a name (" + ", ".join(sorted(set(CHAINS) - {
+            "ethereum"})) + ") or a chain id, for example `--chain sepolia`." + hint)
     if s.isdigit():
         return int(s)
     if s.lower() not in CHAINS:
@@ -82,16 +91,18 @@ def chain_label(cid: int) -> str:
 class Ctx:
     def __init__(self, args, need_rpc=True):
         self.args = args
-        self.chain = chain_id_of(args.chain)
         url = args.rpc or os.environ.get("WINTERLOCK_RPC")
+        self.chain = chain_id_of(args.chain, url)
         self.rpc = None
         if url:
             self.rpc = Rpc(url)
             got = self.rpc.chain_id()
             if got != self.chain:
-                raise Abort(f"the RPC at {safe_url(url)} is chain {got}, not {self.chain}: refusing")
+                raise Abort(f"the RPC at {safe_url(url)} is {chain_label(got)}, not {chain_label(self.chain)}: "
+                            "refusing")
         elif need_rpc:
-            raise Abort("--rpc URL (or WINTERLOCK_RPC) is required")
+            raise Abort(f"no RPC for {chain_label(self.chain)}: add --rpc URL, or set WINTERLOCK_RPC to the chain's "
+                        "JSON-RPC URL")
         self.service = None
         if not getattr(args, "offline", False):
             surl = getattr(args, "service", None) or os.environ.get("WINTERLOCK_SERVICE") or default_url(self.chain)
@@ -534,28 +545,48 @@ def cmd_propose(args):
     out(f"Proposed {b2h(h)} at nonce {t.nonce} (slot {slot})")
 
 
-def _load_proposal(ctx, args):
-    """(safe, SafeTx, hash, service record or file doc)"""
+def safe_tx_hash_arg(args):
+    """The SafeTx hash given after the command or with --safe-tx-hash (if both, the same one), checked; None with
+    --file and no hash. Checked before anything is read from the chain or the service."""
+    given = [x for x in (args.hash, args.safe_tx_hash) if x]
+    if len({x.lower() for x in given}) > 1:
+        raise Abort(f"two different SafeTx hashes: {args.hash} and --safe-tx-hash {args.safe_tx_hash}. Give one.")
+    if not given:
+        if args.file:
+            return None
+        raise Abort(f"which proposal? Give its SafeTx hash, as in `{args.cmd} --chain {args.chain or 'sepolia'} "
+                    "0x…` (`queue` lists them), or --file with a proposal file")
+    try:
+        h = h2b(given[0])
+    except ValueError:
+        h = b""
+    if len(h) != 32:
+        raise Abort(f"{given[0]} isn't a whole SafeTx hash (0x and 64 hex digits): `queue` lists them in full")
+    return h
+
+
+def _load_proposal(ctx, args, want):
+    """(safe, SafeTx, hash, service record or file doc) for the hash `want` (safe_tx_hash_arg) or args.file"""
     if args.file:
         doc = load_file(args.file)
         if doc["chain"] != ctx.chain:
-            raise Abort(f"{args.file} is for chain {doc['chain']}")
+            raise Abort(f"{args.file} is for {chain_label(doc['chain'])}, not {chain_label(ctx.chain)}")
+        if want is not None and h2b(doc["safeTxHash"]) != want:
+            raise Abort(f"{args.file} holds the proposal {doc['safeTxHash']}, not {b2h(want)}")
         t = SafeTx.from_json(doc["safeTx"])
         return abi.address(doc["safe"]), t, h2b(doc["safeTxHash"]), doc
-    if not args.safe_tx_hash:
-        raise Abort("--safe-tx-hash or --file is required")
     if not ctx.service:
-        raise Abort("no service for this chain: use --file")
-    rec = ctx.service.transaction(args.safe_tx_hash)
+        raise Abort("no Transaction Service for this chain: use --file with a proposal file")
+    rec = ctx.service.transaction(b2h(want))
     t = SafeTx.from_json(rec)
-    h = h2b(args.safe_tx_hash)
-    return abi.address(rec["safe"]), t, h, rec
+    return abi.address(rec["safe"]), t, want, rec
 
 
 def cmd_confirm(args):
+    want = safe_tx_hash_arg(args)
     m = open_member(args)
     ctx = Ctx(args)
-    safe, t, h, src = _load_proposal(ctx, args)
+    safe, t, h, src = _load_proposal(ctx, args, want)
     if t.hash(ctx.chain, safe) != h:
         raise Refused(f"the proposal's fields hash to {b2h(t.hash(ctx.chain, safe))}, not {b2h(h)}: refusing")
     have = src.get("confirmations") or src.get("signatures") or []
@@ -624,8 +655,9 @@ def cmd_queue(args):
 
 
 def cmd_execute(args):
+    want = safe_tx_hash_arg(args)
     ctx = Ctx(args)
-    safe, t, h, src = _load_proposal(ctx, args)
+    safe, t, h, src = _load_proposal(ctx, args, want)
     if t.hash(ctx.chain, safe) != h:
         raise Refused("the proposal's fields don't hash to its SafeTx hash: refusing")
     safe_nonce, threshold, owners = safe_state(ctx.rpc, safe)
@@ -767,6 +799,11 @@ def build_parser():
             sp.add_argument("--service", help="Transaction Service base URL (default: Safe's hosted one)")
             sp.add_argument("--offline", action="store_true", help="no Transaction Service: proposal files only")
 
+    def safe_tx_hash_opts(sp):
+        sp.add_argument("hash", nargs="?", metavar="SAFE_TX_HASH", help="the proposal's SafeTx hash (`queue` lists them)")
+        sp.add_argument("--safe-tx-hash", metavar="HASH", help="the same, as an option")
+        sp.add_argument("--file", help="a proposal file instead (peer to peer)")
+
     from . import cli_recovery  # init, backup, passphrase, move, device
     cli_recovery.add_parsers(sub, chain_opts, COMMANDS)
     sp = sub.add_parser("address", help="owner address and stateless key")
@@ -797,16 +834,14 @@ def build_parser():
     sp.add_argument("--out", help="also write a proposal file for peer-to-peer signing")
     sp = sub.add_parser("confirm", help="sign a proposed Safe transaction")
     chain_opts(sp)
-    sp.add_argument("--safe-tx-hash", help="the proposal's SafeTx hash (`queue` lists them)")
-    sp.add_argument("--file", help="proposal file (peer to peer)")
+    safe_tx_hash_opts(sp)
     sp = sub.add_parser("queue", help="pending transactions, decoded")
     chain_opts(sp)
     sp.add_argument("--safe", required=True, help=safe_help)
     sp.add_argument("--file", help="proposal file (peer to peer)")
     sp = sub.add_parser("execute", help="send execTransaction with the collected signatures")
     chain_opts(sp)
-    sp.add_argument("--safe-tx-hash", help="the proposal's SafeTx hash (`queue` lists them)")
-    sp.add_argument("--file", help="proposal file (peer to peer)")
+    safe_tx_hash_opts(sp)
     from .bridge import add_commands
     add_commands(sub, chain_opts)  # connect, message
     sp = sub.add_parser("status", help="key usage and tree health")
@@ -829,6 +864,12 @@ def main(argv=None):
     except (Abort, LogCorrupt, RpcError, ServiceError, ValueError) as e:
         out(f"error: {e}")
         return 1
+    except OSError as e:  # a file named on the command line: missing or unreadable
+        out(f"error: {e.strerror or e}" + (f": {e.filename}" if e.filename else ""))
+        return 1
+    except KeyboardInterrupt:
+        out("\ninterrupted")
+        return 130
     finally:
         while _members:
             _members.pop().close()

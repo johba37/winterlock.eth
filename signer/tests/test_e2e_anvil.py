@@ -158,7 +158,7 @@ class EndToEnd(unittest.TestCase):
         self.assertIn("slot 0 (approval key)", text)
         self.assertIn("HTTP 201", text)
         h = self.hash_from(text)
-        text = self.cmd("m2", "confirm", "--safe-tx-hash", h)
+        text = self.cmd("m2", "confirm", h)  # the hash after the command, as `queue` and Safe's app show it
         self.assertIn("Send 0.25 ETH", text)
         self.assertIn("HTTP 201", text)
         # both EIP-1271 entry points of the owner accept the stored confirmation: bytes32 (Safe v1.5.0, the
@@ -173,7 +173,7 @@ class EndToEnd(unittest.TestCase):
         text = self.cmd("m3", "queue", "--safe", self.safe)
         self.assertIn("signatures 2 of 2", text)
         self.assertIn("you: not signed", text)
-        text = self.cmd("m3", "execute", "--safe-tx-hash", h)
+        text = self.cmd("m3", "execute", h, "--safe-tx-hash", h)  # both ways at once: fine if they agree
         self.assertIn("Executed nonce 0", text)
         self.assertEqual(self.rpc.balance(RECIPIENT) - before, 25 * 10**16)
         self.assertEqual(self.nonce(), 1)
