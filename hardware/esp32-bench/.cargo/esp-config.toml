@@ -1,0 +1,5 @@
+# esp-hal 1.2 refuses ESP32 silicon older than v3.0 by default: it panics at start and espflash writes
+# "requires v3.0" into the image header, so the bootloader will not start it. Many ESP32-WROOM-32 boards
+# carry v1.0 silicon, so this benchmark accepts any revision and prints which one it runs on.
+[env]
+ESP_HAL_CONFIG_MIN_CHIP_REVISION = "0"
