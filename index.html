@@ -8,7 +8,7 @@
 <meta property="og:title" content="Winterlock: hash-based owners for Safe">
 <meta property="og:description" content="Owners for Safe whose signatures rest on hash functions alone. Same Safe, same address, no transfers.">
 <meta name="color-scheme" content="light dark">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23102030'/%3E%3Cpath d='M16 7v18' stroke='%236BB8CE' stroke-width='2'/%3E%3Ccircle cx='16' cy='7' r='3.5' fill='%236BB8CE'/%3E%3Ccircle cx='16' cy='16' r='3.5' fill='%23E3AA4C'/%3E%3Crect x='12.5' y='21.5' width='7' height='7' rx='1' fill='%23E3EBEF'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22 width=%2232%22 height=%2232%22 role=%22img%22 aria-label=%22Winterlock Permanent Way mark: a stencilled hash sign that is also a stretch of track%22%3E%3Cstyle%3E.ink%7Bfill:#131517%7D.lamp%7Bfill:#B36F05%7D.ink-s%7Bstroke:#131517;fill:none%7D.lamp-s%7Bstroke:#B36F05;fill:none%7D.muted%7Bfill:#4E5458%7D.acc%7Bfill:#19566E%7D%40media (prefers-color-scheme:dark)%7B.ink%7Bfill:#EFEAE0%7D.lamp%7Bfill:#F2A73C%7D.ink-s%7Bstroke:#EFEAE0%7D.lamp-s%7Bstroke:#F2A73C%7D.muted%7Bfill:#A6A196%7D.acc%7Bfill:#86C0D4%7D%7D%3C/style%3E%3Cpath class=%22ink%22 d=%22M1 7.6H31V12.4H1ZM1 19.6H31V24.4H1ZM10.88 1.5H15.88L14.33 6.2H9.33ZM6.83 13.8H11.83L10.37 18.2H5.37ZM2.87 25.8H7.87L6.31 30.5H1.31ZM20.68 1.5H25.68L24.13 6.2H19.13ZM12.67 25.8H17.67L16.11 30.5H11.11Z%22/%3E%3Cpath class=%22lamp%22 d=%22M16.63 13.8H21.63L20.17 18.2H15.17Z%22/%3E%3C/svg%3E%0A">
 <style>
 @font-face {
   font-family: "Atkinson Next";
@@ -26,34 +26,34 @@
 }
 
 :root {
-  --bg: #EDF2F4;
-  --surface: #F8FAFB;
-  --ink: #102030;
-  --slate: #4A5E6C;
-  --frost: #C3D0D8;
-  --glacier: #146A82;
-  --lamp: #C08214;
-  --lamp-ink: #7A4D04;
-  --band: rgba(192, 130, 20, 0.14);
-  --breach: #A3392A;
-  --on-ink: #EDF2F4;
+  --bg: #E3E5E4;
+  --surface: #F0F1EF;
+  --ink: #131517;
+  --slate: #4E5458;
+  --frost: #B4BAB9;
+  --glacier: #19566E;
+  --lamp: #B36F05;
+  --lamp-ink: #864C00;
+  --band: rgba(179, 111, 5, 0.14);
+  --breach: #A62C1B;
+  --on-ink: #E3E5E4;
 
   --sans: "Atkinson Next", "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "Atkinson Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0D1820;
-    --surface: #12212B;
-    --ink: #E3EBEF;
-    --slate: #94A7B4;
-    --frost: #2B3D4A;
-    --glacier: #6BB8CE;
-    --lamp: #E3AA4C;
-    --lamp-ink: #EDBE6C;
-    --band: rgba(227, 170, 76, 0.13);
-    --breach: #EC8774;
-    --on-ink: #0D1820;
+    --bg: #111315;
+    --surface: #1B1E21;
+    --ink: #EFEAE0;
+    --slate: #A6A196;
+    --frost: #34383C;
+    --glacier: #86C0D4;
+    --lamp: #F2A73C;
+    --lamp-ink: #F2A73C;
+    --band: rgba(242, 167, 60, 0.13);
+    --breach: #FF8266;
+    --on-ink: #111315;
   }
 }
 
@@ -78,9 +78,11 @@ p { margin: 0; }
 .wrap { max-width: 72rem; margin: 0 auto; padding-inline: 1.5rem; }
 
 /* Masthead */
-.masthead { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding-top: 1.5rem; }
-.wordmark { font-weight: 700; font-size: 1.125rem; color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
-.wordmark span { color: var(--slate); font-weight: 400; }
+.masthead { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding-top: 1.5rem; }
+.wordmark { display: inline-flex; align-items: flex-end; gap: 0.45rem; color: var(--ink); text-decoration: none; }
+.wm-mark { width: 1.6rem; height: 1.6rem; flex: none; align-self: center; }
+.wm-word { height: 1.05rem; width: auto; }
+.wm-eth { height: 0.55rem; width: auto; color: var(--lamp-ink); margin-left: -0.15rem; }
 .masthead nav { display: flex; gap: 1.5rem; font-size: 1rem; }
 .masthead nav a { color: var(--ink); text-decoration: none; }
 .masthead nav a:hover { text-decoration: underline; }
@@ -100,7 +102,15 @@ p { margin: 0; }
   letter-spacing: -0.035em;
   max-width: 13ch;
 }
-.kicker { margin: 0 0 1rem; font-family: var(--mono); font-size: 0.95rem; letter-spacing: 0.04em; color: var(--glacier); }
+.kicker { margin: 0; font-weight: 800; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--slate); }
+.trackrule { height: 14px; margin: 0.8rem 0 1.6rem; max-width: 30rem;
+  background: linear-gradient(var(--ink), var(--ink)) 0 3px / 100% 2px no-repeat,
+              linear-gradient(var(--ink), var(--ink)) 0 9px / 100% 2px no-repeat,
+              repeating-linear-gradient(-70deg, transparent 0 10px, var(--slate) 10px 13px); }
+.hero h1.stencil-h { display: grid; gap: 0.55rem; max-width: none; color: var(--ink); }
+.stencil-h .sl { display: block; height: clamp(28px, 4.4vw, 46px); width: auto; max-width: 100%; }
+.stencil-h .lit { color: var(--lamp); }
+.vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .why { list-style: none; margin: 1.5rem 0 0; padding: 0; display: grid; gap: 0.75rem; max-width: 34rem; }
 .why li { position: relative; padding-left: 1.25rem; font-size: 1.0625rem; line-height: 1.5; }
 .why li::before { content: ""; position: absolute; left: 0; top: 0.72em; width: 0.55rem; height: 2px; background: var(--lamp); }
@@ -225,6 +235,7 @@ p { margin: 0; }
 .block { border-top: 1px solid var(--frost); padding: 4.5rem 0; }
 .block h2 { font-size: clamp(1.75rem, 3.4vw, 2.25rem); font-weight: 600; line-height: 1.15; letter-spacing: -0.02em; max-width: 32ch; }
 .block .sub { margin-top: 0.9rem; max-width: 40rem; color: var(--slate); }
+.block h2 { text-transform: uppercase; font-weight: 800; letter-spacing: 0.06em; font-size: clamp(1.35rem, 2.4vw, 1.8rem); }
 .block h3 { font-size: 1.3125rem; font-weight: 700; line-height: 1.3; letter-spacing: -0.005em; }
 .block h3 + p { margin-top: 0.5rem; }
 
@@ -272,6 +283,14 @@ footer .links { display: flex; gap: 1.25rem; align-items: start; }
 footer a { color: var(--slate); }
 
 /* Load: the chain builds upward from the secret, once. */
+/* Riveted demo panel */
+.core {
+  background-image: radial-gradient(circle at 12px 12px, var(--frost) 2.2px, transparent 2.7px),
+                    radial-gradient(circle at calc(100% - 12px) 12px, var(--frost) 2.2px, transparent 2.7px),
+                    radial-gradient(circle at 12px calc(100% - 12px), var(--frost) 2.2px, transparent 2.7px),
+                    radial-gradient(circle at calc(100% - 12px) calc(100% - 12px), var(--frost) 2.2px, transparent 2.7px);
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .chain li { animation: rise 0.45s both; animation-delay: calc(var(--i) * 40ms + 150ms); }
   @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
@@ -303,7 +322,7 @@ footer a { color: var(--slate); }
 <body>
 
 <header class="wrap masthead">
-  <a class="wordmark" href="./">winterlock<span>.eth</span></a>
+  <a class="wordmark" href="./" aria-label="winterlock.eth"><svg class="wm-mark" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M1 8.5H31V12.5H1ZM1 19.5H31V23.5H1ZM11.82 2H16.02L14.3 7.2H10.1ZM7.93 13.8H12.13L10.67 18.2H6.47ZM4.3 24.8H8.5L6.78 30H2.58ZM21.22 2H25.42L23.7 7.2H19.5ZM13.7 24.8H17.9L16.18 30H11.98Z"/><path fill="var(--lamp)" d="M17.33 13.8H21.53L20.07 18.2H15.87Z"/></svg><svg class="wm-word" viewBox="0 0 130.4 20" aria-hidden="true"><path fill="currentColor" d="M0 0L3.6 0L3.6 20L2.4 20L0 17.6ZM16 17.6L13.6 20L12.4 20L12.4 0L16 0ZM4.9 20L4.9 16.4L6.2 16.4L6.2 7L9.8 7L9.8 16.4L11.1 16.4L11.1 20ZM18.2 0L21.8 0L21.8 20L18.2 20ZM24 0L28 0L37 20L33 20ZM24 3.17L27.6 11.17L27.6 20L24 20ZM37 16.83L33.4 8.83L33.4 0L37 0ZM39.2 0L50.2 0L50.2 3.6L39.2 3.6ZM42.9 4.9L46.5 4.9L46.5 20L42.9 20ZM52.4 0L56 0L56 20L52.4 20ZM57.3 0L62.4 0L62.4 3.6L57.3 3.6ZM57.3 8.2L61.2 8.2L61.2 11.8L57.3 11.8ZM57.3 16.4L62.4 16.4L62.4 20L57.3 20ZM64.6 0L68.2 0L68.2 20L64.6 20ZM69.5 0L74.2 0L76.6 2.4L76.6 10.6L75.4 11.8L69.5 11.8L69.5 8.2L73 8.2L73 3.6L69.5 3.6ZM70 13.1L73.8 13.1L76.6 20L72.8 20ZM78.8 0L82.4 0L82.4 20L78.8 20ZM83.7 16.4L88.8 16.4L88.8 20L83.7 20ZM96.35 0L93.4 0L91 2.4L91 17.6L93.4 20L96.35 20L96.35 16.4L94.6 16.4L94.6 3.6L96.35 3.6ZM97.65 3.6L99.4 3.6L99.4 16.4L97.65 16.4L97.65 20L100.6 20L103 17.6L103 2.4L100.6 0L97.65 0ZM110.55 0L107.6 0L105.2 2.4L105.2 17.6L107.6 20L110.55 20L110.55 16.4L108.8 16.4L108.8 3.6L110.55 3.6ZM111.85 0L113.8 0L116.2 2.4L116.2 6L112.6 6L112.6 3.6L111.85 3.6ZM111.85 16.4L112.6 16.4L112.6 14L116.2 14L116.2 17.6L113.8 20L111.85 20ZM118.4 0L122 0L122 20L118.4 20ZM123.3 6.4L126.1 0L130.4 0L126.4 10L130.4 20L126.1 20L123.3 13.6Z"/></svg><svg class="wm-eth" viewBox="0 0 43.2 20" aria-hidden="true"><path fill="currentColor" d="M0 16.4L3.6 16.4L3.6 20L0 20ZM5.8 0L9.4 0L9.4 20L5.8 20ZM10.7 0L15.8 0L15.8 3.6L10.7 3.6ZM10.7 8.2L14.6 8.2L14.6 11.8L10.7 11.8ZM10.7 16.4L15.8 16.4L15.8 20L10.7 20ZM18 0L29 0L29 3.6L18 3.6ZM21.7 4.9L25.3 4.9L25.3 20L21.7 20ZM31.2 0L34.8 0L34.8 8.2L38.3 8.2L38.3 11.8L34.8 11.8L34.8 20L31.2 20ZM39.6 0L43.2 0L43.2 20L39.6 20Z"/></svg></a>
   <nav aria-label="Project links">
     <a href="https://forum.safefoundation.org/t/post-quantum-owners-for-safe-hash-based-signers-winterlock/7165" rel="noopener noreferrer">Forum</a>
     <a href="#testnet">Testnet</a>
@@ -315,7 +334,8 @@ footer a { color: var(--slate); }
   <section class="wrap hero">
     <div>
       <p class="kicker">Hash-based owners for Safe</p>
-      <h1>Get ready for turbulent times in math</h1>
+      <div class="trackrule" aria-hidden="true"></div>
+      <h1 class="stencil-h"><span class="vh">Get ready for turbulent times in math.</span><svg class="sl" viewBox="0 0 162.4 20" aria-hidden="true"><path fill="currentColor" d="M5.35 0L2.4 0L0 2.4L0 17.6L2.4 20L5.35 20L5.35 16.4L3.6 16.4L3.6 3.6L5.35 3.6ZM6.65 0L9.6 0L12 2.4L12 6L8.4 6L8.4 3.6L6.65 3.6ZM6.65 20L6.65 16.4L8.4 16.4L8.4 12.6L6.2 12.6L6.2 9L12 9L12 17.6L9.6 20ZM14.2 0L17.8 0L17.8 20L14.2 20ZM19.1 0L24.2 0L24.2 3.6L19.1 3.6ZM19.1 8.2L23 8.2L23 11.8L19.1 11.8ZM19.1 16.4L24.2 16.4L24.2 20L19.1 20ZM26.4 0L37.4 0L37.4 3.6L26.4 3.6ZM30.1 4.9L33.7 4.9L33.7 20L30.1 20ZM47.3 0L50.9 0L50.9 20L47.3 20ZM52.2 0L56.9 0L59.3 2.4L59.3 10.6L58.1 11.8L52.2 11.8L52.2 8.2L55.7 8.2L55.7 3.6L52.2 3.6ZM52.7 13.1L56.5 13.1L59.3 20L55.5 20ZM61.5 0L65.1 0L65.1 20L61.5 20ZM66.4 0L71.5 0L71.5 3.6L66.4 3.6ZM66.4 8.2L70.3 8.2L70.3 11.8L66.4 11.8ZM66.4 16.4L71.5 16.4L71.5 20L66.4 20ZM73.7 20L73.7 2.4L76.1 0L79.05 0L79.05 3.6L77.3 3.6L77.3 8.2L82.1 8.2L82.1 3.6L80.35 3.6L80.35 0L83.3 0L85.7 2.4L85.7 20L82.1 20L82.1 11.8L77.3 11.8L77.3 20ZM87.9 0L91.5 0L91.5 20L87.9 20ZM92.8 0L97.5 0L99.9 2.4L99.9 17.6L97.5 20L92.8 20L92.8 16.4L96.3 16.4L96.3 3.6L92.8 3.6ZM102.1 0L105.7 0L105.7 8.2L110.5 8.2L110.5 0L114.1 0L114.1 9.4L111.7 11.8L104.5 11.8L102.1 9.4ZM106.3 13.1L109.9 13.1L109.9 20L106.3 20ZM124 0L127.6 0L127.6 20L124 20ZM128.9 0L134 0L134 3.6L128.9 3.6ZM128.9 8.2L132.8 8.2L132.8 11.8L128.9 11.8ZM141.55 0L138.6 0L136.2 2.4L136.2 17.6L138.6 20L141.55 20L141.55 16.4L139.8 16.4L139.8 3.6L141.55 3.6ZM142.85 3.6L144.6 3.6L144.6 16.4L142.85 16.4L142.85 20L145.8 20L148.2 17.6L148.2 2.4L145.8 0L142.85 0ZM150.4 0L154 0L154 20L150.4 20ZM155.3 0L160 0L162.4 2.4L162.4 10.6L161.2 11.8L155.3 11.8L155.3 8.2L158.8 8.2L158.8 3.6L155.3 3.6ZM155.8 13.1L159.6 13.1L162.4 20L158.6 20Z"/></svg><svg class="sl" viewBox="0 0 190.9 20" aria-hidden="true"><path fill="currentColor" d="M0 0L11 0L11 3.6L0 3.6ZM3.7 4.9L7.3 4.9L7.3 20L3.7 20ZM13.2 0L16.8 0L16.8 16.4L18.55 16.4L18.55 20L15.6 20L13.2 17.6ZM25.2 17.6L22.8 20L19.85 20L19.85 16.4L21.6 16.4L21.6 0L25.2 0ZM27.4 0L31 0L31 20L27.4 20ZM32.3 0L37 0L39.4 2.4L39.4 10.6L38.2 11.8L32.3 11.8L32.3 8.2L35.8 8.2L35.8 3.6L32.3 3.6ZM32.8 13.1L36.6 13.1L39.4 20L35.6 20ZM41.6 0L45.2 0L45.2 20L41.6 20ZM46.5 0L50.2 0L52.6 2.4L52.6 8.6L53.6 9.8L53.6 17.6L51.2 20L46.5 20L46.5 16.4L50 16.4L50 11.8L46.5 11.8L46.5 8.2L49 8.2L49 3.6L46.5 3.6ZM55.8 0L59.4 0L59.4 16.4L61.15 16.4L61.15 20L58.2 20L55.8 17.6ZM67.8 17.6L65.4 20L62.45 20L62.45 16.4L64.2 16.4L64.2 0L67.8 0ZM70 0L73.6 0L73.6 20L70 20ZM74.9 16.4L80 16.4L80 20L74.9 20ZM82.2 0L85.8 0L85.8 20L82.2 20ZM87.1 0L92.2 0L92.2 3.6L87.1 3.6ZM87.1 8.2L91 8.2L91 11.8L87.1 11.8ZM87.1 16.4L92.2 16.4L92.2 20L87.1 20ZM94.4 0L98.4 0L107.4 20L103.4 20ZM94.4 3.17L98 11.17L98 20L94.4 20ZM107.4 16.83L103.8 8.83L103.8 0L107.4 0ZM109.6 0L120.6 0L120.6 3.6L109.6 3.6ZM113.3 4.9L116.9 4.9L116.9 20L113.3 20ZM130.5 0L141.5 0L141.5 3.6L130.5 3.6ZM134.2 4.9L137.8 4.9L137.8 20L134.2 20ZM143.7 0L147.3 0L147.3 20L143.7 20ZM149.5 2.4L151.9 0L153.1 0L153.1 20L149.5 20ZM165.5 20L161.9 20L161.9 0L163.1 0L165.5 2.4ZM154.4 0L160.6 0L160.6 3.6L159.3 3.6L159.3 13L155.7 13L155.7 3.6L154.4 3.6ZM167.7 0L171.3 0L171.3 20L167.7 20ZM172.6 0L177.7 0L177.7 3.6L172.6 3.6ZM172.6 8.2L176.5 8.2L176.5 11.8L172.6 11.8ZM172.6 16.4L177.7 16.4L177.7 20L172.6 20ZM182.3 0L190.9 0L190.9 3.6L183.5 3.6L183.5 6.9L179.9 6.9L179.9 2.4ZM179.9 8.2L188.5 8.2L190.9 10.6L190.9 17.6L188.5 20L179.9 20L179.9 16.4L187.3 16.4L187.3 11.8L179.9 11.8Z"/></svg><svg class="sl lit" viewBox="0 0 92.1 20" aria-hidden="true"><path fill="currentColor" d="M0 0L3.6 0L3.6 20L0 20ZM5.8 0L9.8 0L18.8 20L14.8 20ZM5.8 3.17L9.4 11.17L9.4 20L5.8 20ZM18.8 16.83L15.2 8.83L15.2 0L18.8 0ZM28.7 2.4L31.1 0L32.3 0L32.3 20L28.7 20ZM44.7 20L41.1 20L41.1 0L42.3 0L44.7 2.4ZM33.6 0L39.8 0L39.8 3.6L38.5 3.6L38.5 13L34.9 13L34.9 3.6L33.6 3.6ZM46.9 20L46.9 2.4L49.3 0L52.25 0L52.25 3.6L50.5 3.6L50.5 8.2L55.3 8.2L55.3 3.6L53.55 3.6L53.55 0L56.5 0L58.9 2.4L58.9 20L55.3 20L55.3 11.8L50.5 11.8L50.5 20ZM61.1 0L72.1 0L72.1 3.6L61.1 3.6ZM64.8 4.9L68.4 4.9L68.4 20L64.8 20ZM74.3 0L77.9 0L77.9 8.2L81.4 8.2L81.4 11.8L77.9 11.8L77.9 20L74.3 20ZM82.7 0L86.3 0L86.3 20L82.7 20ZM88.5 16.4L92.1 16.4L92.1 20L88.5 20Z"/></svg></h1>
       <p class="lede">Every Safe is guarded by ECDSA keys. Quantum computers, or AI-accelerated math, may break elliptic curves sooner than planned. Winterlock gives your Safe owners whose signatures rest on hash functions alone.</p>
       <ul class="why">
         <li><b>Your keys are already public.</b> Every executed Safe transaction reveals its signers' public keys: the first targets if ECDSA weakens.</li>
