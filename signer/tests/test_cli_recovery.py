@@ -111,7 +111,7 @@ class Cli(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.path("r"), "seed")))
         # lost: fresh trees, the cost, and what to tell the team
         text = self.ok(["--home", self.path("r"), "init", "--restore", pfile], Terminal(situation="2"))
-        for s in (owner_addr, "never uses the trees of the old device", "0.25M gas", "stops counting",
+        for s in (owner_addr, "never uses the old device's key trees", "0.25M gas", "stops counting",
                   "Tell your team"):
             self.assertIn(s, text)
         m = Member(self.path("r"), lock=False)
@@ -156,7 +156,7 @@ class Cli(unittest.TestCase):
         self.assertIn("Not checked online", text)
         self.assertFalse(os.path.exists(bundle))  # consumed
         text = self.ok(["--home", new, "status"])
-        for s in ("device ACTIVE", "moved in from another device", rec["root"][:18], "1 keys used",
+        for s in ("device ACTIVE", "moved in from another device", rec["root"][:18], "1 one-time key used",
                   "recovery phrase checked"):
             self.assertIn(s, text)
         # cancel only applies to a pending move
@@ -191,10 +191,10 @@ class Cli(unittest.TestCase):
             f.truncate()
         self.assertIn("rolled back", self.ok(["--home", home, "device", "adopt"], expect=2))
         text = self.ok(["--home", home, "device", "fresh-trees"])
-        self.assertIn("Retired the trees", text)
+        self.assertIn("Retired the key trees", text)
         text = self.ok(["--home", home, "status"])
         self.assertIn("RETIRED HERE", text)
-        self.assertIn("fresh trees after a suspected copy", text)
+        self.assertIn("fresh key trees after a suspected copy", text)
         log = KeyLog(log_path, lock=False)
         self.assertEqual(log.trees(CHAIN, SAFE), [])
         log.close()

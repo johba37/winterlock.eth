@@ -251,7 +251,7 @@ class WalletConnectEndToEnd(unittest.TestCase):
         self.assertEqual(signers, sorted([self.owners["m1"], self.owners["m2"]]))
         # the same request again is answered from the collected signatures, without signing again
         self.assertEqual(self.request("personal_sign", [b2h(text.encode()), self.safe]), box["result"])
-        self.assertIn("stateless signatures", self.cmd("m2", "status").replace("\n", " "))
+        self.assertIn("stateless key: 2 signatures so far", self.cmd("m2", "status").replace("\n", " "))
         m2 = Member(self.homes["m2"], lock=False)
         self.assertEqual(sum(1 for r in m2.log.records if r["t"] == "msg"), 1)
         m2.close()

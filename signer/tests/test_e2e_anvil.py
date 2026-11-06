@@ -5,9 +5,10 @@ eth_call to the owner, as the hosted one does.
 
 Steps: init, address; enroll, which deploys the verifier, implementation and factory once (--deploy) and creates each
 member's owner with its first tree (deployAndEnroll); a transfer (propose, confirm, execute); a same-nonce replacement
-with the spare keys and a refused third version; a restore that certifies a fresh tree with a plain enroll and voids
-the old device's approval; a stale key log caught by the service check; the bare implementation refused as an owner;
-a move to a new device checked against the chain and the service, and a rolled-back device caught by those checks.
+with each member's second key and a refused third version; a restore that certifies a fresh tree with a plain enroll
+and voids the old device's approval; a stale key log caught by the service check; the bare implementation refused as an
+owner; a move to a new device checked against the chain and the service, and a rolled-back device caught by those
+checks.
 Needs Foundry's anvil and contracts/ built (./setup.sh, forge build).
 """
 import contextlib
@@ -155,7 +156,7 @@ class EndToEnd(unittest.TestCase):
         before = self.rpc.balance(RECIPIENT)
         text = self.cmd("m1", "propose", "--safe", self.safe, "--to", RECIPIENT, "--value", "0.25")
         self.assertIn("Send 0.25 ETH", text)
-        self.assertIn("slot 0 (approval key)", text)
+        self.assertIn("one-time key 0: your first of two keys for nonce 0 (slot 0)", text)
         self.assertIn("HTTP 201", text)
         h = self.hash_from(text)
         text = self.cmd("m2", "confirm", h)  # the hash after the command, as `queue` and Safe's app show it
@@ -182,13 +183,13 @@ class EndToEnd(unittest.TestCase):
         before = self.rpc.balance(RECIPIENT)
         a = self.hash_from(self.cmd("m1", "propose", "--safe", self.safe, "--to", RECIPIENT, "--value", "0.1"))
         self.cmd("m2", "confirm", "--safe-tx-hash", a)
-        # the replacement: Safe's on-chain rejection at the same nonce, signed with the spare keys
+        # the replacement: Safe's on-chain rejection at the same nonce, signed with each member's second key
         text = self.cmd("m1", "propose", "--safe", self.safe, "--cancel", "--nonce", "1")
         self.assertIn("Cancel", text)
-        self.assertIn("slot 1 (spare key", text)
-        self.assertIn("replaces", text)
+        self.assertIn("one-time key 3: your second and last key for nonce 1 (slot 1)", text)
+        self.assertIn(f"also at nonce 1: {a} (2 signatures); only one of them can execute", text)
         b = self.hash_from(text)
-        self.assertIn("slot 1", self.cmd("m2", "confirm", "--safe-tx-hash", b))
+        self.assertIn("your second and last key for nonce 1 (slot 1)", self.cmd("m2", "confirm", "--safe-tx-hash", b))
         # a third version at nonce 1 is refused: both of each member's keys for it are used
         text = self.cmd("m1", "propose", "--safe", self.safe, "--to", RECIPIENT, "--value", "0.2", "--nonce", "1",
                         expect=2)
@@ -202,7 +203,7 @@ class EndToEnd(unittest.TestCase):
             mem.sign_safe_tx(31337, self.safe, rec, SafeTx(to=RECIPIENT, value=3, nonce=1), slot=0)
         mem.close()
         text = self.cmd("m3", "queue", "--safe", self.safe)
-        self.assertIn("slot 0: unused, slot 1: unused", text)
+        self.assertIn("you: not signed; your two keys for this nonce: first unused, second unused", text)
         self.cmd("m3", "execute", "--safe-tx-hash", b)
         self.assertEqual(self.nonce(), 2)
         self.assertTrue(self.service_tx(b)["isExecuted"])
@@ -225,8 +226,8 @@ class EndToEnd(unittest.TestCase):
         self.assertIn(self.owners["m2"], text)  # same owner address
         # the report: the Safe found through the service, the old device's tree, the approval that stops counting
         self.assertIn(f"Safe {self.safe} on local anvil (chain 31337): 2 of 3, next nonce 2", text)
-        self.assertIn("the enrolled tree is the old device's (nonces 0–31)", text)
-        self.assertIn(f"nonce 2 {c}: approved by your old device; stops counting once your fresh tree is enrolled",
+        self.assertIn("the enrolled key tree is the old device's (nonces 0–31)", text)
+        self.assertIn(f"nonce 2 {c}: approved by your old device; stops counting once your fresh key tree is enrolled",
                       text)
         # the restored signer has no log for the enrolled tree, so it won't sign with it
         text = self.cmd("m2", "confirm", "--safe-tx-hash", c, home=new_home, expect=2)
@@ -243,13 +244,14 @@ class EndToEnd(unittest.TestCase):
         self.assertFalse(owner.is_valid_signature(self.rpc, self.owners["m2"], h2b(c), data))
         text = self.cmd("m3", "execute", "--safe-tx-hash", c, expect=1)
         self.assertIn("not enough valid signatures", text)
-        self.assertIn("slot 0", self.cmd("m2", "confirm", "--safe-tx-hash", c, home=new_home))
+        text = self.cmd("m2", "confirm", "--safe-tx-hash", c, home=new_home)
+        self.assertIn("your first of two keys for nonce 2 (slot 0)", text)  # the fresh key tree's
         self.cmd("m3", "execute", "--safe-tx-hash", c)
         self.assertEqual(self.nonce(), 3)
         # the old device turns up again: it sees that it was replaced and won't undo the restore
         old_home, restored_root = self.homes["m2"], owner.read_tree(self.rpc, self.owners["m2"], self.safe)[0]
         text = self.cmd("m2", "status", "--safe", self.safe, home=old_home)
-        self.assertIn("REPLACED (another device enrolled a newer tree)", text)
+        self.assertIn("REPLACED (another device enrolled a newer key tree)", text)
         self.assertIn("another device has taken over this owner on this Safe", text)
         text = self.cmd("m2", "enroll", "--safe", self.safe, home=old_home, expect=2)
         self.assertIn("another device has taken over", text)
@@ -348,7 +350,7 @@ class EndToEnd(unittest.TestCase):
         mc = code_in(run(["--home", new, "move", "start", "--phrase", pfile, "--insecure-plaintext-seed"]))
         bundle = os.path.join(self.tmp.name, "m3-move.json")
         text = run(["--home", old, "--yes", "move", "export", "--code", mc, "--out", bundle, *online])
-        self.assertIn("the enrolled tree is in the log, with 1 approval(s) at pending nonces", text)
+        self.assertIn("the enrolled key tree is in the log, with 1 approval(s) at pending nonces", text)
         self.assertIn("the service holds no signature by this tree that the log lacks", text)
         text = run(["--home", new, "move", "import", bundle, *online])
         self.assertIn("the service holds no signature by this tree that the log lacks", text)
@@ -356,7 +358,7 @@ class EndToEnd(unittest.TestCase):
         self.assertEqual(owner.read_tree(self.rpc, self.owners["m3"], self.safe), tree_before)  # no new tree
         self.assertIn("moved its keys to another device", self.cmd("m3", "confirm", "--safe-tx-hash", h, expect=2))
         text = self.cmd("m3", "confirm", "--safe-tx-hash", h, home=new)  # the log knows the old device's approval
-        self.assertIn("slot 0 (approval key)", text)
+        self.assertIn("your first of two keys for nonce", text)
         self.assertIn("already signed this exact transaction", text)
         n = self.nonce()
         self.cmd("m3", "execute", "--safe-tx-hash", h)
@@ -399,10 +401,10 @@ class EndToEnd(unittest.TestCase):
     def test_6_status(self):
         text = self.cmd("m1", "status", "--safe", self.safe)
         self.assertIn("ENROLLED", text)
-        self.assertIn("keys used (1 spare)", text)
+        self.assertIn("one-time keys used (1 for a replacement or cancellation), last at nonce", text)
         self.assertIn("of 32 nonces left", text)
         text = self.cmd("m2", "status")
-        self.assertIn("restored from the seed", text)
+        self.assertIn("restored from the recovery phrase", text)
 
 
 if __name__ == "__main__":
