@@ -160,7 +160,8 @@ DANGEROUS = {"enableModule(address)", "setGuard(address)", "setFallbackHandler(a
 
 
 def fmt_eth(wei: int) -> str:
-    s = f"{wei / 10**18:.18f}".rstrip("0").rstrip(".")
+    whole, frac = divmod(wei, 10**18)  # exact: a float shows 0.1 ETH as 0.100000000000000006
+    s = f"{whole}.{frac:018d}".rstrip("0").rstrip(".")
     return f"{s} ETH ({wei:,} wei)"
 
 

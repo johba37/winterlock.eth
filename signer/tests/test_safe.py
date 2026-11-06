@@ -54,6 +54,12 @@ class Signatures(unittest.TestCase):
 
 
 class Decoding(unittest.TestCase):
+    def test_amounts_are_exact(self):
+        from winterlock_signer.safe import fmt_eth
+        self.assertEqual(fmt_eth(10**17), "0.1 ETH (100,000,000,000,000,000 wei)")  # a float gives 0.100000000000000006
+        self.assertEqual(fmt_eth(0), "0 ETH (0 wei)")
+        self.assertEqual(fmt_eth(3 * 10**18 + 1), "3.000000000000000001 ETH (3,000,000,000,000,000,001 wei)")
+
     def test_kinds(self):
         lines, warn = decode(SafeTx(to=A, value=10**15), SAFE)
         self.assertIn("0.001 ETH", lines[0])
