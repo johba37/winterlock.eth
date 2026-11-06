@@ -100,7 +100,7 @@ Open:
 - **Both need the signer to answer apps itself, over WalletConnect,** because Safe's app doesn't reliably pass message results back.
 - **Built:** the WalletConnect bridge in the signer, and SignMessageLib built with Safe's release settings (see "WalletConnect bridge" under Measurements). Both paths work live on Sepolia through Reown's relay (see "WalletConnect, live on Sepolia").
 - **To build:**
-  - an owner signature kind that defers to the Safe's own approval, because viem refuses empty signatures, confirmed live (designed in docs/notes/walletconnect.md; it changes the owner's code, so every owner address). **Built in owner v2 (2026-11-06), not deployed;** see Measurements.
+  - an owner signature kind that defers to the Safe's own approval, because viem refuses empty signatures, confirmed live (designed in docs/notes/walletconnect.md; it changes the owner's code, so every owner address). **Built in owner v2 (2026-11-06) and live on Sepolia the same day,** accepted by viem; see Measurements, "Owner v2, live on Sepolia".
   - a revocation library, if the team wants to withdraw approvals
 - **Not covered:** EIP-2612 permits that accept only ECDSA, which no smart account can sign.
 
@@ -890,7 +890,7 @@ A member ran the signer on their own computer, from a small kit: the signer and 
 
 **2026-11-06: Owner v2, contracts** (`src/safe/WinterlockOwner.sol`, `src/safe/WinterlockOwnerFactory.sol`, `src/SharedWotsVerifier.sol`, `script/DeploySafeOwner.s.sol`, `test/WinterlockOwner.t.sol`, `test/integration/SafeWinterlockOwner.t.sol`, `test/integration/SafeMessages.t.sol`)
 
-Phase 1 of [notes/owner-v2.md](notes/owner-v2.md): the contracts, their tests and the deployment script. **Built, not deployed.** `WinterlockOwner.sol` is now v2; v1 stays in git history, and its Sepolia deployment keeps working. The signer still builds v1 owners from its pinned bytecode until its own phase.
+Phase 1 of [notes/owner-v2.md](notes/owner-v2.md): the contracts, their tests and the deployment script. **Built, not deployed** (deployed on Sepolia later the same day: "Owner v2, live on Sepolia"). `WinterlockOwner.sol` is now v2; v1 stays in git history, and its Sepolia deployment keeps working. The signer still builds v1 owners from its pinned bytecode until its own phase.
 
 **What's built**, as the note proposes:
 - **Devices:** device 0 is the member key in the proxy's code. Devices 1–3 hold leanSphincs-keccak device keys, checked by the same stateless verifier. Per device, two words: the key, and the generation with an active flag.
@@ -985,7 +985,7 @@ Phase 1 of [notes/owner-v2.md](notes/owner-v2.md): the contracts, their tests an
 
 **2026-11-06: Owner v2, signer** (`signer/`, `docs/notes/signer-recovery.md`, `docs/notes/walletconnect.md`)
 
-Phase 2 of [notes/owner-v2.md](notes/owner-v2.md): the signer for v2. **Built and tested on local chains, not deployed;** phase 3 deploys v2 on Sepolia and swaps the test Safes' owners. The signer on this branch is for v2 only: v1 owners keep v1's signer (main, `a7a175f`), and a v1 signer home opened here says so and how to restore its phrase into a v2 home.
+Phase 2 of [notes/owner-v2.md](notes/owner-v2.md): the signer for v2. **Built and tested on local chains, not deployed;** phase 3 deploys v2 on Sepolia and swaps the test Safes' owners (deployed and run live later the same day, with a new test Safe instead of the swap: "Owner v2, live on Sepolia"). The signer on this branch is for v2 only: v1 owners keep v1's signer (main, `a7a175f`), and a v1 signer home opened here says so and how to restore its phrase into a v2 home.
 
 **What's built:**
 - **Formats** (`owner.py`): re-pinned from the phase 1 build, now with SharedWotsVerifier as the fourth shared contract and the implementation's third constructor argument. v2's digests, tree seeds and signature kinds (the device byte; the approved kind `0x03`); the views `devices(d)` and `tree(safe, d)`. A tree counts as usable only while its device is active at the tree's generation.
@@ -1024,7 +1024,126 @@ Phase 2 of [notes/owner-v2.md](notes/owner-v2.md): the signer for v2. **Built an
 - **Revocation needs an RPC per chain,** and covers only chains the key log knows of. A member key's home restored from the phrase has an empty log: the member names the chains (`--chain`). Nothing on-chain lists the chains a device was certified on.
 - **v1 homes don't open here.** Phase 3's owner swap is signed with v1's signer; afterwards each member restores the phrase into a v2 home (fresh trees, one `enroll` per Safe and chain).
 - **The hosted Transaction Service with two devices of one member** is not checked: the stand-in replaces an owner's confirmation with the later one. The signer avoids a second confirmation when one already counts, but after a revoke the member's other home confirms again, and whether the hosted service accepts that replacement is unverified.
+  - **Checked live on 2026-11-06: it doesn't.** It answers 201 and keeps the first confirmation; the signer now writes a proposal file for `execute --file` (see "Owner v2, live on Sepolia").
 - **Deploying v2's implementation** through `enroll --deploy` uses the node's estimate × 1.2, within the cap by the phase 1 estimate (about 15.6M), not measured on Sepolia.
+  - **Deployed on Sepolia on 2026-11-06** (separately, not through `enroll --deploy`): 12,821,325 gas, with a gas limit of 15,632,608.
+
+**2026-11-06: Owner v2, live on Sepolia** (`signer/tools/live_devices.py`, `live_walletconnect.py`, `live_dapp.js`; results in the run directory's `results.json` and `walletconnect-*.json`, not in the repository)
+
+The question: does owner v2 work end to end on Sepolia, with a member signing through a paired device key, a device revoked while a transaction is pending, Safe's hosted Transaction Service, and a dapp that verifies with viem? Yes. Two things needed fixing in the signer, both now fixed with tests: Safe's service keeps an owner's first confirmation, so confirming again after a revoke needed a way around it; and the bridge's receipt lookup failed on Alchemy's free tier.
+
+**Deployment** (done before the run, separately; the addresses match the signer's pinned ones):
+
+| Contract | Address | Gas used | Gas limit |
+|---|---|---|---|
+| SharedWotsVerifier | `0x272138c7D3b508bd510bE5166fbE2461561e410D` | 4,050,815 | 4,940,940 |
+| WinterlockOwner v2 implementation | `0x114caAB223BaccD9BcA92C28ABBCf1edC0C3bCdf` | 12,821,325 | 15,632,608 |
+| WinterlockOwnerFactory v2 | `0x90835a46Fb205B7f038B0EE46e798ead45a6fA7F` | 2,636,612 | 3,216,958 |
+| stateless verifier (shared with v1) | `0x6Dc4DFBccDe0fbeC30b0a4078aB6f45496Fec254` | already there | |
+
+- **Transactions:** `0x1328a995911af90a2d95a3090ce4cd238002733402fc17150b0455b84f14afab`, `0x3f0b3755e6e6b9396403fd8c0b8aa46019aa8b1ae08b6659e3230763ec1567f3`, `0xbe5eb9ce09bcffbe3e77f0f1fba3a3d76765265ebfc6ab7b894cea7f74ce850b`.
+- **Against the estimates** (Owner v2, contracts): the implementation 12.82M against about 13.0M, the WOTS verifier 4.05M against 4.1M, the factory 2.64M against 2.7M. The implementation's gas limit, 15,632,608, stayed under the 16,777,216 cap with 1.1M to spare.
+- **Fees:** 0.00325 ETH. The base fee was 18 wei, but these transactions paid a priority fee of about 0.17 gwei. The run's own transactions tip at most 1 Mwei.
+
+**Setup.**
+- **Three signer homes,** new seeds, throwaway testnet keys: member 1's home with the member key (device 0), member 1's device home (device 1, no phrase), member 2's home.
+- **The Safe:** v1.4.1 on the SafeL2 singleton through the canonical factory with the CompatibilityFallbackHandler, as in the earlier live runs; 2 of 2, funded with 0.001 ETH.
+- **Key trees** of height 6 (32 nonces).
+- **Addresses:**
+  - member 1's owner `0x6162296cE4026c40eDe20C8867f4a6041c969800`, also the owner of device 1's key (`0xc9714bd8…30a6`, check code "among cheese scale climb bright")
+  - member 2's owner `0x5b15B68d65a4dEbFd0B130D3e8a8B432e60B93cd`
+  - Safe `0x6c315c5c9aDbFE50217B976a70BA54Cd11EC04EA`
+- **The gas account** is the throwaway deployer `0x2B3e…3eAe`, not an owner. It sent every transaction and received the transfers.
+
+**On-chain steps** (Sepolia, Glamsterdam pricing, gas used from receipts):
+
+| Step | Gas used | Transaction |
+|---|---|---|
+| 1. Member 1's owner, created by `device certify` through the factory's `deploy` | 334,756 | `0x09b1fb11f1f4167103aa21dfdfb5dea7e4d7418c519794c9acca3af1632ebe79` |
+| 1. `certifyDevice`, device 1, generation 1 | 391,760 | `0xdcf67e32be783231edac5ac7478a26d3a90af4f2368cd91c0ffc4c0785dfb067` |
+| 2. Create the Safe | 1,371,897 | `0x081c13c4b7d5a3c1e8867070f455ff2ffafb2754e878f3a27b6997979860f6f1` |
+| 2. Fund it with 0.001 ETH | 27,729 | `0x9399a47db001fce74b8fcecd8f007a8946c45e1b631daf79350f232e726db237` |
+| 3. `enroll`, member 1's device 1 | 394,136 | `0x71b7fe8d7326b013addbf77e4827fca73186d70f22c315da72b62d7cf3f8710f` |
+| 3. `enroll`, member 1's device 0 | 394,136 | `0xc831638b180bd1f92f0a0ba5c475b789ef7a57909718d33e9fb3195a91811963` |
+| 3. `deployAndEnroll`, member 2 | 606,065 | `0x41075e50e4dcf6dd056e4c5406618f7b98291528cfb720ff7d9110fbca156d07` |
+| 4. `execTransaction`, nonce 0, 1e11 wei to the gas account: device 1 and member 2 | 398,111 | `0x77b6a173246be34c9325c10a29846272c80c622997aef5a131df30d11ae2f5cc` |
+| 5. `revokeDevice`, device 1, while nonce 1 was pending | 387,992 | `0x76f251a0a618a32c1c67c512108f89ec303fa926047702b46de53abfd6d9a118` |
+| 5. `execTransaction`, nonce 1, 2e11 wei: device 0 (from the proposal file) and member 2 | 298,093 | `0xb2bed2af01872c1030bca9b0945b6ee972a9bbdd6b24a53db146584118f9834e` |
+| 6. `execTransaction`, nonce 2, the dapp's transfer (1e11 wei), first dapp run: member 1's member key and member 2 | 298,081 | `0x17789fabfdf2d2559095120e357115ceb23acbe34b2203debeafed7728199b12` |
+| 6. `execTransaction`, nonce 3, the Permit2 approval through SignMessageLib, first run | 407,769 | `0xdfa088d02f22920aee6ab8051a5a98060f8735acd25a28f7694f57fef15bf4fb` |
+| 6. `execTransaction`, nonce 4, the transfer, second run | 298,093 | `0x8e4c98bde3c519e79f1c425a123d9d5097171b0e883aba694d0dd9010cd665fb` |
+| 6. `execTransaction`, nonce 5, the Permit2 approval, second run | 407,769 | `0xa203202cdf3041e1b38af92ed66bd9f6eae7697d0fa2ba699ac296dd68dd2ac6` |
+| 7. `certifyDevice`, device 1 with the same key, generation 2 | 390,040 | `0x2da0c6ad40ee9a5be1601e579d78467db65c7074a224c8ea15955c872e9efe49` |
+| 7. `enroll`, device 1, generation 2 (nonces 6–37) | 394,136 | `0xe1419ae5c870386015bad6b487d302c5537508ebcabb41fd08a4c130333ca8a3` |
+| 7. `execTransaction`, nonce 6, 3e11 wei: device 1 and member 2 | 300,247 | `0x00d26f2654272b53e2406be4d160b6c0627f34564020480c5a4db417c4ef19ae` |
+
+- **Against the estimates and v1:**
+  - `certifyDevice` 391,760 and `revokeDevice` 387,992, against 250,570 and 249,350 under Prague and the note's guess of about 0.5M on Sepolia: about 0.14M more than under Prague, as for enrolments, and less than the guess.
+  - `enroll` 394,136 for a device key and for the member key alike, against v1's 392,088 on Sepolia; `deployAndEnroll` 606,065 against v1's 604,477–604,507; an owner alone 334,756 (estimate about 0.33M).
+  - The first execution, 398,111, against v1's 388,733 at nonce 0 (proxy owners): 9.4k more, with a device key's signature among the two.
+  - Later transfers with two member keys: 298,081–298,093 (nonces 1, 2 and 4), against v1's 290,889–293,777 on the kit Safe: about 7k more, as Forge measured for device 0 (+6.9k). With device 1's key at nonce 6: 300,247, another 2,154, the device record's storage read (about 2.2k under Prague).
+  - The Permit2 approval through SignMessageLib: 407,769, against v1's 400,441 (+7.3k).
+  - Enrolments cost 394,136 each, whether the device's tree slot was new (device 0, device 1's first tree) or held an earlier generation's tree (device 1 at generation 2); the certificates 391,760 (new device words) and 390,040 (generation 2). So Sepolia's extra 0.14M over Prague for these 5.8–5.9 KB transactions isn't new storage, as the 2026-11-05 live section read it. Not investigated further.
+- **Sizes:** a transaction signature at height 6 is 1,662 bytes of owner data, 1,759 bytes as a confirmation (v1: 1,758); two of them make a 3,518-byte signatures blob.
+
+**Step 1, pairing.** `device new` on the device home showed the key and its check code; `device certify --check-code` on member 1's home showed the same five words and certified. Member 1's owner didn't exist yet, so `device certify` created it first.
+
+**Steps 3 and 4: the device signs.** The device home enrolled its own tree (generation 1) and proposed the transfer; member 2 confirmed. The service listed both confirmations as `CONTRACT_SIGNATURE`, 1,759 bytes each, member 1's with device byte 1, and indexed the execution within 20 s.
+
+**Step 5: revoking while a transaction is pending.** The device home proposed a second transfer (nonce 1) and member 2 confirmed it. Then member 1's home revoked device 1.
+- **The device's confirmation stopped counting at once:** the owner's `isValidSignature(SafeTx hash, its data)` answers `0xffffffff` (it answered the magic value before). `devices(1)` reads the same key at generation 1, inactive.
+- **The device home refuses, in words:** `confirm` and `propose` answer "REFUSED: this device (device 1) was REVOKED on Sepolia (chain 11155111) at generation 1: it signs nothing there…"; `status` shows device 1 revoked ("<- this home") and its tree VOID.
+- **`execute`** (any home) skips the device's signature as refused by its owner contract and stops: 1 valid of 2.
+- **Member 1's home confirmed the same transaction through the hosted service.** What the service did:
+
+| Call (in order) | Status | What the service holds afterwards |
+|---|---|---|
+| `GET /v2/multisig-transactions/{hash}/` after the revoke | 200 | both confirmations, unchanged: nothing marks device 1's as void, `confirmationsRequired` 2 |
+| `POST /v1/multisig-transactions/{hash}/confirmations/`, member 1's device 0 signature (1,759 bytes) | 201 | |
+| `GET` the same | 200 | unchanged: member 1's confirmation is still device 1's, with its original submission date |
+| `POST /v2/safes/{safe}/multisig-transactions/`, the same transaction proposed again from member 1's home (same SafeTx hash, same key, so the same signature) | 201 | |
+| `GET` the same | 200 | unchanged |
+| `GET` after the execution (below) | 200 | executed; member 1's confirmation now holds device 0's signature, the one that executed, still with device 1's submission date |
+
+- **Why** (the service's source, `history/serializers.py` and `indexers/tx_processor.py`, as of 2026-11-05):
+  - Both endpoints store confirmations with `get_or_create` keyed by SafeTx hash and owner. A second confirmation by the same owner validates, is answered 201, and is dropped.
+  - Deleting needs the proposer's signature over a `DeleteRequest`, and the service accepts only EOA signatures for it ("Only EOA and ETH_SIGN signatures are supported"), so no WinterlockOwner can delete a transaction there. No endpoint removes one confirmation.
+  - When it indexes an execution, the service overwrites each owner's confirmation with the signature that executed. So history ends up right; only the pending queue is wrong.
+- **So any re-confirmation of a pending transaction through the hosted service is silently lost:** after a device's revoke, after a restore from the phrase, and after `enroll --rotate`. The stand-in service in the tests replaced the confirmation instead, so the tests didn't see it, and the signer printed "Confirmed". Safe's app would show the transaction as fully confirmed and build its execution from the void signature (not checked in the app).
+- **The way through, chosen:** the confirming home keeps its signature in a proposal file, and the executor combines the file with the service. Nothing is deleted, no extra one-time key is spent, and the service's other confirmations still count. Fixed in the signer (below) and used here: member 1's home confirmed again (the same key, so the same signature), the service again kept device 1's, and `confirm` wrote the file with member 2's confirmation and its own. The gas account ran `execute --file`, which counted each owner once and executed nonce 1.
+- **The alternatives:**
+  - a replacement at the same nonce (a cancel, signed with each member's second key) and the transfer proposed again at the next nonce, which works with the service and Safe's app but costs two executions and the second keys;
+  - deleting the transaction at the service, which no WinterlockOwner can do.
+
+**Signer fixed** (`cli.py`, with tests):
+- **`confirm` and `propose` check what the service holds** after posting. If it kept another confirmation of this owner that no longer counts, they say so and write a proposal file (`--out`, or `safetx-HASH.json`) with the new signature and the other members' confirmations that count, and print how to execute with it. `confirm` warns before signing when it sees such a confirmation.
+- **`execute --file`** adds the service's confirmations for the same hash to the file's, and counts each owner once, from its first signature that counts. When it lacks signatures and one was refused, it points to the proposal file.
+- **`queue`** marks each confirmation that no longer counts, and tells the member when theirs is one.
+- **The advice after `init --restore --lost` and `enroll --rotate`** mentions the proposal file.
+- **Tests:** the stand-in service now keeps an owner's first confirmation, as the hosted one does. With that change and the old signer, the revoke and restore end-to-end tests failed at execution, as the live run would have. They now confirm again, get the proposal file, see `execute` without it fail and with it succeed, and check `queue` and a repeated `propose`.
+
+**Step 6: a dapp over WalletConnect** (`live_walletconnect.py` and `live_dapp.js`; sign-client 2.26.0, viem 2.57.16, Reown's relay). The dapp paired with `connect` on member 1's member-key home; the script played member 2 and the gas account. Two runs: the first found a bridge bug (below), the second ran after the fix.
+
+| Step | What the dapp got (second run; the first in brackets) | Checked by the dapp |
+|---|---|---|
+| Pairing | a session in 0.95 s (1.1 s), with the Safe as its account | — |
+| Sign-in (`personal_sign`) | the Safe's combined signature, 11,670 bytes, 7.0 s after asking (4.8 s) | viem's `verifyMessage`: valid; for a changed message: invalid. The Safe's `isValidSignature`: the magic value |
+| Transfer (`eth_sendTransaction`) | the SafeTx hash at once; after member 2 confirmed and the gas account executed, the execution's receipt for the SafeTx hash on its second poll, 15.9 s after the proposal (first run: none in 10 minutes, below) | the receipt matches the chain's (298,093 gas) |
+| Permit2 (`eth_signTypedData_v4`) | the owners' approved signatures, 300 bytes, 26.3 s after asking (11.0 s), once the SignMessageLib approval had executed | **viem's `verifyTypedData`: valid** (both runs); with `0x`: invalid. The Safe's `isValidSignature`: the magic value for both |
+
+- **viem accepts the on-chain path now.** The v1 run got `0x`, which viem refused (D14). The answer is two of Safe's contract signatures (r = owner, v = 0), lower owner first, each carrying the 53-byte approved kind `[0x03][safe][keccak(message)]`; no key signed them.
+- **Against the v1 run:** sign-in 7.0 s (v1: 7.2 s), Permit2 26 s (v1: 26 s).
+
+**Signer fixed, second: receipts for dapps on Alchemy** (`bridge.py`, with tests).
+- **The bug:** in the first run the transfer executed at nonce 2, but the bridge answered `null` to each of the dapp's `eth_getTransactionReceipt` polls for 10 minutes, and the dapp gave up. Alchemy refused every `eth_getLogs` with HTTP 400: "Under the Free tier plan, you can make eth_getLogs requests with up to a 10 block range". The bridge asked from the proposal's block minus 64 to the latest. The 64-block look-back was added after the real-dapp run (2026-11-06, "a real dapp"), so the v1 live run, which asked from the proposal's block, didn't meet it.
+- **The fix:** no log query until the Safe's nonce has passed the transaction's. Then the scan goes forward in windows, narrowed to 10 blocks (and then fewer) when a node refuses, and resumes where it stopped. It scans the last 4 blocks again, for nodes of a load-balanced endpoint that lag. `wallet_getCallsStatus` reports a replacement (400) only once that scan has settled past the block where the nonce was first seen passed.
+- **Tests** (`test_bridge.py`, 3 new, failing on the old bridge): a node that refuses ranges over 10 blocks with Alchemy's message, where the execution is found in 10-block windows and remembered; nothing asked before the nonce passes, and a later lookup resuming where the last stopped; a replacement reported only once the logs are settled. The lagging-node test is updated for the nonce gate. 155 tests pass.
+
+**Step 7: the same device again, generation 2.** Member 1's home certified device 1's key once more, after warning that the key had been revoked. The device home's `status` then read "ACTIVE at generation 2" and called its old tree VOID ("from generation 1; the device is at 2 now: `enroll`"). `enroll` certified a fresh tree from nonce 6 (the old one, from generation 1, set no bound), and the device proposed a transfer that member 2 confirmed and the gas account executed. The service listed the device's confirmation with device byte 1.
+
+**Spent:** 0.000999200133 ETH from the gas account, of which 0.0009992 ETH is still in the test Safe (the 0.001 ETH funding less the 8e11 wei of transfers back). Fees were 133,223,611 wei (1.3e-10 ETH) for 17 transactions and 7.10M gas, about 19 wei per gas. Before the run, the deployment above cost 0.00325 ETH. The gas account holds 0.0379 ETH.
+
+**Not checked:** Safe's app with this Safe (it would list the void confirmation as one of two), and a third-party dapp that verifies with viem (the scripted dapp verifies with viem itself).
 
 ## Integration notes: Kernel v3.3
 
@@ -1069,13 +1188,13 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 1
   - **Several devices per member, as a root over authority leaves,** in the shape of ERC-8403 (Daniil Ankushin, Nethermind; ethresear.ch topic 26147): the owner stores one root per Safe over leaves of the form `keccak(id ‖ predicate)`, one per device tree, and a signature carries a membership proof next to its WOTS signature. Adding, rotating and revoking a device is one root write, signed by the stateless key or the quorum. The revoke reads the current root, ERC-8403's tier 2, so it works from the next block. Rules to keep: a fixed, small number of devices per member; only the stateless key or the quorum adds a device, never another device; a revoke removes a device whatever state its tree is in. The leaves also suit a future EIP-8141 account, which ERC-8403 targets.
   - **Alignment with a LeanSPHINCS standard.** A draft ERC, "LeanSPHINCS" (Antonio Sanso, with Matteo Vicari and Alessandro Baiocchi of RivaLabs in a fork; created 2026-07-28, not yet a pull request to ethereum/ERCs), sets out to fix one parameter set, the public-key and signature encodings, message domains and verification rules, and adds FORS+C as an optional stateful mode. It fixes none of them yet. The owner's address follows from the stateless key, so if the ERC settles an encoding or domain that differs from leanSphincs-keccak's, the owner version that follows it should adopt it. Until then, follow the draft and compare before freezing the next owner.
   - **Then:** reprice the version with the device proof (about 32 bytes per level) and the root write, and keep certified WOTS trees under the leaves; benchmarking FORS+C against them is a separate question.
-  - **Design note (proposal, 2026-11-06):** [notes/owner-v2.md](notes/owner-v2.md). Working it through, it proposes device keys that don't hold the recovery phrase (otherwise revoking a device is pointless), a small table of devices instead of an ERC-8403 root, and the approved signature kind for viem. Decisions 1–3, 5 and 6 approved on 2026-11-06; the verifier per device dropped. **Phase 1 built on 2026-11-06** (the contracts and their tests, not deployed): see Measurements, "2026-11-06: Owner v2, contracts". **Phase 2, the signer, built the same day** (local chains only, with the viem check): "2026-11-06: Owner v2, signer".
+  - **Design note (proposal, 2026-11-06):** [notes/owner-v2.md](notes/owner-v2.md). Working it through, it proposes device keys that don't hold the recovery phrase (otherwise revoking a device is pointless), a small table of devices instead of an ERC-8403 root, and the approved signature kind for viem. Decisions 1–3, 5 and 6 approved on 2026-11-06; the verifier per device dropped. **Phase 1 built on 2026-11-06** (the contracts and their tests, not deployed): see Measurements, "2026-11-06: Owner v2, contracts". **Phase 2, the signer, built the same day** (local chains only, with the viem check): "2026-11-06: Owner v2, signer". **Deployed on Sepolia and run live the same day:** "2026-11-06: Owner v2, live on Sepolia".
 - A recovery key: D11's stateless key is the recovery path, built and tested (above). Open: social or time-delayed recovery on top, as a separate module.
 - Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum.
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
 - Off-chain messages (ERC-1271 through `isValidSignatureWithSender`): built with the stateless key and an EIP-712 wrap (D11, above). Open: full ERC-7739 nested typed data, and on-chain pre-approval for high-value permits.
 - 7579 details: Kernel v3.3 is done (see the integration notes). Still to do: Nexus and Safe7579, including whether they have an enable path like Kernel's and whether it asks with the account as the sender, so the same lock covers it; whether to refuse or support Kernel's replayable signatures for UserOperations; and the signer's confirmation flow for installing modules (Kernel's enable mode is refused by design). On Safe7579, an operation whose nonce doesn't name an installed validator falls back to the Safe's owners, so lock-down must replace the owners too.
-- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike), and works live on Sepolia with Safe's Transaction Service for transactions (see 2026-11-05, Safe owner, live on Sepolia). Safe's app shows such a Safe with no change (checked by hand). Members' owners are now cheap proxies (above). Messages follow D14, and the signer answers dapps over WalletConnect, live on Sepolia (2026-11-06). The owner signature kind for viem (D14) is built in owner v2 and the signer answers with it, accepted by viem on a local chain; not deployed yet.
+- Classic Safes: a Safe-owner (EIP-1271) adapter from D1 is prototyped and tested on Safe v1.4.1 and v1.5.0 (see 2026-11-05, Safe owner spike), and works live on Sepolia with Safe's Transaction Service for transactions (see 2026-11-05, Safe owner, live on Sepolia). Safe's app shows such a Safe with no change (checked by hand). Members' owners are now cheap proxies (above). Messages follow D14, and the signer answers dapps over WalletConnect, live on Sepolia (2026-11-06). The owner signature kind for viem (D14) is built in owner v2 and the signer answers with it; viem accepts it live on Sepolia (2026-11-06, "Owner v2, live on Sepolia").
 
 **Infrastructure**
 - Bundler acceptance: answered for the hosted bundlers. Pimlico, Candide and Alchemy accept and include WOTS operations from a production Kernel on Arbitrum Sepolia (stage 2, above). Still open:

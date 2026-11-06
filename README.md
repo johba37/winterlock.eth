@@ -14,6 +14,7 @@
 - Safes with Winterlock owners, through Safe's Transaction Service and app.
 - Dapps over WalletConnect: transactions, sign-in, typed data, Permit2.
 - Recovery and moves between devices.
+- Owner v2 (this branch): a member signing from a device key without the phrase, that device revoked while a transaction it confirmed was pending, and permits that dapps verify with viem.
 
 All decisions, measurements and open questions are in [docs/decisions.md](docs/decisions.md).
 
@@ -25,7 +26,7 @@ signer/winterlock-signer init                                   # your recovery 
 signer/winterlock-signer address                                # your owner address: list it when creating the Safe
 signer/winterlock-signer enroll  --chain sepolia --safe 0x...   # creates your owner contract and certifies a key tree
 signer/winterlock-signer connect --chain sepolia --safe 0x...   # use the Safe in a dapp over WalletConnect
-# owner v2 (this branch, local chains only so far): a second device without the phrase
+# owner v2 (this branch, live on Sepolia): a second device without the phrase
 signer/winterlock-signer --home ~/.winterlock-laptop device new --owner 0x... --device 1   # on the new device: key and check code
 signer/winterlock-signer device certify --device 1 --key 0x... --chain sepolia             # on the phrase's home: compare the code
 ```
@@ -72,7 +73,13 @@ WINTERLOCK_KEY=0x... forge script script/DeploySafeOwner.s.sol --rpc-url $RPC --
 
 On chains with Glamsterdam's pricing of new state (Sepolia since October 2026), add `--skip-simulation --slow --gas-estimate-multiplier 120`: Forge's own simulation still prices the old way and would set gas limits too low, and at its default 130% the v2 implementation's limit would pass the transaction gas cap.
 
-**Owner v2** (device keys, and an approved signature kind for dapps that verify with viem; [design](docs/notes/owner-v2.md)) is built and tested, contracts and signer, on local chains, with viem accepting its approved answers; it is not deployed on any network yet. **On this branch the signer is for v2 only.** The Sepolia test Safes still have v1 owners, whose contracts stay deployed and keep working; for them, use the signer at `main`.
+**Owner v2** (device keys, and an approved signature kind for dapps that verify with viem; [design](docs/notes/owner-v2.md)) is deployed on Sepolia and ran live there on 2026-11-06, through Safe's Transaction Service and a dapp over WalletConnect ([results](docs/decisions.md), "Owner v2, live on Sepolia"). Its shared contracts on Sepolia:
+- WOTS verifier `0x272138c7D3b508bd510bE5166fbE2461561e410D`
+- implementation `0x114caAB223BaccD9BcA92C28ABBCf1edC0C3bCdf`
+- factory `0x90835a46Fb205B7f038B0EE46e798ead45a6fA7F`
+- the stateless verifier `0x6Dc4DFBccDe0fbeC30b0a4078aB6f45496Fec254`, shared with v1
+
+**On this branch the signer is for v2 only.** v1's contracts stay deployed on Sepolia and keep working, and the earlier test Safes still have v1 owners; for them, use the signer at `main`.
 
 ## Signer
 
@@ -117,7 +124,7 @@ signer/winterlock-signer execute --chain sepolia --safe-tx-hash 0x...   # anyone
 (cd signer && .venv/bin/python -m unittest discover -s tests -t .)   # tests; the on-chain ones skip without anvil and contracts/setup.sh
 ```
 
-v1's owner contracts are deployed on Sepolia; v2's aren't yet. On a chain without them, `enroll` says so, and `enroll --deploy` deploys them once for that chain (four shared contracts in v2: the two verifiers, the implementation and the factory).
+v1's and v2's owner contracts are both deployed on Sepolia. On a chain without them, `enroll` says so, and `enroll --deploy` deploys them once for that chain (four shared contracts in v2: the two verifiers, the implementation and the factory).
 
 **Backup, recovery and new devices.** `status` shows the device state (active, locked or moved) and when the phrase was last checked. It also warns if the key log looks like a copy or a restored backup.
 
@@ -166,8 +173,9 @@ signer/winterlock-signer device list --chain sepolia             # the member's 
 
 - **Revocations are per chain,** like certificates: a device revoked on one chain still signs on the others. `revoke` covers every chain the key log certified the device on and fails while any of them lacks an RPC.
 - **What a revoke stops:** everything the device signed on that chain, its confirmations of pending transactions included. Confirm those again from another home.
+- **Confirming again:** Safe's Transaction Service keeps an owner's first confirmation and doesn't replace it, so it keeps the revoked device's. `confirm` notices and writes a proposal file with your new signature; whoever executes runs `execute --file FILE`, which adds the service's other confirmations. Safe's app can't execute that transaction. The same happens after a restore or `enroll --rotate`.
 - **A device home has no phrase:** no `backup`, no `move` and no restore. A lost device, or a forgotten passphrase on one, means revoke and pair a new one.
-- **Costs:** a certificate or a revocation is one transaction per chain, about 0.25M gas, paid by any gas account; the device then enrolls a key tree per Safe and chain, as members do.
+- **Costs:** a certificate or a revocation is one transaction per chain, about 0.25M gas (0.39M on Sepolia), paid by any gas account; the device then enrolls a key tree per Safe and chain, as members do.
 
 ### Connect to a dapp
 
@@ -184,7 +192,7 @@ signer/winterlock-signer message --chain sepolia --file safe-message-....json   
 (cd signer && .venv/bin/python -m winterlock_signer.collect --rpc $WINTERLOCK_RPC)   # optional collection endpoint
 ```
 
-This works live on Sepolia through Reown's relay, with a dapp built on the official SDK: sign-in, transfers and Permit2 (`signer/tools/live_walletconnect.py`). The design, its limits and the live results are described in [docs/notes/walletconnect.md](docs/notes/walletconnect.md).
+This works live on Sepolia through Reown's relay, with a dapp built on the official SDK: sign-in, transfers and Permit2 (`signer/tools/live_walletconnect.py`). With owner v2, viem's `verifyTypedData` accepts the permit's approved signatures there too. The design, its limits and the live results are described in [docs/notes/walletconnect.md](docs/notes/walletconnect.md).
 
 ## Preview locally
 

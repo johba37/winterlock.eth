@@ -1,6 +1,6 @@
 # The next owner version: design note (proposal, 2026-11-06)
 
-**Status:** decisions 1–3, 5 and 6 approved; 4 dropped (below). **Phase 1, the contracts and their tests, built on 2026-11-06, not deployed** (decisions.md, "2026-11-06: Owner v2, contracts"). **Phase 2, the signer, built the same day,** with viem accepting the approved answers on a local chain (decisions.md, "2026-11-06: Owner v2, signer"). One change from this note: WOTS verification moved into a shared contract (see Costs). It changes WinterlockOwner's code, so every owner's address changes. Today that touches only test Safes on Sepolia.
+**Status:** decisions 1–3, 5 and 6 approved; 4 dropped (below). **Phase 1, the contracts and their tests, built on 2026-11-06** (decisions.md, "2026-11-06: Owner v2, contracts"). **Phase 2, the signer, built the same day,** with viem accepting the approved answers on a local chain (decisions.md, "2026-11-06: Owner v2, signer"). **Deployed on Sepolia and run live the same day** (decisions.md, "2026-11-06: Owner v2, live on Sepolia"): a new 2-of-2 test Safe of v2 owners, one member signing from a paired device key, the device revoked while a transaction was pending, and a Permit2 permit that viem verified. One change from this note: WOTS verification moved into a shared contract (see Costs). It changes WinterlockOwner's code, so every owner's address changes. Today that touches only test Safes on Sepolia. **v1 stays deployed on Sepolia and keeps working;** the earlier test Safes still have v1 owners (their swap, in the order below, is not done).
 
 ## Why a new version
 
@@ -117,6 +117,7 @@ Built as proposed (phase 2; [signer-recovery.md](signer-recovery.md), "Device ke
 ## Migration
 
 - **Deploy:** a v2 implementation and factory on Sepolia, about 14M gas, which the deployer's balance covers. The stateless verifier stays as it is.
+  - **Done on 2026-11-06,** with the shared WOTS verifier: 4,050,815 gas for the WOTS verifier, 12,821,325 for the implementation and 2,636,612 for the factory, 19.5M in all.
 - **Test Safes:** each member swaps their v1 owner for their v2 owner in a WOTS-signed Safe transaction (`swapOwner`), as in the upgrade in place.
 - **v1 stays usable:** the v1 contracts are immutable and keep working, so nothing breaks before the swap.
 - **Not in this version:** the Kernel validator for individuals. It can follow with the same model.
@@ -136,6 +137,6 @@ Dropped:
 The order:
 1. the contracts and their tests (built on 2026-11-06); the viem check of a permit against a forked Safe moved to step 2
 2. the signer, with that viem check
-3. deployment on Sepolia and swapping the test Safes' owners
-4. a live run with a real dapp
+3. deployment on Sepolia (done on 2026-11-06) and swapping the test Safes' owners (not done: a new test Safe was made with v2 owners instead)
+4. a live run with a real dapp (on 2026-11-06, with the scripted dapp on the official SDK; not yet with a third-party dapp)
 5. the normative spec, written from this note and the code

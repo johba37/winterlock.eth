@@ -36,7 +36,7 @@ The needed subset is small, so it is implemented natively, as the rest of the si
   - against a scripted dapp
   - optionally (`WINTERLOCK_WC_JS`), against dapps built on the official `@walletconnect/sign-client` 2.21.0 and 2.26.0. Since 2.21.6, the dapp proposes through the relay method `wc_proposeSession`.
   - all of these through a stand-in relay
-- **Live, against Reown's relay,** on Sepolia on 2026-11-06 (see "Live test").
+- **Live, against Reown's relay,** on Sepolia on 2026-11-06, with owner v1 and then owner v2 (see "Live test").
 
 ## What the dapp gets
 
@@ -136,7 +136,7 @@ The flow:
 
 ## Limits and open issues
 
-**Approved answers (owner v2): viem refused `0x`.** This affected the on-chain path for apps that verify off-chain with viem. The fix, described here first, is built in owner v2 and the signer, and checked with viem on a local chain (below); not deployed yet.
+**Approved answers (owner v2): viem refused `0x`.** This affected the on-chain path for apps that verify off-chain with viem. The fix, described here first, is built in owner v2 and the signer, checked with viem on a local chain (below), and live on Sepolia since 2026-11-06, where viem accepts it (see "Live test").
 - **A new WinterlockOwner signature kind**, `0x03`, that defers to the Safe's own approval: `[0x03][safe: 20][keccak256(message): 32]`.
 - **The owner's check:**
   - It recomputes the SafeMessage hash for that Safe on this chain, as kind `0x02` does.
@@ -160,6 +160,7 @@ The flow:
 - **Dapp metadata is unverified** (no Verify API). A phishing site can claim another site's URL. The sign-in domain check only compares the message with the dapp's claim.
 - **The 5-minute expiry:** dapps give up after sign-client's default of 5 minutes. Gathering signatures or executing an approval usually takes longer. The second request is then answered at once.
 - **Receipts for the SafeTx hash:** a dapp that neither uses EIP-5792 nor routes receipt lookups through the wallet waits forever for a receipt of the SafeTx hash.
+- **Finding the execution:** the bridge reads the Safe's `ExecutionSuccess` and `ExecutionFailure` logs, once the Safe's nonce has passed the transaction's. Nodes cap the block range of a log query: Alchemy's free tier allows 10 blocks, and refused the bridge's earlier single query on every poll in the owner v2 live run, so the dapp never got its receipt. The bridge now scans forward in windows, narrowed to 10 blocks (then fewer) when a node refuses, resumes where it stopped, and scans the last 4 blocks again for nodes that lag. `wallet_getCallsStatus` reports a replacement (400) only once that scan has settled past the block where the nonce was first seen passed.
 - **Libraries:** only Safe v1.4.1's SignMessageLib and MultiSendCallOnly are recognised, at their canonical addresses by default. They work with Safes from v1.3.0 on, whose storage layout matches.
 - **Mixed Safes:** in a Safe with ECDSA and Winterlock owners, the ECDSA owners can't sign message files. The threshold has to come from Winterlock owners.
 - **One session at a time:** one dapp per `connect`, and sessions live in memory. The key log stays locked while connected, so the member's other commands wait.
@@ -189,6 +190,13 @@ signer/.venv/bin/python signer/tools/live_walletconnect.py --dir DIR --safe SAFE
 - **Permit2:** the dapp got `0x` 26 s after asking, once the approval had executed (400,441 gas). The Safe's `isValidSignature(hash, 0x)` returns the magic value; viem's `verifyTypedData` returns false. This confirms the viem limit above.
 - **The SDK refuses a dapp's own `eth_chainId` request** because it isn't a session method. Dapps read the chain and account from the session, so the wallet needs no change.
 
+**Results with owner v2** (2026-11-06, Sepolia, a new 2-of-2 Safe `0x6c315c5c9aDbFE50217B976a70BA54Cd11EC04EA` of v2 owners, `connect` on member 1's member-key home; decisions.md, "Owner v2, live on Sepolia"). Two runs; numbers from the second.
+- **Pairing:** about 1 s, as before.
+- **Sign-in:** the 11,670-byte combined signature 7.0 s after asking. viem's `verifyMessage` accepts it and refuses it for a changed message.
+- **Transfer:** the SafeTx hash at once; the execution's receipt for the SafeTx hash on the dapp's second poll, 15.9 s after the proposal, matching the chain's (298,093 gas).
+  - **Found in the first run:** the receipt never came. Alchemy's free tier refuses `eth_getLogs` over more than 10 blocks, and the bridge's query, from 64 blocks before the proposal to the latest, was refused on every poll for 10 minutes. Fixed (see "Finding the execution" above); the second run used the fix.
+- **Permit2:** the owners' approved signatures, 300 bytes, 26 s after asking (11 s in the first run), once the approval had executed (407,769 gas). **viem's `verifyTypedData` accepts them,** and refuses `0x` for the same permit. The Safe's `isValidSignature` returns the magic value for both, since the approval is on-chain.
+
 **With a real dapp** (2026-11-06): Reown's AppKit lab (lab.reown.com, the wagmi demo), with the signer on a member's own computer and a public Sepolia endpoint.
 - **What worked:** send transaction, sign message (off-chain, combined signature) and sign typed data (on-chain approval; the lab got `0x`).
 - **Executing in Safe's app:** one of the transactions was executed there, from a MetaMask account that isn't an owner.
@@ -197,7 +205,7 @@ signer/.venv/bin/python signer/tools/live_walletconnect.py --dir DIR --safe SAFE
 
 ## Tests
 
-**Owner v2 (2026-11-06):** `test_bridge.py` adds the approved answer and its fallback to `0x`; `test_e2e_walletconnect.py` expects the approved answer for the permit and adds the viem check (skipped without viem).
+**Owner v2 (2026-11-06):** `test_bridge.py` adds the approved answer and its fallback to `0x`; `test_e2e_walletconnect.py` expects the approved answer for the permit and adds the viem check (skipped without viem). After the live run, `test_bridge.py` adds three tests of finding the execution: under Alchemy's 10-block limit, waiting for the nonce and resuming, and reporting a replacement only once the logs are settled.
 
 **2026-11-05:** 42 new tests; the suite runs 88, and skips one unless Node and the SDK are available.
 - `test_walletconnect.py` (15):

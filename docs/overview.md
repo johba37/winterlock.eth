@@ -27,7 +27,7 @@ flowchart LR
   - The stateless key certifies each tree on-chain.
   - A fresh tree takes over before the old one runs out. The default tree covers 512 nonces.
 - **Safe's contracts, Transaction Service and web app are unchanged.** Members sign with the Winterlock signer. Anyone can execute, including from Safe's app.
-- **Owner v2 (built, not deployed) adds device keys.** The stateless key from the phrase becomes the member key. It certifies, on each chain, up to three device keys that a member's other devices make without the phrase, and revokes a lost one. Each device keeps its own key trees, so the phrase can stay offline while laptops and phones sign.
+- **Owner v2 (live on Sepolia since 2026-11-06) adds device keys.** The stateless key from the phrase becomes the member key. It certifies, on each chain, up to three device keys that a member's other devices make without the phrase, and revokes a lost one. Each device keeps its own key trees, so the phrase can stay offline while laptops and phones sign.
 
 ## Numbers
 
@@ -41,7 +41,7 @@ flowchart LR
 
 Checking one one-time signature costs about 55k gas, and a stateless signature 52.8k. Gas figures are from Foundry under Prague pricing, unless they name Sepolia. Details are in [decisions.md](decisions.md).
 
-These are the owners live today (v1). **Owner v2 is built, contracts and signer, but not deployed:** a 2-of-3 transaction costs about 7k more (WOTS verification moved into a shared contract to keep the owner's code deployable), and about 2k more per signature from a device key. Certifying or revoking a device key costs about 0.25M gas per chain. Its shared contracts would take about 20M gas once per chain on Sepolia, on top of the stateless verifier already there (an estimate).
+These are v1's numbers. **Owner v2** costs about 7k more per 2-of-3 transaction (WOTS verification moved into a shared contract to keep the owner's code deployable), and about 2k more per signature from a device key. Certifying or revoking a device key costs about 0.25M gas per chain, 0.39M on Sepolia. Its shared contracts took 19.5M gas once on Sepolia, on top of the stateless verifier it shares with v1.
 
 ## Live on Sepolia
 
@@ -58,6 +58,11 @@ These are the owners live today (v1). **Owner v2 is built, contracts and signer,
   - moving to a new device
   - restoring after a lost device, after which the old device can no longer undo the restore
   - a newcomer followed the README from scratch to a working 2-of-3 Safe
+- **Owner v2,** on a 2-of-2 test Safe of v2 owners (shared contracts on Sepolia: WOTS verifier `0x272138c7D3b508bd510bE5166fbE2461561e410D`, implementation `0x114caAB223BaccD9BcA92C28ABBCf1edC0C3bCdf`, factory `0x90835a46Fb205B7f038B0EE46e798ead45a6fA7F`; the stateless verifier `0x6Dc4DFBccDe0fbeC30b0a4078aB6f45496Fec254` is shared with v1):
+  - a member paired a device key and signed from it, without the phrase
+  - the device was revoked while a transaction it had confirmed was pending: its confirmation stopped counting at once, and the member confirmed again from the phrase's home. Safe's service keeps an owner's first confirmation, so the signer hands the new one to whoever executes in a proposal file.
+  - a dapp on the official SDK got a Permit2 permit answered with the owners' approved signatures, and viem's `verifyTypedData` accepted it
+  - v1's contracts stay deployed and keep working; the earlier test Safes still have v1 owners
 - **For individuals: a Kernel (ERC-7579) validator** with built-in k-of-n. An earlier version ran live with the same address on Ethereum Sepolia and Arbitrum Sepolia. Pimlico, Candide and Alchemy accepted its operations.
 
 ## Security, briefly
@@ -74,8 +79,7 @@ These are the owners live today (v1). **Owner v2 is built, contracts and signer,
 
 ## Not yet
 
-- **Dapps that verify with viem** reject the empty signature that on-chain approvals (permits) answer with today. Owner v2's approved signatures fix it: built in the contracts and the signer, and accepted by viem on a local chain. Not deployed yet, since it changes every owner's address; it comes with device keys.
-- **Device keys on Sepolia.** Owner v2 lets a member's laptop and phone sign without the recovery phrase, and a lost one be revoked on-chain. Built and tested locally, not deployed yet.
+- **Moving the earlier test Safes to owner v2.** Each member swaps their v1 owner for their v2 owner in a Safe transaction; not done yet.
 - **A hardware signer.** Hashing speed on secure elements needs measuring first.
 - **An audit.**
 - **Frame transactions (EIP-8141).** The same keys and signer would fit a native account. Not built yet.
