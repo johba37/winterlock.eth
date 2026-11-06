@@ -73,7 +73,7 @@ Remedies, which `status` and every refusal name:
 
 ## Moving while the old device works
 
-1. **New device: `move start`.** The member types the phrase and a new passphrase. The signer saves the seed and a move request, then shows its code (16 base32 characters, 80 random bits). The request's location is anchored too.
+1. **New device: `move start`.** The member types the phrase and a new passphrase. The signer saves the seed and a move request, then shows its code (16 base32 characters, 80 random bits). The request's location is anchored too. Until the import, `status` there shows the device waiting, with the code and the commands to run on each device.
 2. **Old device: `move export --code CODE --out FILE [--chain --rpc]`.**
    - With chain access, it first checks its log against the chain and the Transaction Service (below).
    - It appends a `move-out` record, fsynced. From then on it signs nothing.
@@ -102,7 +102,7 @@ Remedies, which `status` and every refusal name:
 | Exporting twice | The first export locks the old device. Exporting again for the same code rewrites the same log and move id (the phrase stands in for the removed seed). Another code is refused, unless `--replace-request`, meant only for a new device that never imported and never will. |
 | A changed, truncated or mixed-up bundle | Caught by the AEAD tag, each record's checksum, the move-out commitment, and the phrase's identity against the log's. Nothing is installed. |
 | An interrupted export | The device stays locked, seed still present, and `status` says to run the export again. Running it again finishes the move. |
-| An interrupted import | The request stays until the device record is written. Running the import again finishes it without duplicating records. |
+| An interrupted import | The request stays until the device record is written. Running the import again finishes it without duplicating records; `status` says so. |
 | A stale bundle (a copy of the old log signed after the export) | Not visible offline. The online check refuses it if the copy's signature reached the Transaction Service. |
 | A copied or rolled-back key log as the source | Export is refused: it would hand on a possibly stale log. |
 | Changing one's mind | `move cancel` on the new device. Then `init --restore --lost`, if the old device turned out to be dead after all. |

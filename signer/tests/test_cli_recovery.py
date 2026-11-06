@@ -171,6 +171,17 @@ class Cli(unittest.TestCase):
         text = self.ok(["--home", new, "move", "start", "--phrase", pfile])
         code = re.search(r"\b([A-Z2-7]{4}(?:-[A-Z2-7]{4}){3})\b", text)[1]
         self.assertIn(f"move export --code {code}", text)
+        # status on the waiting device: what it waits for and what to run next (other commands refuse)
+        owner_addr = identity_of(phrase.to_seed(" ".join(words)))[1]
+        text = self.ok(["--home", new, "status"])
+        for s in (f"owner {owner_addr}", f"device WAITING FOR A MOVE: request {code}", "signs nothing until",
+                  f"winterlock-signer move export --code {code} --out winterlock-move.json",
+                  "winterlock-signer move import winterlock-move.json", "`move cancel`", "seed file encrypted"):
+            self.assertIn(s, text)
+        self.assertIn("waiting for a move", self.ok(["--home", new, "address"], expect=2))
+        open(os.path.join(new, "keylog.jsonl"), "w").close()  # as if an import stopped after installing the log
+        self.assertIn("the import of move", self.ok(["--home", new, "status"]))
+        os.remove(os.path.join(new, "keylog.jsonl"))
         text = self.ok(["--home", old, "move", "export", "--code", code, "--out", bundle])  # confirmed: y
         self.assertIn("locked for good", text)
         text = self.ok(["--home", old, "status"])

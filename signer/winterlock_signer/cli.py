@@ -725,10 +725,12 @@ def cmd_execute(args):
 
 
 def cmd_status(args):
+    from . import cli_recovery
+    if cli_recovery.pending_move_status(args):  # a new device waiting for a move's bundle: no key log to open yet
+        return
     m = open_member(args, lock=False)
     out(f"Signer {m.home}")
     out(f"  owner {m.owner}, stateless key {b2h(m.key)}")
-    from . import cli_recovery
     for line in cli_recovery.status_lines(m):
         out(line)
     ident = m.log.identity()

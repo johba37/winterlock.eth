@@ -332,13 +332,23 @@ def start_move(args, home, seed):
     out("")
     out(f"    {req['request']}")
     out("")
-    out("On your OLD device, run:")
-    out(f"    winterlock-signer move export --code {req['request']} --out winterlock-move.json --chain CHAIN")
-    out("It locks the old device for good and writes the bundle. Bring the file here, then run:")
-    out("    winterlock-signer move import winterlock-move.json --chain CHAIN")
+    for line in move_steps(req["request"]):
+        out(line)
     out("With --chain (sepolia, for example), each step first checks the key log against that chain and its")
     out("Transaction Service.")
-    out("Changed your mind (or the old device doesn't work after all)? `move cancel`, then `init --restore --lost`.")
+    out(CHANGED_MIND)
+
+
+CHANGED_MIND = ("Changed your mind (or the old device doesn't work after all)? `move cancel`, then "
+                "`init --restore --lost`.")
+
+
+def move_steps(code, indent=""):
+    """What to run on each device to finish the move a new device waits for"""
+    return [f"{indent}On your OLD device, run:",
+            f"{indent}    winterlock-signer move export --code {code} --out winterlock-move.json --chain CHAIN",
+            f"{indent}It locks the old device for good and writes the bundle. Bring the file here, then run:",
+            f"{indent}    winterlock-signer move import winterlock-move.json --chain CHAIN"]
 
 
 def check_online(m, ctx, purpose):
@@ -511,6 +521,32 @@ def cmd_device(args):
 
 
 # --- status ---
+
+def pending_move_status(args) -> bool:
+    """`status` on a new device that waits for a move's bundle (it has a seed and a move request, but no key log to
+    open yet): what it waits for and what to run next. False if the directory waits for nothing."""
+    home = home_of(args)
+    req = move.pending(home)
+    if not req:
+        return False
+    out(f"Signer {home}")
+    out(f"  owner {req['owner']}, stateless key {req['key']}")
+    seed_line = f"  seed file {seedfile.describe(os.path.join(home, 'seed'))}"
+    if os.path.exists(os.path.join(home, "keylog.jsonl")):
+        out(f"  device MOVING IN: the import of move {req['request']} stopped half way. Run `move import` again "
+            "with the same bundle to finish it.")
+        out(seed_line)
+        return True
+    out(f"  device WAITING FOR A MOVE: request {req['request']}, started {req['created']}; it signs nothing until "
+        "the bundle from your old device is imported")
+    for p in move.request_problems(home, req):
+        out(f"  WARNING: {p}")
+    out(seed_line)
+    for line in move_steps(req["request"], indent="  "):
+        out(line)
+    out("  " + CHANGED_MIND)
+    return True
+
 
 def status_lines(m) -> list:
     lines = []
