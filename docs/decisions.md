@@ -869,6 +869,24 @@ A scripted dapp on the official SDK (`@walletconnect/sign-client` 2.26.0) paired
 - **The SDK refuses a dapp's own `eth_chainId` request** because it isn't a session method. Dapps read the chain and account from the session, so the wallet needs no change.
 - **Cost:** about 11.8M wei in fees for the two executions, at Sepolia's base fee of about 30 wei.
 
+**2026-11-06: a real dapp, and Safe's app**
+
+A member ran the signer on their own computer, from a small kit: the signer and both members of the 2-of-2 test Safe (`0x68f6…ef07`), taken over with `device adopt`. The dapp was Reown's AppKit lab (lab.reown.com, the wagmi demo), reached over WalletConnect, on a public Sepolia RPC endpoint.
+
+| Request | Path | Result |
+|---|---|---|
+| Send transaction | Proposed to Safe's service (nonce 5); member 2 confirmed and executed it with the signer | Executed, 293,681 gas |
+| Send transaction, executed in Safe's app | Proposed and confirmed by the two members (nonce 6); executed in Safe's app by a MetaMask account that isn't an owner | Executed, 293,777 gas |
+| Sign message (`personal_sign`) | Off-chain: both members' stateless signatures, combined into the Safe's | The lab got the Safe's signature |
+| Sign typed data (the lab's example names a verifying contract) | On-chain: a SignMessageLib approval (nonce 7) | Executed, 400,565 gas; the lab got `0x` |
+
+- **Safe's app works as the team's dashboard:** it shows the Winterlock owners' confirmations, and anyone can execute from it once they're in.
+- **Found and fixed:** `--wait-for-execution` failed on the public endpoint. It balances across nodes, and one a block behind refused the log query's range. The bridge now looks back 64 blocks and treats a refused query as "not executed yet".
+- **The lab doesn't verify signatures:** it only shows that the wallet answered, so `0x` passes there. Dapps that verify with viem would refuse it (D14's to-do).
+- **Usability snags:**
+  - finding the WalletConnect link in AppKit's dialog (Connect Wallet → WalletConnect → copy link)
+  - `confirm` wanting `--safe-tx-hash` instead of taking the hash as a plain argument
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.

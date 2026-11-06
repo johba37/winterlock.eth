@@ -181,6 +181,12 @@ signer/.venv/bin/python signer/tools/live_walletconnect.py --dir DIR --safe SAFE
 - **Permit2:** the dapp got `0x` 26 s after asking, once the approval had executed (400,441 gas). The Safe's `isValidSignature(hash, 0x)` returns the magic value; viem's `verifyTypedData` returns false. This confirms the viem limit above.
 - **The SDK refuses a dapp's own `eth_chainId` request** because it isn't a session method. Dapps read the chain and account from the session, so the wallet needs no change.
 
+**With a real dapp** (2026-11-06): Reown's AppKit lab (lab.reown.com, the wagmi demo), with the signer on a member's own computer and a public Sepolia endpoint.
+- **What worked:** send transaction, sign message (off-chain, combined signature) and sign typed data (on-chain approval; the lab got `0x`).
+- **Executing in Safe's app:** one of the transactions was executed there, from a MetaMask account that isn't an owner.
+- **The lab doesn't verify the signatures it gets,** so this shows compatibility, not acceptance by a verifying dapp.
+- **Details:** decisions.md, "2026-11-06: a real dapp, and Safe's app".
+
 ## Tests
 
 42 new tests; the suite runs 88, and skips one unless Node and the SDK are available.
