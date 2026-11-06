@@ -9,7 +9,8 @@ The idea: a hash sign is a stretch of track. Two rails, two sleepers leaning in 
 | `mark.svg` | The mark, for sizes from 32 px up. It switches to dark colours with the viewer's setting. |
 | `favicon.svg` | The simplified cut for 16–32 px, as used in the site's tab icon |
 | `lockup.svg` | Mark and stencil wordmark, switching with the viewer's setting |
-| `lockup-light.svg`, `lockup-dark.svg` | The same with fixed colours, for places that pick by theme (GitHub's README) |
+| `lockup-light.svg`, `lockup-dark.svg` | The same with fixed colours, for places that pick by theme |
+| `plate.svg` | The lockup on a dark riveted nameplate: one image that reads on light and dark pages alike, used at the top of the README |
 | `stencil.py` | Draws stencil lettering as SVG: `python3 docs/brand/stencil.py "TURBULENT TIMES"` |
 
 ## Rules

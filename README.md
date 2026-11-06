@@ -1,4 +1,4 @@
-<h1><picture><source media="(prefers-color-scheme: dark)" srcset="docs/brand/lockup-dark.svg"><img src="docs/brand/lockup-light.svg" alt="winterlock.eth" width="320"></picture></h1>
+<h1><img src="docs/brand/plate.svg" alt="winterlock.eth" width="340"></h1>
 
 **Winterlock lets a team's Safe be controlled by hash-based signatures instead of ECDSA.** These are signatures a quantum computer can't break, and the Safe, Safe's app and dapps keep working. It's a **research prototype: unaudited, testnet only.**
 
