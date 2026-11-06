@@ -276,6 +276,13 @@ p { margin: 0; }
 .join p { margin-top: 0.9rem; max-width: 40rem; }
 .join .actions { margin-top: 2rem; }
 .proof { list-style: none; margin: 1rem 0 0; padding: 0; display: grid; gap: 0.45rem; }
+.flow { list-style: none; margin: 2.5rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1.75rem; }
+.flow li { position: relative; background: var(--surface); border: 1px solid var(--frost); border-radius: 6px; padding: 0.9rem 1rem; }
+.flow li b { display: block; font-size: 1.0625rem; }
+.flow li span { display: block; margin-top: 0.25rem; color: var(--slate); font-size: 0.95rem; line-height: 1.4; }
+.flow li:not(:last-child)::after { content: "\2192"; position: absolute; right: -1.35rem; top: 50%; transform: translateY(-50%); color: var(--glacier); font-weight: 700; }
+.flow-note { margin-top: 0.9rem; color: var(--slate); max-width: 46rem; }
+.parts + .parts { margin-top: 3rem; }
 .proof a { font-weight: 600; }
 .facts { margin: 0.75rem 0 0; display: grid; gap: 0.9rem; }
 .facts div { display: grid; gap: 0.1rem; }
@@ -299,6 +306,8 @@ footer a { color: var(--slate); }
   .hero { grid-template-columns: 1fr; gap: 3.5rem; padding-top: 3rem; }
   .core { max-width: 34rem; }
   .parts, .steps { grid-template-columns: 1fr; gap: 2.25rem; }
+  .flow { grid-template-columns: 1fr; gap: 1.6rem; }
+  .flow li:not(:last-child)::after { content: "\2193"; right: auto; left: 1.2rem; top: auto; bottom: -1.45rem; transform: none; }
   .points { grid-template-columns: 1fr; gap: 2.25rem; }
 }
 @media (max-width: 520px) {
@@ -387,10 +396,18 @@ footer a { color: var(--slate); }
   <section class="block" id="building" aria-labelledby="build-title">
     <div class="wrap">
       <h2 id="build-title">What we're building</h2>
+      <ol class="flow" aria-label="How a team member signs">
+        <li><b>Recovery phrase</b><span>24 words, the member's only backup</span></li>
+        <li><b>Stateless key</b><span>certifies key trees, signs messages, recovers a lost device</span></li>
+        <li><b>One-time keys</b><span>one per Safe nonce, sign transactions</span></li>
+        <li><b>Owner contract</b><span>checks the hash-based signature when the Safe asks</span></li>
+        <li><b>Your Safe</b><span>counts k of n, unchanged</span></li>
+      </ol>
+      <p class="flow-note">Every key comes from hash functions alone. The Safe, Safe's app and its Transaction Service stay as they are: only the owners change.</p>
       <div class="parts">
         <div>
           <h3>A hash-based owner</h3>
-          <p>An EIP-1271 owner contract for Safe. Daily approvals use Winternitz one-time signatures from a Merkle tree of keys, each bound to a single Safe nonce so it can never authorize anything else. A stateless SPHINCS+ key handles backup and recovery.</p>
+          <p>An EIP-1271 owner contract for Safe. Daily approvals use Winternitz one-time signatures from a Merkle tree of keys, each bound to a single Safe nonce so it can never authorize anything else. A stateless hash-based key (leanSphincs, from the SPHINCS+ family) certifies those trees, signs messages for dapps, and brings a member back after a lost device.</p>
         </div>
         <div>
           <h3>Shared verification</h3>
@@ -447,7 +464,28 @@ footer a { color: var(--slate); }
           </dl>
         </div>
       </div>
-      <p class="testnet-note">A research prototype: unaudited, testnet only, no real funds. The <a href="https://github.com/johba37/winterlock.eth/blob/main/docs/decisions.md" rel="noopener noreferrer">design notes and measurements</a> are on GitHub.</p>
+      <div class="parts">
+        <div>
+          <h3>Works with dapps</h3>
+          <p>A member's signer connects to dapps over WalletConnect, and the dapp sees the team's Safe. Tested with Reown's AppKit lab and a dapp on the official SDK: transactions, sign-in, typed data and Permit2. viem verifies the Safe's sign-in signature on-chain.</p>
+          <ul class="proof">
+            <li><a href="https://sepolia.etherscan.io/tx/0x54119271419fb4ed180a1d45281aed40b70a5f22a7701f4defd8ec1e24c205b7" rel="noopener noreferrer">A Permit2 approval for a dapp</a>, approved on-chain by both members</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Anyone can execute, even in Safe's app</h3>
+          <p>Once the members have confirmed, any funded account can send the transaction. An ordinary MetaMask account that isn't an owner executed one from Safe's app, with no relayer and no extra tooling.</p>
+        </div>
+        <div>
+          <h3>A lost device isn't a lost Safe</h3>
+          <p>A member's 24-word phrase restores their signer on a new device with fresh one-time keys, and the old device can't sign for that Safe again. A device that still works hands over its key log instead, at no cost.</p>
+          <ul class="proof">
+            <li><a href="https://app.safe.global/transactions/history?safe=sep:0x1726e1f9Ad2a6580E6a3BeaeF040a2cCE4708767" rel="noopener noreferrer">A 2-of-3 Safe</a> with a moved and a restored member</li>
+            <li><a href="https://sepolia.etherscan.io/tx/0xb2e18db33714ea31f4d0fec28055ec1a7290cce219960e985b24c78d24e19149" rel="noopener noreferrer">Their transaction</a> on Etherscan</li>
+          </ul>
+        </div>
+      </div>
+      <p class="testnet-note">A research prototype: unaudited, testnet only, no real funds. <a href="https://github.com/johba37/winterlock.eth/blob/main/docs/overview.md" rel="noopener noreferrer">Winterlock in one page</a>, the <a href="https://github.com/johba37/winterlock.eth/blob/main/docs/decisions.md" rel="noopener noreferrer">design notes and measurements</a> and the signer are on GitHub.</p>
     </div>
   </section>
 
@@ -455,7 +493,7 @@ footer a { color: var(--slate); }
     <div class="wrap">
       <h2 id="roadmap-title">Roadmap</h2>
       <ol class="roadmap">
-        <li class="now"><span class="when">Now</span>Proposal open for feedback on the Safe forum, and a working prototype on Sepolia</li>
+        <li class="now"><span class="when">Now</span>A working prototype on Sepolia (Safe owners, a signer with recovery, dapps over WalletConnect), and the proposal open for feedback on the Safe forum</li>
         <li><span class="when">Milestone 1</span>Specification, reference contracts and test suite</li>
         <li><span class="when">Milestone 2</span>Audited owner contract and migration tool on testnet</li>
         <li><span class="when">Milestone 3</span>Batched verification beta, with direct verification as fallback</li>
