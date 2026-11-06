@@ -393,9 +393,9 @@ Each member now has a stateless leanSphincs key next to its master tree. It cert
 
 | Candidate (SPHINCs- figures, verify gas measured here for leanSphincs) | Signature | Verify gas | Signatures per key at 128 bits | Signing work per signature |
 |---|---|---|---|---|
-| **leanSphincs** | 5,684 B | 52.8k | 210k / 22M / 1.15B (Light / Standard / Full signer), proved in Lean | 70–92k hashes: 13 s on a Ledger-class device, under 1 ms on a CPU |
+| **leanSphincs** | 5,684 B | 52.8k | 210k / 22M / 1.15B (Light / Standard / Full signer), proved in Lean | 70–92k hashes: 13 s at the rate of Ledger's SPHINCS+ benchmark, but about 1.5–2.5 min with keccak on a Ledger Nano S+ (see Open questions); under 1 ms on a CPU |
 | leanSphincs-s | 4,164 B | ~39k | 20k / 2.1M / 67M, estimated | 155–178k hashes |
-| C7 (WOTS+C, FORS+C) | 3,704 B | ~96k | 2^20 | 4.3M hashes: 12 min on a Ledger |
+| C7 (WOTS+C, FORS+C) | 3,704 B | ~96k | 2^20 | 4.3M hashes: 12 min at the same benchmark rate |
 | C13 | 3,688 B | ~105k | 2^20 | ~10M hashes |
 | C12, JARDÍN's SPX | 6,512–6,592 B | 204–276k | 2^14; 109 bits at 2^18, 95 at 2^20 | ~37k hashes |
 | SLH-DSA-SHA2-128-24 (FIPS 205) | 3,856 B | ~142k | 2^24 | ~1B hashes |
@@ -886,11 +886,22 @@ These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 1
 
 **Cryptography**
 - Hash function on hardware signers: D9 keeps keccak. If a hardware signer can't hash keccak fast enough for key generation and target-sum retries, weigh SHA-256 (+50k gas per signature) against it.
+- **Hardware signing time, measured elsewhere (noted 2026-11-06).** JARDÍN's README reports keccak on a Ledger Nano S+ (ST33K1M5) at about 1.5 ms per hash: 31.5k hashes in 47.3 s. That is about eight times slower than the rate behind the "13 s" above, which came from Ledger's SPHINCS+ benchmark. At 1.5 ms per hash (my estimates, not measured on a device):
+  - **A leanSphincs signature** (70–92k hashes): about 1.5–2.5 minutes. Acceptable for certificates and recovery, slow for messages.
+  - **A D6 transaction signature:** about 945 digest tries plus 431 chain steps, so about 2 seconds, if the device keeps the tree's leaves (64 × 24 bytes at height 6) instead of recomputing them.
+  - **Generating a D6 tree:** about 720 hashes per key, so about 70 seconds at height 6 (64 keys) and about 18 minutes at height 10 (1,024 keys).
+  - **So, on hardware:** small trees (height 6 or less, rotated more often), leaves kept on the device, and SHA-256 weighed again where the secure element accelerates it.
+  - **Next:** measure on a real device before promising hardware support.
 - Key generation on a device: tree height is nearly free on-chain, but whoever computes the root must generate every key. 2^20 keys with D6 is roughly 750 million hashes, which is minutes on a laptop and likely too slow for a hardware wallet. D10 makes small operation trees with rotation possible: a height-14 tree is about 12 million hashes. Open: the tree size the signer should default to, and when it should rotate.
 - An independent reference implementation and test vectors, in Python or Rust. So far the tests only cross-check against a Solidity signer.
 
 **Accounts and chains**
 - One address on every chain, and tree rotation: decided in D10, built and shown live on two testnets (above). D12 removed the log of used master keys. Still open: deploying on chains without Cancun opcodes, or with a different deterministic deployer; and bytecode that doesn't depend on the build directory (see 2026-11-05, D12, "Deployment").
+- **Several devices per member (noted 2026-11-06, after JARDÍN, where each device registers its own key slot).** Today an owner holds one active tree per Safe, so a member signs from one device at a time, and a backup is either a cold copy of the phrase (promoted by a restore) or a separate owner.
+  - **The idea:** the owner holds a few trees per Safe (2–4), one per device, each tagged with a device number and certified by the stateless key. The tree's keys derive from the device number too, so two active devices never share a key, even at the same nonce.
+  - **What it adds:** an explicit revoke for a lost device's tree, signed by the stateless key or by the quorum. JARDÍN's slots can't be revoked.
+  - **Costs:** a storage slot and a certificate (about 190k gas) per device, Safe and chain. The signer changes, and the enroll guard against an old device undoing a restore becomes "revoke the lost device" instead.
+  - **When:** it changes WinterlockOwner's code, and so every owner's address, as does the deferring signature kind for viem (D14). Doing both in one new owner version pays that cost once.
 - A recovery key: D11's stateless key is the recovery path, built and tested (above). Open: social or time-delayed recovery on top, as a separate module.
 - Managing threshold accounts: changing members or the threshold currently means uninstalling and reinstalling the module. Open: a rotation function signed by the current quorum.
 - Validator upgrades: the validator is immutable. Moving to a fixed version means installing the new module through an operation signed with the old one, then uninstalling the old one.
