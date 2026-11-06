@@ -60,13 +60,44 @@ class Cli(unittest.TestCase):
             self.assertIn(s, text)
         self.ok(["--home", self.path("m"), "init"], Terminal(), expect=2)  # never over an existing signer
 
+    def test_the_phrase_is_hidden_before_the_check(self):
+        """On a terminal, the words are typed from the written copy with the phrase cleared away: after a wrong answer
+        it can be shown again, and is hidden again before the next try. Off a terminal, the signer says it can't hide
+        it."""
+        def phrase_on(screen):
+            return re.search(r"\b\d+\. [a-z]+", screen)
+
+        t = Terminal(tty=True, wrong_rounds=1, show_again="y")
+        text = self.ok(["--home", self.path("m"), "init"], t)
+        checks = [screen for prompt, screen in t.on_screen if "word #" in prompt]
+        hides = [screen for prompt, screen in t.on_screen if "press Enter to hide them" in prompt]
+        self.assertEqual((len(checks), len(hides)), (6, 2))  # two rounds, each after the phrase was shown and hidden
+        self.assertTrue(all(phrase_on(s) for s in hides))  # the phrase is on screen until the member is ready
+        self.assertFalse(any(phrase_on(s) for s in checks))  # and off it while words are typed
+        self.assertIn("The phrase is now hidden (screen and scrollback cleared).\nBackup check: from your written "
+                      "copy, type words #", checks[0])
+        self.assertEqual(text.count(" 1. "), 2)  # shown at the start and once more on request
+        self.assertNotIn("can't be hidden", text)
+        # `backup` shows and hides it the same way; `backup --check` doesn't show it, so there is nothing to hide
+        home, words = self.path("m"), t.shown_phrase()
+        t = Terminal(tty=True)
+        self.ok(["--home", home, "backup"], t)
+        self.assertFalse(any(phrase_on(s) for p, s in t.on_screen if "word #" in p))
+        self.assertEqual(sum(1 for p in t.prompts if "press Enter" in p), 1)
+        t = Terminal(tty=True, words=words)
+        self.ok(["--home", home, "backup", "--check"], t)
+        self.assertFalse(any("press Enter" in p for p in t.prompts))
+        # not a terminal (output to a file or a pipe): nothing to clear, so it says so
+        text = self.ok(["--home", self.path("n"), "init"], Terminal())
+        self.assertIn("The output isn't a terminal, so the phrase can't be hidden from it", text)
+
     def test_the_backup_check_cant_be_skipped(self):
         text = self.ok(["--home", self.path("m"), "init"], Terminal(wrong_rounds=5), expect=1)
         self.assertIn("nothing was saved", text)
         self.assertFalse(os.path.exists(self.path("m")) and os.listdir(self.path("m")))
         t = Terminal(wrong_rounds=1)
         text = self.ok(["--home", self.path("m"), "init"], t)
-        self.assertIn("doesn't match", text)
+        self.assertIn("don't match. Check your copy.", text)
         self.assertEqual(sum(1 for p in t.prompts if "word #" in p), 6)
 
     def test_test_mode(self):
@@ -111,7 +142,7 @@ class Cli(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.path("r"), "seed")))
         # lost: fresh trees, the cost, and what to tell the team
         text = self.ok(["--home", self.path("r"), "init", "--restore", pfile], Terminal(situation="2"))
-        for s in (owner_addr, "never uses the trees of the old device", "0.25M gas", "stops counting",
+        for s in (owner_addr, "never uses the old device's key trees", "0.25M gas", "stops counting",
                   "Tell your team"):
             self.assertIn(s, text)
         m = Member(self.path("r"), lock=False)
@@ -140,6 +171,17 @@ class Cli(unittest.TestCase):
         text = self.ok(["--home", new, "move", "start", "--phrase", pfile])
         code = re.search(r"\b([A-Z2-7]{4}(?:-[A-Z2-7]{4}){3})\b", text)[1]
         self.assertIn(f"move export --code {code}", text)
+        # status on the waiting device: what it waits for and what to run next (other commands refuse)
+        owner_addr = identity_of(phrase.to_seed(" ".join(words)))[1]
+        text = self.ok(["--home", new, "status"])
+        for s in (f"owner {owner_addr}", f"device WAITING FOR A MOVE: request {code}", "signs nothing until",
+                  f"winterlock-signer move export --code {code} --out winterlock-move.json",
+                  "winterlock-signer move import winterlock-move.json", "`move cancel`", "seed file encrypted"):
+            self.assertIn(s, text)
+        self.assertIn("waiting for a move", self.ok(["--home", new, "address"], expect=2))
+        open(os.path.join(new, "keylog.jsonl"), "w").close()  # as if an import stopped after installing the log
+        self.assertIn("the import of move", self.ok(["--home", new, "status"]))
+        os.remove(os.path.join(new, "keylog.jsonl"))
         text = self.ok(["--home", old, "move", "export", "--code", code, "--out", bundle])  # confirmed: y
         self.assertIn("locked for good", text)
         text = self.ok(["--home", old, "status"])
@@ -156,7 +198,7 @@ class Cli(unittest.TestCase):
         self.assertIn("Not checked online", text)
         self.assertFalse(os.path.exists(bundle))  # consumed
         text = self.ok(["--home", new, "status"])
-        for s in ("device ACTIVE", "moved in from another device", rec["root"][:18], "1 keys used",
+        for s in ("device ACTIVE", "moved in from another device", rec["root"][:18], "1 one-time key used",
                   "recovery phrase checked"):
             self.assertIn(s, text)
         # cancel only applies to a pending move
@@ -191,10 +233,10 @@ class Cli(unittest.TestCase):
             f.truncate()
         self.assertIn("rolled back", self.ok(["--home", home, "device", "adopt"], expect=2))
         text = self.ok(["--home", home, "device", "fresh-trees"])
-        self.assertIn("Retired the trees", text)
+        self.assertIn("Retired the key trees", text)
         text = self.ok(["--home", home, "status"])
         self.assertIn("RETIRED HERE", text)
-        self.assertIn("fresh trees after a suspected copy", text)
+        self.assertIn("fresh key trees after a suspected copy", text)
         log = KeyLog(log_path, lock=False)
         self.assertEqual(log.trees(CHAIN, SAFE), [])
         log.close()

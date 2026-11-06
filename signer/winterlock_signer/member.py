@@ -31,8 +31,8 @@ STATELESS_B = leansphincs.DEFAULT_B
 DEFAULT_HEIGHT = 10
 REQUEST = "move-request.json"
 COPY_REMEDY = ("If the original signer still works, move from it instead (`move export` there, `move import` here). "
-               "If it is gone for good, `device fresh-trees` makes this copy safe to use (fresh trees: a fee per Safe "
-               "and chain); `device adopt` trusts this copy as complete, which is only right if it was made after "
+               "If it is gone for good, `device fresh-trees` makes this copy safe to use (fresh key trees: a fee per "
+               "Safe and chain); `device adopt` trusts this copy as complete, which is only right if it was made after "
                "the original's last signature.")
 
 # Asked for the seed's passphrase when neither the caller nor WINTERLOCK_PASSPHRASE gives one: f(prompt) -> str. The
@@ -298,12 +298,12 @@ class Member:
         """Generates a fresh tree (fresh random salt) and records it, fsynced, before it is certified"""
         self.require_active()
         if not 1 <= height <= owner.MAX_HEIGHT or not 0 <= start <= owner.MAX_START:
-            raise Refused("bad tree height or start")
+            raise Refused("bad key tree height or start")
         if height > 20:
-            raise Refused("trees above height 20 take too long to generate here")
+            raise Refused("key trees above height 20 take too long to generate here")
         prior = self.log.trees(chain, safe)
         if prior and start <= max(t["start"] for t in prior):
-            raise Refused(f"a new tree must start after nonce {max(t['start'] for t in prior)}")
+            raise Refused(f"a new key tree must start after nonce {max(t['start'] for t in prior)}")
         rec = {"t": "tree", "chain": chain, "safe": safe, "owner": self.owner, "start": start, "height": height,
                "salt": b2h(secrets.token_bytes(32))}
         seed = owner.tree_seed(chain, self.owner, safe, start)
@@ -333,7 +333,7 @@ class Member:
                 pass
         t = wots.Tree.create(seed, self._tree_sk_seed(rec), rec["height"])
         if b2h(t.root) != rec["root"]:
-            raise Refused("the tree rebuilt from the seed and the key log has another root: wrong seed?")
+            raise Refused("the key tree rebuilt from the seed and the key log has another root: wrong seed?")
         self._save_tree(rec, t)
         return t
 
@@ -354,7 +354,7 @@ class Member:
         Returns (data, slot, key index, SafeTx hash)."""
         self.require_active()
         if self.log.retired(rec):
-            raise Refused(f"tree {rec['root']} is retired on this device: run `enroll` to certify a fresh one")
+            raise Refused(f"key tree {rec['root']} is retired on this device: run `enroll` to certify a fresh one")
         h = safe_tx.hash(chain, safe)
         hx = b2h(h)
         nonce = safe_tx.nonce

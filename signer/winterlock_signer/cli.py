@@ -1,22 +1,23 @@
-"""winterlock-signer: a minimal signer for members of a Safe whose owners are WinterlockOwner contracts (D13).
+"""winterlock-signer: a minimal signer for the members of a Safe whose owners are Winterlock owner contracts (D13).
 
   init      create a signer (a new recovery phrase, checked), or --restore one from its phrase on a new device
   backup    show and check the recovery phrase;  passphrase: change the seed file's passphrase
   move      move to a new device while the old one works: start (new), export (old), import (new)
-  device    adopt, or retire the trees of, a key log that looks like a copy
-  address   the member's owner address (the same on every chain) and stateless public key
-  enroll    certify an operation tree for a Safe on a chain; creates your owner with it if needed
+  device    adopt, or retire the key trees of, a key log that looks like a copy
+  address   your owner address (the same on every chain) and stateless key
+  enroll    certify a key tree (one-time keys for a range of nonces) for a Safe; creates your owner if needed
   propose   build, show and sign a Safe transaction, and post it to Safe's Transaction Service
-  confirm   fetch a proposed transaction, decode and show it, sign it, and post the confirmation
-  queue     the Safe's pending transactions, decoded here, with this member's key use at each nonce
-  execute   send execTransaction with the collected signatures, from a gas-paying account
+  confirm   fetch a proposed transaction by its SafeTx hash, decode and show it, sign it, and post the confirmation
+  queue     the Safe's pending transactions, decoded here, with your one-time keys used at each nonce
+  execute   send execTransaction with the collected signatures, paid by a gas account
   connect   answer a dapp over WalletConnect as the team's Safe: transactions, batches and messages (bridge.py)
   message   sign a Safe message file another member collects for a dapp (peer to peer)
-  status    key usage and tree health, the device and backup state
+  status    your key trees and one-time keys left, the device and the recovery phrase's last check
 
 Chain access: --chain (name or id) and --rpc URL (or WINTERLOCK_RPC). Service: Safe's hosted Transaction Service
-for the chain (SAFE_API_KEY), --service URL, or --offline with --file for peer-to-peer proposal files. Gas: the
-private key in the environment variable named by --gas-key-env (default WINTERLOCK_GAS_KEY); it's never printed.
+for the chain (SAFE_API_KEY), --service URL, or --offline with --file for peer-to-peer proposal files. Gas account:
+any funded account, not an owner; its private key in the environment variable named by --gas-key-env (default
+WINTERLOCK_GAS_KEY). It pays for enroll and execute, and is never printed.
 """
 
 import argparse
@@ -65,9 +66,18 @@ def out(*a):
 
 # --- context ---
 
-def chain_id_of(s: str) -> int:
+def chain_id_of(s: str, rpc_url: str = None) -> int:
     if s is None:
-        raise Abort("--chain is required (a name such as sepolia, or a chain id)")
+        hint = ""
+        if rpc_url:  # the member's RPC knows its chain: name it, but don't pick it for them
+            try:
+                cid = Rpc(rpc_url, timeout=10).chain_id()
+                name = next((n for n, i in CHAINS.items() if i == cid), str(cid))
+                hint = f" Your RPC ({safe_url(rpc_url)}) is {chain_label(cid)}: --chain {name}."
+            except (RpcError, OSError, ValueError):
+                pass
+        raise Abort("which chain is the Safe on? Add --chain with a name (" + ", ".join(sorted(set(CHAINS) - {
+            "ethereum"})) + ") or a chain id, for example `--chain sepolia`." + hint)
     if s.isdigit():
         return int(s)
     if s.lower() not in CHAINS:
@@ -82,16 +92,18 @@ def chain_label(cid: int) -> str:
 class Ctx:
     def __init__(self, args, need_rpc=True):
         self.args = args
-        self.chain = chain_id_of(args.chain)
         url = args.rpc or os.environ.get("WINTERLOCK_RPC")
+        self.chain = chain_id_of(args.chain, url)
         self.rpc = None
         if url:
             self.rpc = Rpc(url)
             got = self.rpc.chain_id()
             if got != self.chain:
-                raise Abort(f"the RPC at {safe_url(url)} is chain {got}, not {self.chain}: refusing")
+                raise Abort(f"the RPC at {safe_url(url)} is {chain_label(got)}, not {chain_label(self.chain)}: "
+                            "refusing")
         elif need_rpc:
-            raise Abort("--rpc URL (or WINTERLOCK_RPC) is required")
+            raise Abort(f"no RPC for {chain_label(self.chain)}: add --rpc URL, or set WINTERLOCK_RPC to the chain's "
+                        "JSON-RPC URL")
         self.service = None
         if not getattr(args, "offline", False):
             surl = getattr(args, "service", None) or os.environ.get("WINTERLOCK_SERVICE") or default_url(self.chain)
@@ -162,20 +174,31 @@ def signing_tree(m: Member, ctx: Ctx, safe: str):
     root, _, height, start = owner.read_tree(ctx.rpc, m.owner, safe)
     mine = m.log.trees(ctx.chain, safe)
     if root is None:
-        raise Refused("no tree is enrolled for you on this Safe: run `enroll`" +
-                      (" (a tree is waiting for its enrolment)" if mine else ""))
+        raise Refused("no key tree is enrolled for you on this Safe: run `enroll`" +
+                      (" (a key tree is waiting for its enrolment)" if mine else ""))
     rec = m.log.tree_by_root(ctx.chain, safe, b2h(root))
     if rec is None and taken_over(m, ctx.chain, safe, root, start):
         raise Refused(TAKEN_OVER.format(root=b2h(root), start=start))
     if rec is None:
         if mine and max(t["start"] for t in mine) > start:
-            raise Refused("your newest tree isn't enrolled yet: run `enroll` to send its certificate")
-        raise Refused(f"the tree enrolled for you (root {b2h(root)}, from nonce {start}) isn't in this signer's key "
-                      "log: it was made by another device or before a restore. This signer never reuses a tree it "
-                      "doesn't have a log for: run `enroll` to certify a fresh tree from the current nonce.")
+            raise Refused("your newest key tree isn't enrolled yet: run `enroll` to send its certificate")
+        raise Refused(f"the key tree enrolled for you (root {b2h(root)}, from nonce {start}) isn't in this signer's "
+                      "key log: it was made by another device or before a restore. This signer never reuses a key "
+                      "tree it doesn't have a log for: run `enroll` to certify a fresh one from the current nonce.")
     if rec["start"] != start or rec["height"] != height:
-        raise Refused("the enrolled tree's start or height differs from the key log: refusing")
+        raise Refused("the enrolled key tree's start or height differs from the key log: refusing")
     return rec
+
+
+def key_words(slot: int, nonce: int = None) -> str:
+    """Which of the member's two one-time keys for a nonce a slot is, in words (D4: the first signs; the second is
+    kept for a replacement or a cancellation at the same nonce)"""
+    at = "this nonce" if nonce is None else f"nonce {nonce}"
+    return f"your first of two keys for {at}" if slot == 0 else f"your second and last key for {at}"
+
+
+def plural(n: int, word: str) -> str:
+    return f"{n:,} {word}" + ("" if n == 1 else "s")
 
 
 def stale_log_check(m: Member, ctx: Ctx, safe: str, rec: dict, at_nonce: list):
@@ -205,9 +228,10 @@ def stale_log_check(m: Member, ctx: Ctx, safe: str, rec: dict, at_nonce: list):
                 continue  # another tree's signature (before a rotation or a restore)
             logged = m.log.used(ctx.chain, safe, rec["root"], k)
             if not logged or logged["hash"] != b2h(h):
-                raise Refused(f"the Transaction Service shows your signature with key {k} (nonce {nonce}, slot {slot}) "
-                              f"for {b2h(h)}, which the key log doesn't record: the key log is stale. Stop using "
-                              "this copy; run `enroll --rotate` to continue with a fresh tree.")
+                raise Refused(f"the Transaction Service shows your signature with one-time key {k}, "
+                              f"{key_words(slot, nonce)} (slot {slot}), for {b2h(h)}, which the key log doesn't "
+                              "record: the key log is stale. Stop using this copy; run `enroll --rotate` to continue "
+                              "with a fresh key tree.")
 
 
 def show_tx(m, ctx, safe, t: SafeTx, h: bytes, safe_nonce, threshold, owners, rec=None, slot=None, k=None,
@@ -227,15 +251,16 @@ def show_tx(m, ctx, safe, t: SafeTx, h: bytes, safe_nonce, threshold, owners, re
     if existing:
         for x in existing:
             if x.get("safeTxHash", "").lower() != b2h(h).lower():
-                out(f"  replaces   {x.get('safeTxHash')} at the same nonce "
-                    f"({len(x.get('confirmations') or [])} confirmations)")
+                out(f"  also at nonce {t.nonce}: {x.get('safeTxHash')} "
+                    f"({plural(len(x.get('confirmations') or []), 'signature')}); only one of them can execute")
     if rec is not None:
         end = rec["start"] + owner.capacity(rec["height"]) - 1
-        role = "approval key" if slot == 0 else "spare key: a replacement or cancellation at this nonce"
-        out(f"Key          tree {rec['root'][:18]}… (nonces {rec['start']}–{end}), slot {slot} ({role}), "
-            f"key index {k}" + (" — already signed this exact transaction, same signature" if reused else ""))
-        if slot == 1 and not reused:
-            out("             this is your last key for this nonce: no third version can be signed")
+        out(f"Key          one-time key {k}: {key_words(slot, t.nonce)} (slot {slot}); key tree {rec['root'][:18]}… "
+            f"(nonces {rec['start']}–{end})")
+        if reused:
+            out("             you already signed this exact transaction with it: the same signature again")
+        elif slot == 1:
+            out("             kept for a replacement or cancellation: no third version can be signed at this nonce")
     return warnings
 
 
@@ -270,13 +295,13 @@ def prepare(m: Member, ctx: Ctx, safe: str, t: SafeTx, expect_hash: bytes = None
 
 
 def sign_and_check(m, ctx, safe, t, rec, slot, h):
-    out("Steps        save key log -> sign -> check -> send")
+    out("Steps        record the key's use -> sign -> check -> send")
     data, slot2, k, h2 = m.sign_safe_tx(ctx.chain, safe, rec, t, slot)
     assert slot2 == slot and h2 == h
-    out(f"  key log saved (fsynced); signed with key {k}; {len(data):,} bytes of signature data")
+    out(f"  key log saved to disk first; signed with one-time key {k} ({len(data):,} bytes of signature data)")
     if not owner.is_valid_signature(ctx.rpc, m.owner, h, data):
         raise Abort("your owner contract refuses the signature (eth_call): not sending")
-    out("  your owner contract accepts it (eth_call isValidSignature)")
+    out("  your owner contract accepts it (isValidSignature, by eth_call)")
     return data
 
 
@@ -331,9 +356,11 @@ def owner_deployed(ctx, m) -> bool:
 
 def cmd_address(args):
     m = open_member(args, lock=False)
-    out(f"owner address    {m.owner}  (your proxy: the same on every chain)")
+    out(f"owner address    {m.owner}  (your owner contract, the same on every chain: list it in the Safe)")
     out(f"stateless key    {b2h(m.key)}")
-    out(f"parameters       D6 WOTS (n = 24, w = 16, target sum 431, keccak); leanSphincs, kept subtree {STATELESS_B}")
+    budget = STATELESS_BUDGET.get(STATELESS_B)
+    out("parameters       one-time keys: WOTS, D6 (n = 24, w = 16, target sum 431, keccak); stateless key: "
+        f"leanSphincs, kept subtree of height {STATELESS_B}" + (f" (about {budget:,} signatures)" if budget else ""))
     for label, (_, addr, _, _) in zip(("verifier", "implementation", "factory"), shared_contracts()):
         out(f"{label:17}{addr}")
     out(f"contract code    pinned at {owner.PINNED_COMMIT}")
@@ -406,7 +433,7 @@ def cmd_enroll(args):
             "predict(bytes32)", ["bytes32"], [m.key])))
         if predicted != m.owner:
             raise Abort(f"the factory predicts {predicted} for your key, not {m.owner}: refusing")
-        out(f"Your owner {m.owner} doesn't exist yet: the factory creates it and enrols its first tree in one "
+        out(f"Your owner {m.owner} doesn't exist yet: the factory creates it and enrols its first key tree in one "
             "transaction (deployAndEnroll)")
     elif abi.dec_word(ctx.rpc.eth_call(m.owner, abi.calldata("KEY()"))) != m.key:
         raise Abort("the contract at your owner address has another KEY: refusing")
@@ -416,38 +443,42 @@ def cmd_enroll(args):
     if deployed:
         root, _, height, start = owner.read_tree(ctx.rpc, m.owner, safe)
     out(f"Safe {safe} on {chain_label(ctx.chain)}: nonce {safe_nonce}, {threshold} of {len(owners)}"
-        + ("" if is_owner else f"; {m.owner} is NOT an owner yet (enrolling first is fine)"))
-    out("Enrolled tree: " + (f"root {b2h(root)}, nonces {start}–{start + owner.capacity(height) - 1}" if root
-                             else "none"))
+        + ("" if is_owner else f"; your owner {m.owner} is NOT one of its owners yet (enrolling first is fine)"))
+    out("Key tree enrolled for you: " + (f"root {b2h(root)}, nonces {start}–{start + owner.capacity(height) - 1}"
+                                         if root else "none"))
     if taken_over(m, ctx.chain, safe, root, start):
         msg = TAKEN_OVER.format(root=b2h(root), start=start)
         if not args.take_over:
-            raise Refused(msg + " Enrolling here would retire that device's tree, and its approvals would stop "
+            raise Refused(msg + " Enrolling here would retire that device's key tree, and its approvals would stop "
                           "counting. Only if that device is gone for good: `enroll --take-over`.")
         out(f"WARNING: {msg}")
-        out("--take-over: a fresh tree here retires that device's tree. If that device still signs, its approvals "
-            "stop counting; if it's in someone else's hands, a fresh tree doesn't help: the team replaces this owner.")
+        out("--take-over: a fresh key tree here retires that device's. If that device still signs, its approvals stop "
+            "counting; if it's in someone else's hands, a fresh key tree doesn't help: the team replaces this owner.")
         confirm_prompt(args, "Take over from the other device?")
     if root is not None and m.log.tree_by_root(ctx.chain, safe, b2h(root)) and not args.rotate:
-        out("Already enrolled with a tree from this signer's key log; nothing to do (--rotate starts a new tree).")
+        out("Already enrolled with a key tree from this signer's key log; nothing to do (--rotate starts a new one).")
         return
     latest = m.active_tree(ctx.chain, safe)
     if latest and not args.rotate and (root is None or latest["start"] > start):
         # made before but its enrolment never landed: send the same tree again
         rec = latest
-        out(f"Resending the certificate of this signer's newest tree (from nonce {rec['start']}), not yet enrolled")
+        out(f"Resending the certificate of this signer's newest key tree (from nonce {rec['start']}), not yet "
+            "enrolled")
     else:
         # start sequences only grow on-chain, and this signer never makes two trees with one start
         new_start = max([safe_nonce] + ([start + 1] if root is not None else [])
                         + [t["start"] + 1 for t in m.log.trees(ctx.chain, safe)])
         if root is not None:
-            out("A fresh tree replaces the enrolled one. Confirmations already given with the old tree for pending "
-                "nonces stop counting; members confirm those again.")
-        confirm_prompt(args, f"Generate a fresh tree of height {args.height} from nonce {new_start}?")
+            out("A fresh key tree replaces the enrolled one. Confirmations already given with the old one for "
+                "pending nonces stop counting; members confirm those again.")
+        if args.height < 1:
+            raise Abort("--height is at least 1: a key tree covers 2^(height-1) nonces")
+        end = new_start + owner.capacity(args.height) - 1
+        confirm_prompt(args, f"Make a fresh key tree for nonces {new_start}–{end} (height {args.height})?")
         t0 = time.time()
         rec = m.new_tree(ctx.chain, safe, new_start, args.height)
-        out(f"New tree: root {rec['root']}, height {rec['height']}, nonces {new_start}–"
-            f"{new_start + owner.capacity(rec['height']) - 1} ({time.time() - t0:.1f} s; key log saved)")
+        out(f"New key tree: root {rec['root']}, nonces {new_start}–{end} (height {rec['height']}; "
+            f"{time.time() - t0:.1f} s; key log saved)")
     # tree seed and certificate digest, offline, for the owner's address (predicted when it doesn't exist yet)
     seed = owner.tree_seed(ctx.chain, m.owner, safe, rec["start"])
     digest = owner.certificate_digest(ctx.chain, m.owner, safe, h2b(rec["root"]), rec["height"], rec["start"])
@@ -455,7 +486,7 @@ def cmd_enroll(args):
         raise Abort("your owner derives another tree seed or certificate digest: refusing to sign")
     t0 = time.time()
     cert = m.certificate(rec)
-    out(f"Certificate: stateless signature of {b2h(digest)} ({len(cert):,} bytes, {time.time() - t0:.1f} s), "
+    out(f"Certificate: your stateless key signed {b2h(digest)} ({len(cert):,} bytes, {time.time() - t0:.1f} s), "
         f"for {'your owner' if deployed else 'your predicted owner'} {m.owner}")
     if deployed:
         target, cd = m.owner, owner.enroll_calldata(safe, h2b(rec["root"]), rec["height"], rec["start"], cert)
@@ -531,36 +562,56 @@ def cmd_propose(args):
         out(f"  POST proposal -> HTTP {status}" + ("" if status in (200, 201) else f": {str(resp)[:400]}"))
         if status not in (200, 201):
             raise Abort("the service didn't accept the proposal (your key use stays recorded)")
-    out(f"Proposed {b2h(h)} at nonce {t.nonce} (slot {slot})")
+    out(f"Proposed {b2h(h)} at nonce {t.nonce}, signed with {key_words(slot)}")
 
 
-def _load_proposal(ctx, args):
-    """(safe, SafeTx, hash, service record or file doc)"""
+def safe_tx_hash_arg(args):
+    """The SafeTx hash given after the command or with --safe-tx-hash (if both, the same one), checked; None with
+    --file and no hash. Checked before anything is read from the chain or the service."""
+    given = [x for x in (args.hash, args.safe_tx_hash) if x]
+    if len({x.lower() for x in given}) > 1:
+        raise Abort(f"two different SafeTx hashes: {args.hash} and --safe-tx-hash {args.safe_tx_hash}. Give one.")
+    if not given:
+        if args.file:
+            return None
+        raise Abort(f"which proposal? Give its SafeTx hash, as in `{args.cmd} --chain {args.chain or 'sepolia'} "
+                    "0x…` (`queue` lists them), or --file with a proposal file")
+    try:
+        h = h2b(given[0])
+    except ValueError:
+        h = b""
+    if len(h) != 32:
+        raise Abort(f"{given[0]} isn't a whole SafeTx hash (0x and 64 hex digits): `queue` lists them in full")
+    return h
+
+
+def _load_proposal(ctx, args, want):
+    """(safe, SafeTx, hash, service record or file doc) for the hash `want` (safe_tx_hash_arg) or args.file"""
     if args.file:
         doc = load_file(args.file)
         if doc["chain"] != ctx.chain:
-            raise Abort(f"{args.file} is for chain {doc['chain']}")
+            raise Abort(f"{args.file} is for {chain_label(doc['chain'])}, not {chain_label(ctx.chain)}")
+        if want is not None and h2b(doc["safeTxHash"]) != want:
+            raise Abort(f"{args.file} holds the proposal {doc['safeTxHash']}, not {b2h(want)}")
         t = SafeTx.from_json(doc["safeTx"])
         return abi.address(doc["safe"]), t, h2b(doc["safeTxHash"]), doc
-    if not args.safe_tx_hash:
-        raise Abort("--safe-tx-hash or --file is required")
     if not ctx.service:
-        raise Abort("no service for this chain: use --file")
-    rec = ctx.service.transaction(args.safe_tx_hash)
+        raise Abort("no Transaction Service for this chain: use --file with a proposal file")
+    rec = ctx.service.transaction(b2h(want))
     t = SafeTx.from_json(rec)
-    h = h2b(args.safe_tx_hash)
-    return abi.address(rec["safe"]), t, h, rec
+    return abi.address(rec["safe"]), t, want, rec
 
 
 def cmd_confirm(args):
+    want = safe_tx_hash_arg(args)
     m = open_member(args)
     ctx = Ctx(args)
-    safe, t, h, src = _load_proposal(ctx, args)
+    safe, t, h, src = _load_proposal(ctx, args, want)
     if t.hash(ctx.chain, safe) != h:
         raise Refused(f"the proposal's fields hash to {b2h(t.hash(ctx.chain, safe))}, not {b2h(h)}: refusing")
     have = src.get("confirmations") or src.get("signatures") or []
     out(f"Proposal {b2h(h)}" + (f", proposed by {src.get('proposer')}" if src.get("proposer") else "")
-        + f", {len(have)} signature(s) so far: " + ", ".join(c.get("owner", "?") for c in have))
+        + f", {plural(len(have), 'signature')} so far: " + ", ".join(c.get("owner", "?") for c in have))
     safe, h, rec, slot = prepare(m, ctx, safe, t, expect_hash=h)
     confirm_prompt(args, "Sign this transaction?")
     data = sign_and_check(m, ctx, safe, t, rec, slot, h)
@@ -574,7 +625,7 @@ def cmd_confirm(args):
         out(f"  POST confirmation -> HTTP {status}" + ("" if status in (200, 201) else f": {str(resp)[:400]}"))
         if status not in (200, 201):
             raise Abort("the service didn't accept the confirmation (your key use stays recorded)")
-    out(f"Confirmed {b2h(h)} at nonce {t.nonce} (slot {slot})")
+    out(f"Confirmed {b2h(h)} at nonce {t.nonce}, signed with {key_words(slot)}")
 
 
 def cmd_queue(args):
@@ -618,14 +669,17 @@ def cmd_queue(args):
                     continue
                 r = m.log.used(ctx.chain, safe, rec["root"], k)
                 used[slot] = r["hash"] if r else None
-            state = ", ".join(f"slot {s}: " + ("unused" if v is None else "this tx" if v.lower() == b2h(h).lower()
-                                                else "another tx") for s, v in used.items())
-            out(f"    you: {'signed' if mine else 'not signed'}; keys at this nonce: {state}")
+            state = ", ".join(("first " if s == 0 else "second ") + (
+                "unused" if v is None else "signed this one" if v.lower() == b2h(h).lower() else
+                "signed another version") for s, v in used.items())
+            out(f"    you: {'signed' if mine else 'not signed'}; "
+                + (f"your two keys for this nonce: {state}" if used else "this nonce is outside your key tree"))
 
 
 def cmd_execute(args):
+    want = safe_tx_hash_arg(args)
     ctx = Ctx(args)
-    safe, t, h, src = _load_proposal(ctx, args)
+    safe, t, h, src = _load_proposal(ctx, args, want)
     if t.hash(ctx.chain, safe) != h:
         raise Refused("the proposal's fields don't hash to its SafeTx hash: refusing")
     safe_nonce, threshold, owners = safe_state(ctx.rpc, safe)
@@ -671,19 +725,22 @@ def cmd_execute(args):
 
 
 def cmd_status(args):
+    from . import cli_recovery
+    if cli_recovery.pending_move_status(args):  # a new device waiting for a move's bundle: no key log to open yet
+        return
     m = open_member(args, lock=False)
     out(f"Signer {m.home}")
     out(f"  owner {m.owner}, stateless key {b2h(m.key)}")
-    from . import cli_recovery
     for line in cli_recovery.status_lines(m):
         out(line)
     ident = m.log.identity()
     if ident and ident["t"] == "restore":
-        out(f"  restored from the seed on {ident['at']}: trees of the old device are never used")
+        out(f"  restored from the recovery phrase on {ident['at']}: the old device's key trees are never used")
     certs = len(m.log.certs())
     certs += sum(1 for r in m.log.records if r["t"] == "msg")  # message signatures (bridge.py)
     budget = STATELESS_BUDGET.get(STATELESS_B)
-    out(f"  stateless signatures {certs}" + (f" of a {budget:,} budget (kept subtree {STATELESS_B})" if budget else ""))
+    out(f"  stateless key: {plural(certs, 'signature')} so far (key tree certificates, messages)"
+        + (f", of about {budget:,} it can safely make" if budget else ""))
     for w in m.log.warnings:
         out(f"  WARNING: {w}")
     ctx = None
@@ -693,7 +750,7 @@ def cmd_status(args):
     for r in m.log.all_trees():
         groups.setdefault((r["chain"], r["safe"]), []).append(r)
     if not groups:
-        out("  no trees yet: run `enroll` for a Safe")
+        out("  no key trees yet: run `enroll --chain CHAIN --safe SAFE` for each Safe")
     for (chain, safe), trees in groups.items():
         if args.safe and safe.lower() != args.safe.lower():
             continue
@@ -719,25 +776,31 @@ def cmd_status(args):
                 elif onchain[0] is None:
                     state = " not enrolled yet"
                 elif taken_over(m, chain, safe, onchain[0], onchain[3]):
-                    state = " REPLACED (another device enrolled a newer tree)"
+                    state = " REPLACED (another device enrolled a newer key tree)"
                 else:
-                    state = " not enrolled (the Safe has another tree for this owner)"
+                    state = " not enrolled (the Safe has another key tree for this owner)"
             if m.log.retired(r):
-                state += " RETIRED HERE (never signs again: `enroll` certifies a fresh tree)"
-            out(f"  tree {r['root'][:18]}… height {r['height']}, nonces {r['start']}–{r['start'] + cap - 1}{state}: "
-                f"{len(signs)} keys used ({spare} spare), last nonce signed {'none' if last is None else last}")
+                state += " RETIRED HERE (never signs again: `enroll` certifies a fresh key tree)"
+            used = "no one-time key used yet"
+            if signs:
+                used = (f"{plural(len(signs), 'one-time key')} used"
+                        + (f" ({spare} for a replacement or cancellation)" if spare else "")
+                        + f", last at nonce {last}")
+            out(f"  key tree {r['root'][:18]}… for nonces {r['start']}–{r['start'] + cap - 1} (height {r['height']})"
+                f"{state}: {used}")
             if safe_nonce is not None and state == " ENROLLED":
                 left = r["start"] + cap - max(safe_nonce, r["start"])
                 used_pct = 100 * (cap - left) / cap
-                out(f"    Safe nonce {safe_nonce}: {left} of {cap} nonces left ({used_pct:.0f}% used)"
-                    + ("  -> rotate soon: `enroll --rotate`" if used_pct >= 80 else ""))
+                out(f"    the Safe is at nonce {safe_nonce}: {left} of {cap} nonces left in this key tree "
+                    f"({used_pct:.0f}% used)" + ("  -> rotate soon: `enroll --rotate`" if used_pct >= 80 else ""))
         if onchain is not None and taken_over(m, chain, safe, onchain[0], onchain[3]):
             out("  WARNING: " + TAKEN_OVER.format(root=b2h(onchain[0])[:18] + "…", start=onchain[3]) + " If that "
-                "device is gone for good, `enroll --take-over` certifies a fresh tree here.")
+                "device is gone for good, `enroll --take-over` certifies a fresh key tree here.")
         elif onchain is not None and onchain[0] is not None and not m.log.tree_by_root(chain, safe, b2h(onchain[0])):
-            out(f"  WARNING: the enrolled tree {b2h(onchain[0])[:18]}… isn't in this key log: another device signs for "
-                "this owner (after a move or a restore). If that device is your signer now, stop using this one. If "
-                "this one is, `enroll` certifies a fresh tree here, and the other device's approvals stop counting.")
+            out(f"  WARNING: the enrolled key tree {b2h(onchain[0])[:18]}… isn't in this key log: another device signs "
+                "for this owner (after a move or a restore). If that device is your signer now, stop using this one. "
+                "If this one is, `enroll` certifies a fresh key tree here, and the other device's approvals stop "
+                "counting.")
 
 
 # --- argument parsing ---
@@ -767,17 +830,22 @@ def build_parser():
             sp.add_argument("--service", help="Transaction Service base URL (default: Safe's hosted one)")
             sp.add_argument("--offline", action="store_true", help="no Transaction Service: proposal files only")
 
+    def safe_tx_hash_opts(sp):
+        sp.add_argument("hash", nargs="?", metavar="SAFE_TX_HASH", help="the proposal's SafeTx hash (`queue` lists them)")
+        sp.add_argument("--safe-tx-hash", metavar="HASH", help="the same, as an option")
+        sp.add_argument("--file", help="a proposal file instead (peer to peer)")
+
     from . import cli_recovery  # init, backup, passphrase, move, device
     cli_recovery.add_parsers(sub, chain_opts, COMMANDS)
-    sp = sub.add_parser("address", help="owner address and stateless key")
+    sp = sub.add_parser("address", help="your owner address and stateless key")
     chain_opts(sp, service=False)
     safe_help = "the Safe's address"
-    sp = sub.add_parser("enroll", help="certify an operation tree for a Safe and send enroll")
+    sp = sub.add_parser("enroll", help="certify a key tree for a Safe and send enroll")
     chain_opts(sp, service=False)
     sp.add_argument("--safe", required=True, help=safe_help)
     sp.add_argument("--height", type=int, default=DEFAULT_HEIGHT,
-                    help=f"tree height: 2^(height-1) nonces (default {DEFAULT_HEIGHT})")
-    sp.add_argument("--rotate", action="store_true", help="replace the enrolled tree with a fresh one")
+                    help=f"key tree height: 2^(height-1) nonces (default {DEFAULT_HEIGHT})")
+    sp.add_argument("--rotate", action="store_true", help="replace the enrolled key tree with a fresh one")
     sp.add_argument("--take-over", action="store_true",
                     help="enroll although another device has taken over this owner on this Safe (only if that device "
                          "is gone for good)")
@@ -797,19 +865,17 @@ def build_parser():
     sp.add_argument("--out", help="also write a proposal file for peer-to-peer signing")
     sp = sub.add_parser("confirm", help="sign a proposed Safe transaction")
     chain_opts(sp)
-    sp.add_argument("--safe-tx-hash", help="the proposal's SafeTx hash (`queue` lists them)")
-    sp.add_argument("--file", help="proposal file (peer to peer)")
+    safe_tx_hash_opts(sp)
     sp = sub.add_parser("queue", help="pending transactions, decoded")
     chain_opts(sp)
     sp.add_argument("--safe", required=True, help=safe_help)
     sp.add_argument("--file", help="proposal file (peer to peer)")
     sp = sub.add_parser("execute", help="send execTransaction with the collected signatures")
     chain_opts(sp)
-    sp.add_argument("--safe-tx-hash", help="the proposal's SafeTx hash (`queue` lists them)")
-    sp.add_argument("--file", help="proposal file (peer to peer)")
+    safe_tx_hash_opts(sp)
     from .bridge import add_commands
     add_commands(sub, chain_opts)  # connect, message
-    sp = sub.add_parser("status", help="key usage and tree health")
+    sp = sub.add_parser("status", help="key trees, one-time keys left, device and backup")
     chain_opts(sp, service=False)
     sp.add_argument("--safe", help="only this Safe")
     return p
@@ -829,6 +895,12 @@ def main(argv=None):
     except (Abort, LogCorrupt, RpcError, ServiceError, ValueError) as e:
         out(f"error: {e}")
         return 1
+    except OSError as e:  # a file named on the command line: missing or unreadable
+        out(f"error: {e.strerror or e}" + (f": {e.filename}" if e.filename else ""))
+        return 1
+    except KeyboardInterrupt:
+        out("\ninterrupted")
+        return 130
     finally:
         while _members:
             _members.pop().close()

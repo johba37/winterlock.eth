@@ -1,6 +1,7 @@
 """The signer's commands for backup, recovery and devices (cli.py registers them):
 
-  init        a new signer: shows the recovery phrase once, checks three of its words, asks for a passphrase
+  init        a new signer: shows the recovery phrase once, hides it (on a terminal), checks three of its words
+              against the written copy, asks for a passphrase
   init --restore   a signer from its phrase on a new device; asks what happened to the old one:
                    it still works -> a move (no fee); lost -> fresh trees (a fee per Safe and chain);
                    someone else may have it -> no restore: the team replaces this member
@@ -29,9 +30,9 @@ from .service import ServiceError
 ENROLL_COST = ("about 0.25M gas (0.39M with Glamsterdam's pricing, as on Sepolia) and 5.9 KB of calldata (a few "
                "dollars on Ethereum, about a cent on an L2)")
 CHECK_EVERY_DAYS = 90
-HOW = {"init": "created here", "restore": "restored from the recovery phrase, with fresh trees",
+HOW = {"init": "created here", "restore": "restored from the recovery phrase, with fresh key trees",
        "move-in": "moved in from another device", "adopt": "an adopted copy", "upgrade": "bound on first use",
-       "fresh-trees": "fresh trees after a suspected copy"}
+       "fresh-trees": "fresh key trees after a suspected copy"}
 
 
 def ask(prompt: str, secret: bool = False) -> str:
@@ -56,11 +57,18 @@ def home_of(args) -> str:
     return args.home or default_home()
 
 
-def clear_screen():
-    if sys.stdout.isatty():
-        sys.stdout.write("\033[H\033[2J\033[3J")
-        sys.stdout.flush()
-        out("(screen and scrollback cleared)")
+CLEAR = "\033[H\033[2J\033[3J"  # cursor home, clear the screen, clear the scrollback
+
+
+def clear_screen(note="(screen and scrollback cleared)") -> bool:
+    """Clears the terminal and its scrollback; False (and nothing done) when the output isn't a terminal"""
+    if not sys.stdout.isatty():
+        return False
+    sys.stdout.write(CLEAR)
+    sys.stdout.flush()
+    if note:
+        out(note)
+    return True
 
 
 # --- the phrase ---
@@ -99,18 +107,41 @@ def show_phrase(words):
     out("")
 
 
-def backup_check(words, positions=None):
-    """Asks for a few words at random positions until they match. There is no skip; giving up saves nothing."""
+def hide_phrase() -> bool:
+    """Takes the phrase off the screen before the check, since words copied from the screen prove nothing about the
+    written copy: on a terminal, once the member says it's written down, the screen and scrollback are cleared"""
+    if not sys.stdout.isatty():
+        out("(The output isn't a terminal, so the phrase can't be hidden from it. Type the words from your written "
+            "copy, not from the screen.)")
+        return False
+    ask("When the 24 words are written down, press Enter to hide them: ")
+    return clear_screen(note=None)
+
+
+def _numbers(positions) -> str:
+    ps = [f"#{p}" for p in positions]
+    return ps[0] if len(ps) == 1 else ", ".join(ps[:-1]) + " and " + ps[-1]
+
+
+def backup_check(words, shown=True, positions=None):
+    """Asks for a few words at random positions until they match, with the phrase hidden first if it is `shown`.
+    There is no skip; giving up saves nothing."""
     positions = positions or phrase.check_positions()
-    out(f"Backup check: from your written copy, type words {', '.join(f'#{p}' for p in positions)}.")
     for attempt in range(5):
+        if shown or attempt == 0:
+            if shown and hide_phrase():
+                out("The phrase is now hidden (screen and scrollback cleared).")
+            shown = False
+            out(f"Backup check: from your written copy, type words {_numbers(positions)}.")
         wrong = [p for p in positions if not phrase.matches(words, p, ask(f"  word #{p}: "))]
         if not wrong:
             out("  Correct.")
             return
-        out(f"  Word {', '.join(f'#{p}' for p in wrong)} doesn't match. Check your copy.")
+        out(f"  Word {_numbers(wrong)} doesn't match. Check your copy." if len(wrong) == 1 else
+            f"  Words {_numbers(wrong)} don't match. Check your copy.")
         if ask("  Show the phrase again? [y/N] ").strip().lower() in ("y", "yes"):
             show_phrase(words)
+            shown = True
     raise Abort("the backup check didn't pass: nothing was saved")
 
 
@@ -155,15 +186,15 @@ def cmd_init(args):
         seed = os.urandom(32)
         words = phrase.to_phrase(seed)
         show_phrase(words)
-        backup_check(words)
-        clear_screen()
+        backup_check(words)  # hides the phrase first
+        clear_screen()  # the words typed for the check
         pw = new_passphrase()
         t0 = time.time()
         m = Member.init(home, passphrase=pw, backup="init", new_seed=seed)
     out(f"Created a signer in {m.home} ({time.time() - t0:.1f} s)")
     out(f"  owner address  {m.owner}  (the same on every chain)")
-    out(f"  stateless key  {b2h(m.key)}  (leanSphincs, kept subtree {member.STATELESS_B})")
-    out("  Your recovery phrase restores it on a new device; `move` takes it there with its trees, without a fee.")
+    out(f"  stateless key  {b2h(m.key)}  (leanSphincs: it certifies your key trees and signs messages)")
+    out("  Your recovery phrase restores it on a new device; `move` takes it there with its key trees, without a fee.")
     out("  Check the phrase now and then with `backup --check`.")
     m.close()
 
@@ -210,14 +241,14 @@ def restore(args, home):
     out(f"Restored a signer in {m.home} ({time.time() - t0:.1f} s)")
     out(f"  owner address  {m.owner}  (the same as before)")
     out(f"  stateless key  {b2h(m.key)}")
-    out("  The key log starts empty: this signer never uses the trees of the old device. Run `enroll` for each")
-    out("  Safe to certify a fresh tree from the current nonce; the old device's pending approvals stop counting.")
+    out("  The key log starts empty: this signer never uses the old device's key trees. Run `enroll` for each")
+    out("  Safe to certify a fresh key tree from the current nonce; the old device's pending approvals stop counting.")
     out("What it costs and changes:")
-    out("  - A fresh tree per Safe and chain, certified by your stateless key: one `enroll` transaction each,")
+    out("  - A fresh key tree per Safe and chain, certified by your stateless key: one `enroll` transaction each,")
     out(f"    {ENROLL_COST}. Anyone may send it.")
-    out("  - Once your fresh tree is enrolled on a Safe, every approval your old device gave there for a transaction")
-    out("    that hasn't executed stops counting. Approve those again with this signer.")
-    out("  - If the old device turns up, don't use it: its trees are retired once the fresh ones are enrolled.")
+    out("  - Once your fresh key tree is enrolled on a Safe, every approval your old device gave there for a")
+    out("    transaction that hasn't executed stops counting. Approve those again with this signer.")
+    out("  - If the old device turns up, don't use it: its key trees are retired once the fresh ones are enrolled.")
     out("Tell your team:")
     out(f'  "I lost my Winterlock signer and restored it from my recovery phrase (owner {m.owner}).')
     out("  My approvals of pending transactions stop counting once my new key tree is enrolled; I'll approve them")
@@ -249,9 +280,9 @@ def lost_report(m, ctx, safes):
         out(f"Safe {safe} on {chain_label(ctx.chain)}: {threshold} of {len(owners)}, next nonce {safe_nonce}")
         root, _, height, start = owner.read_tree(ctx.rpc, m.owner, safe) if deployed else (None, 0, 0, 0)
         if root is None:
-            out("  no tree enrolled for you yet")
+            out("  no key tree enrolled for you yet")
         else:
-            out(f"  the enrolled tree is the old device's (nonces {start}–{start + owner.capacity(height) - 1}): "
+            out(f"  the enrolled key tree is the old device's (nonces {start}–{start + owner.capacity(height) - 1}): "
                 f"`enroll --chain {ctx.chain} --safe {safe}` certifies a fresh one")
         if not ctx.service:
             continue
@@ -263,7 +294,7 @@ def lost_report(m, ctx, safes):
         for tx in txs:
             if any((c.get("owner") or "").lower() == m.owner.lower() for c in tx.get("confirmations") or []):
                 out(f"  nonce {tx['nonce']} {tx.get('safeTxHash')}: approved by your old device; stops counting once "
-                    "your fresh tree is enrolled: approve it again")
+                    "your fresh key tree is enrolled: approve it again")
 
 
 # --- backup and passphrase ---
@@ -274,8 +305,8 @@ def cmd_backup(args):
     words = phrase.to_phrase(m.seed())
     if not args.check:
         show_phrase(words)
-    backup_check(words)
-    clear_screen()
+    backup_check(words, shown=not args.check)
+    clear_screen()  # the words typed for the check
     m.log.append({"t": "backup", "how": "check" if args.check else "shown"})
     out("Recovery phrase checked; `status` shows when.")
 
@@ -301,13 +332,23 @@ def start_move(args, home, seed):
     out("")
     out(f"    {req['request']}")
     out("")
-    out("On your OLD device, run:")
-    out(f"    winterlock-signer move export --code {req['request']} --out winterlock-move.json --chain CHAIN")
-    out("It locks the old device for good and writes the bundle. Bring the file here, then run:")
-    out("    winterlock-signer move import winterlock-move.json --chain CHAIN")
+    for line in move_steps(req["request"]):
+        out(line)
     out("With --chain (sepolia, for example), each step first checks the key log against that chain and its")
     out("Transaction Service.")
-    out("Changed your mind (or the old device doesn't work after all)? `move cancel`, then `init --restore --lost`.")
+    out(CHANGED_MIND)
+
+
+CHANGED_MIND = ("Changed your mind (or the old device doesn't work after all)? `move cancel`, then "
+                "`init --restore --lost`.")
+
+
+def move_steps(code, indent=""):
+    """What to run on each device to finish the move a new device waits for"""
+    return [f"{indent}On your OLD device, run:",
+            f"{indent}    winterlock-signer move export --code {code} --out winterlock-move.json --chain CHAIN",
+            f"{indent}It locks the old device for good and writes the bundle. Bring the file here, then run:",
+            f"{indent}    winterlock-signer move import winterlock-move.json --chain CHAIN"]
 
 
 def check_online(m, ctx, purpose):
@@ -317,7 +358,7 @@ def check_online(m, ctx, purpose):
     out(f"Checking the key log against {chain_label(ctx.chain)}"
         + (" and its Transaction Service" if ctx.service else " (no Transaction Service)") + ":")
     if not safes:
-        out("  no trees on this chain")
+        out("  no key trees on this chain")
         return
     deployed = owner_deployed(ctx, m)
     for safe in safes:
@@ -325,16 +366,16 @@ def check_online(m, ctx, purpose):
         root, _, height, start = owner.read_tree(ctx.rpc, m.owner, safe) if deployed else (None, 0, 0, 0)
         rec = m.log.tree_by_root(ctx.chain, safe, b2h(root)) if root else None
         if root is None:
-            out(f"  Safe {safe}: nonce {safe_nonce}; no tree enrolled yet")
+            out(f"  Safe {safe}: nonce {safe_nonce}; no key tree enrolled yet")
             continue
         if rec is None:
-            out(f"  Safe {safe}: nonce {safe_nonce}; the enrolled tree {b2h(root)[:18]}… isn't in this key log (a "
+            out(f"  Safe {safe}: nonce {safe_nonce}; the enrolled key tree {b2h(root)[:18]}… isn't in this key log (a "
                 "later enrolment by another device or a restore): no signing there until `enroll` certifies a fresh "
-                "tree")
+                "one")
             continue
         pend = [s for s in m.log.signs(ctx.chain, safe, rec["root"]) if s["nonce"] >= safe_nonce]
-        out(f"  Safe {safe}: nonce {safe_nonce}; the enrolled tree is in the log, with {len(pend)} approval(s) at "
-            "pending nonces")
+        out(f"  Safe {safe}: nonce {safe_nonce}; the enrolled key tree is in the log, with {len(pend)} approval(s) "
+            "at pending nonces")
         if not ctx.service:
             continue
         try:
@@ -347,7 +388,7 @@ def check_online(m, ctx, purpose):
         except Refused as e:
             if purpose == "import":
                 raise Refused(f"not imported: {e} So the bundle is stale: a copy of the old log signed after it was "
-                              "made. Run `move cancel`, then `init --restore --lost` (fresh trees), and tell your "
+                              "made. Run `move cancel`, then `init --restore --lost` (fresh key trees), and tell your "
                               "team that another copy of your signer may be active.") from None
             raise Refused(f"not exported: {e} Another copy of this signer is active somewhere; handing this log on "
                           "would carry the problem along. Use `device fresh-trees` and `enroll` instead.") from None
@@ -362,9 +403,9 @@ def move_export(args):
     if mo is None and st != "active":
         raise Refused(why)
     trees = [t for t in m.log.all_trees() if not m.log.retired(t)]
-    out(f"Signer {m.home}: owner {m.owner}; {len(trees)} live tree(s), {len(m.log.signs())} key(s) used")
+    out(f"Signer {m.home}: owner {m.owner}; {len(trees)} live key tree(s), {len(m.log.signs())} one-time key(s) used")
     for t in trees:
-        out(f"  {chain_label(t['chain'])}, Safe {t['safe']}: tree {t['root'][:18]}… from nonce {t['start']}")
+        out(f"  {chain_label(t['chain'])}, Safe {t['safe']}: key tree {t['root'][:18]}… from nonce {t['start']}")
     if args.chain and (args.rpc or os.environ.get("WINTERLOCK_RPC")):
         check_online(m, Ctx(args), "export")
     elif mo is None:
@@ -404,8 +445,8 @@ def move_import(args):
     age = time.time() - calendar.timegm(time.strptime(payload["exported"], "%Y-%m-%dT%H:%M:%SZ"))
     trees = [t for t in records if t["t"] == "tree"]
     out(f"Bundle for owner {payload['owner']}, from device {payload.get('device')}, exported {payload['exported']}: "
-        f"{len(records)} key log records, {len(trees)} tree(s), {sum(1 for r in records if r['t'] == 'sign')} "
-        "key(s) used")
+        f"{len(records)} key log records, {len(trees)} key tree(s), {sum(1 for r in records if r['t'] == 'sign')} "
+        "one-time key(s) used")
     staged = move.stage(home, records)
     try:
         if args.chain and (args.rpc or os.environ.get("WINTERLOCK_RPC")):
@@ -428,7 +469,7 @@ def move_import(args):
             os.remove(args.bundle)
         except OSError:
             pass
-    out(f"Moved in: this device now signs for owner {m.owner} with the same trees, without any fee"
+    out(f"Moved in: this device now signs for owner {m.owner} with the same key trees, without any fee"
         f" (device {m.device()['id']}, move {mo['move']}).")
     out("Every approval still checks the Transaction Service for signatures this log doesn't know.")
 
@@ -470,15 +511,42 @@ def cmd_device(args):
         rec = m.add_device("adopt")
         out(f"Adopted: this key log is now device {rec['id']} on this machine.")
     else:
-        out("Fresh trees: every tree in this key log is retired, so a stale or copied log can't reuse a key. Each Safe")
-        out(f"then needs `enroll` for a fresh tree ({ENROLL_COST}); approvals given with the old trees for pending")
-        out("transactions stop counting once the fresh tree is enrolled, and are given again.")
-        confirm(args, "Retire every tree in this key log?")
+        out("Fresh key trees: every key tree in this key log is retired, so a stale or copied log can't reuse a")
+        out(f"one-time key. Each Safe then needs `enroll` for a fresh key tree ({ENROLL_COST}); approvals given")
+        out("with the old key trees for pending transactions stop counting once the fresh one is enrolled, and are")
+        out("given again.")
+        confirm(args, "Retire every key tree in this key log?")
         rec = m.add_device("fresh-trees", retire=True)
-        out(f"Retired the trees; this key log is now device {rec['id']}. Run `enroll` for each Safe.")
+        out(f"Retired the key trees; this key log is now device {rec['id']}. Run `enroll` for each Safe.")
 
 
 # --- status ---
+
+def pending_move_status(args) -> bool:
+    """`status` on a new device that waits for a move's bundle (it has a seed and a move request, but no key log to
+    open yet): what it waits for and what to run next. False if the directory waits for nothing."""
+    home = home_of(args)
+    req = move.pending(home)
+    if not req:
+        return False
+    out(f"Signer {home}")
+    out(f"  owner {req['owner']}, stateless key {req['key']}")
+    seed_line = f"  seed file {seedfile.describe(os.path.join(home, 'seed'))}"
+    if os.path.exists(os.path.join(home, "keylog.jsonl")):
+        out(f"  device MOVING IN: the import of move {req['request']} stopped half way. Run `move import` again "
+            "with the same bundle to finish it.")
+        out(seed_line)
+        return True
+    out(f"  device WAITING FOR A MOVE: request {req['request']}, started {req['created']}; it signs nothing until "
+        "the bundle from your old device is imported")
+    for p in move.request_problems(home, req):
+        out(f"  WARNING: {p}")
+    out(seed_line)
+    for line in move_steps(req["request"], indent="  "):
+        out(line)
+    out("  " + CHANGED_MIND)
+    return True
+
 
 def status_lines(m) -> list:
     lines = []
@@ -516,7 +584,7 @@ def add_parsers(sub, chain_opts, commands):
                     help="restore from the recovery phrase: typed at a prompt, or read from FILE (- for stdin); "
                          "a 64-digit hex seed backup works too")
     sp.add_argument("--move", action="store_true", help="with --restore: the old device works; start a move")
-    sp.add_argument("--lost", action="store_true", help="with --restore: the old device is lost; fresh trees")
+    sp.add_argument("--lost", action="store_true", help="with --restore: the old device is lost; fresh key trees")
     sp.add_argument("--safe", action="append", help="with --restore --lost and --chain: a Safe to report on")
     sp.add_argument("--insecure-plaintext-seed", action="store_true",
                     help="TESTS ONLY: no passphrase, no phrase shown or checked")
@@ -546,6 +614,6 @@ def add_parsers(sub, chain_opts, commands):
     s.add_argument("--keep-bundle", action="store_true", help="don't delete the bundle file after the import")
     msub.add_parser("cancel", help="new device: drop a pending move")
     commands["move"] = cmd_move
-    sp = sub.add_parser("device", help="adopt, or start fresh trees on, a key log that looks like a copy")
+    sp = sub.add_parser("device", help="adopt, or start fresh key trees on, a key log that looks like a copy")
     sp.add_argument("action", choices=("adopt", "fresh-trees"))
     commands["device"] = cmd_device

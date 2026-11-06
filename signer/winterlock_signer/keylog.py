@@ -193,8 +193,8 @@ class KeyLog:
         for slot in range(SLOTS):
             if slot not in by_slot:
                 return slot, False
-        raise Refused(f"both keys for nonce {nonce} are used (slot 0 signed {by_slot[0]}, slot 1 signed "
-                      f"{by_slot[1]}): this member can't sign a third version at nonce {nonce}")
+        raise Refused(f"both keys for nonce {nonce} are used (your first signed {by_slot[0]}, your second "
+                      f"{by_slot[1]}): you can't sign a third version at nonce {nonce}")
 
     def record_sign(self, chain: int, safe: str, tree: dict, nonce: int, slot: int, hash_hex: str) -> dict:
         """Checks the key and records its use, fsynced, before the caller computes or releases the signature"""
@@ -203,8 +203,8 @@ class KeyLog:
         prior = self.used(chain, safe, tree["root"], k)
         if prior:
             if prior["hash"] != hash_hex:
-                raise Refused(f"key {k} (nonce {nonce}, slot {slot}) already signed {prior['hash']}; signing "
-                              f"{hash_hex} with it would reuse a one-time key")
+                raise Refused(f"one-time key {k} (nonce {nonce}, slot {slot}) already signed {prior['hash']}; signing "
+                              f"{hash_hex} with it would reuse it")
             return prior
         return self.append({"t": "sign", "chain": chain, "safe": safe, "root": tree["root"], "start": tree["start"],
                             "nonce": nonce, "slot": slot, "key": k, "hash": hash_hex})
