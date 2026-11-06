@@ -4,9 +4,9 @@
 seed. Steps (each runs once; a finished step is skipped on a re-run):
   init     two new signers (new random seeds) in DIR/m1 and DIR/m2
   safe     create the Safe (owners: the two members' predicted proxy owners) and fund it with 0.00001 ETH
-  enroll   member 1 with --deploy: the implementation and factory if the chain lacks them (once per chain: about
-           11.6M and 2.7M gas under Glamsterdam), then each member's owner and first tree of height 6 in one
-           deployAndEnroll (about 0.61M gas under Glamsterdam)
+  enroll   member 1 with --deploy: the WOTS verifier, the v2 implementation and the factory if the chain lacks them
+           (once per chain: about 4.1M, 13.0M and 2.7M gas under Glamsterdam, estimates), then each member's owner
+           and first tree of height 6 in one deployAndEnroll (v1: about 0.61M gas under Glamsterdam)
   index    wait until the service has indexed the Safe (GET only)
   propose  member 1 proposes sending 1e11 wei to the gas account (one POST)
   confirm  member 2 confirms it (one POST)

@@ -5,9 +5,9 @@ process) through a stand-in relay (tests/mock_relay.py), as a scripted dapp (tes
   a transaction   eth_sendTransaction -> a SafeTx proposed to the stand-in Transaction Service, signed by member 1;
                   the dapp gets its SafeTx hash; member 2 confirms, member 3 executes; the dapp's receipt lookup of the
                   SafeTx hash returns the execution. A two-call batch (wallet_sendCalls) through MultiSendCallOnly.
-  sign-in         personal_sign of a sign-in with Ethereum message: member 1 signs with its stateless key and writes
+  sign-in         personal_sign of a sign-in with Ethereum message: member 1 signs with its member key and writes
                   a message file, member 2 signs the file (`message`), and the dapp gets the combined 2-of-3 signature
-                  (11,668 bytes), which the Safe's isValidSignature accepts on-chain.
+                  (11,670 bytes), which the Safe's isValidSignature accepts on-chain.
   permit          eth_signTypedData_v4 of a Permit2 PermitSingle: an approval through SignMessageLib is proposed,
                   confirmed and executed; the dapp gets 0x, and the Safe's isValidSignature accepts the empty signature.
   refusals        a bare hash, eth_sign, a validator's enable data, the Safe's own typed data, a self-call that adds an
@@ -244,14 +244,14 @@ class WalletConnectEndToEnd(unittest.TestCase):
         t.join(120)
         self.assertNotIn("error", box, str(box.get("error")))
         sig = h2b(box["result"])
-        self.assertEqual(len(sig), 2 * (65 + 32 + 1 + 20 + 32 + owner.STATELESS_SIG_LEN))  # 11,668 bytes
+        self.assertEqual(len(sig), 2 * (65 + 32 + owner.MESSAGE_LEN))  # 11,670 bytes
         self.assertTrue(self.is_valid(app_hash, sig))
         self.assertFalse(self.is_valid(personal_hash(b"another message"), sig))
         signers = sorted(abi.checksum(sig[i * 65 + 12: i * 65 + 32]) for i in range(2))
         self.assertEqual(signers, sorted([self.owners["m1"], self.owners["m2"]]))
         # the same request again is answered from the collected signatures, without signing again
         self.assertEqual(self.request("personal_sign", [b2h(text.encode()), self.safe]), box["result"])
-        self.assertIn("stateless key: 2 signatures so far", self.cmd("m2", "status").replace("\n", " "))
+        self.assertIn("member key: 2 signatures so far", self.cmd("m2", "status").replace("\n", " "))
         m2 = Member(self.homes["m2"], lock=False)
         self.assertEqual(sum(1 for r in m2.log.records if r["t"] == "msg"), 1)
         m2.close()

@@ -2,12 +2,14 @@
 """Known answers from the repository's Solidity reference signers, for signer/tests/test_vectors.py.
 
 Builds signer/tests/sol/SignerVectors.sol (WotsSigner, WotsTree and StatelessSigner from contracts/test/utils) and
-contracts/bench/safe/SafeSignerHelper.sol (the live test's signer: owner signature formats) with forge into a
-temporary directory, deploys them on a local anvil, asks them for keys, trees and signatures with eth_call, and
-writes inputs and outputs to signer/tests/vectors/solidity.json. The deterministic addresses (stateless verifier,
-WinterlockOwner implementation, factory, members' proxy owners) come from SafeOwnerDeployment's own predictions:
-contracts/script/DeploySafeOwner.s.sol run locally, without an RPC or broadcast, with a dummy deployer key. All inputs
-are public test labels.
+contracts/bench/safe/SafeSignerHelper.sol (the v1 live test's signer: WOTS trees, transaction signatures in v1's
+layout, which v2's adds a device byte to, and certificates) with forge into a temporary directory, deploys them on a
+local anvil, asks them for keys, trees and signatures with eth_call, and writes inputs and outputs to
+signer/tests/vectors/solidity.json. The helper's trees use v2's tree seed for device 0 (passed in). The deterministic
+addresses (stateless verifier, shared WOTS verifier, WinterlockOwner v2 implementation, factory, members' proxy
+owners) come from SafeOwnerDeployment's own predictions: contracts/script/DeploySafeOwner.s.sol run locally, without
+an RPC or broadcast, with a dummy deployer key. All inputs are public test labels. The v2 digests and signature kinds
+are checked against the compiled contract itself on anvil (tests/test_owner_v2.py).
 
 usage: signer/.venv/bin/python signer/tools/gen_vectors.py
 """
@@ -39,8 +41,8 @@ def forge_predictions(key: bytes) -> dict:
     env.update(DEPLOYER_PRIVATE_KEY="0x01", WINTERLOCK_KEY=b2h(key))
     out = subprocess.run([tool("forge"), "script", "script/DeploySafeOwner.s.sol"], cwd=CONTRACTS, env=env,
                          capture_output=True, text=True, check=True).stdout
-    names = {"stateless verifier": "verifier", "implementation": "implementation", "factory": "factory",
-             "owner": "owner"}
+    names = {"stateless verifier": "verifier", "WOTS verifier": "wots_verifier", "implementation": "implementation",
+             "factory": "factory", "owner": "owner"}
     found = {}
     for line in out.splitlines():
         line = line.strip()
@@ -115,7 +117,7 @@ def main():
             out["deployment"] = [forge_predictions(pk), forge_predictions(k("another stateless key"))]
             own = out["deployment"][0]["owner"]  # the member's proxy owner, as SafeOwnerDeployment predicts it
             start = 0
-            seed = owner.tree_seed(chain_id, own, safe, start)
+            seed = owner.tree_seed(chain_id, own, safe, 0, 0, start)  # device 0, generation 0
             ret = call(helper, "tree(bytes32,uint256,uint256,address,uint64,uint128)",
                        ["bytes32", "uint256", "uint256", "address", "uint256", "uint256"],
                        [tag, member, chain_id, safe, start, seed])
@@ -132,7 +134,7 @@ def main():
                            [tag, member, chain_id, safe, start, seed, slot, t.words()])
                 h["tx"].append({"safeTx": t.to_json(), "slot": slot, "data": b2h(abi.dec_bytes(ret, 0)),
                                 "hash": b2h(abi.dec_word(ret, 1))})
-            digest = owner.certificate_digest(chain_id, own, safe, abi.h2b(h["root"])[:24], h["height"], start)
+            digest = owner.certificate_digest(chain_id, own, safe, 0, 0, abi.h2b(h["root"])[:24], h["height"], start)
             cert = abi.dec_bytes(call(helper, "certificate(bytes32,uint256,bytes32)", ["bytes32", "uint256", "bytes32"],
                                       [tag, member, digest]))
             h["certificate"] = {"digest": b2h(digest), "sig": b2h(cert)}

@@ -1,10 +1,10 @@
 """End to end on a local anvil: a 2-of-3 Safe v1.4.1 (SafeL2, from the repository's release build) whose owners are
-three members' proxy owners (WinterlockOwnerFactory clones of one WinterlockOwner implementation), driven only through
-the signer's commands, with a stand-in Transaction Service (tests/mock_service.py) that checks every signature with an
+three members' proxy owners (WinterlockOwnerFactory clones of one WinterlockOwner v2 implementation), each signing with
+the member key's home (device 0), driven only through the signer's commands, with a stand-in Transaction Service (tests/mock_service.py) that checks every signature with an
 eth_call to the owner, as the hosted one does.
 
-Steps: init, address; enroll, which deploys the verifier, implementation and factory once (--deploy) and creates each
-member's owner with its first tree (deployAndEnroll); a transfer (propose, confirm, execute); a same-nonce replacement
+Steps: init, address; enroll, which deploys the two verifiers, the implementation and the factory once (--deploy) and
+creates each member's owner with its first tree (deployAndEnroll); a transfer (propose, confirm, execute); a same-nonce replacement
 with each member's second key and a refused third version; a restore that certifies a fresh tree with a plain enroll
 and voids the old device's approval; a stale key log caught by the service check; the bare implementation refused as an
 owner; a move to a new device checked against the chain and the service, and a rolled-back device caught by those
@@ -110,10 +110,11 @@ class EndToEnd(unittest.TestCase):
         self.assertIn("owner factory not deployed", text)
         # a fresh chain: the shared contracts need --deploy, once
         text = self.cmd("m1", "enroll", "--safe", self.safe, expect=1)
-        self.assertIn("not on this chain yet: stateless verifier, WinterlockOwner implementation, owner factory", text)
+        self.assertIn("not on this chain yet: stateless verifier, WOTS verifier, WinterlockOwner implementation, owner "
+                      "factory", text)
         text = self.cmd("m1", "enroll", "--safe", self.safe, "--deploy", "--height", "6")
-        for name in ("WinterlockOwner implementation: deployed", "owner factory: deployed", "deployAndEnroll",
-                     "Enrolled (owner created)"):
+        for name in ("WOTS verifier: deployed", "WinterlockOwner implementation: deployed", "owner factory: deployed",
+                     "deployAndEnroll", "Enrolled (owner created)"):
             self.assertIn(name, text)
         for m in ("m2", "m3"):  # the shared contracts exist now: no --deploy needed
             text = self.cmd(m, "enroll", "--safe", self.safe, "--height", "6")
@@ -131,9 +132,10 @@ class EndToEnd(unittest.TestCase):
             self.assertEqual(abi.dec_word(self.rpc.eth_call(own, abi.calldata("KEY()"))), mem.key)
             self.assertEqual(abi.dec_addr(self.rpc.eth_call(own, abi.calldata("IMPLEMENTATION()"))), impl)
             # the tree the signer derived offline, for the predicted address, is the one the proxy stores
-            root, seed, height, start = owner.read_tree(self.rpc, own, self.safe)
-            self.assertEqual((abi.b2h(root), height, start), (mem.active_tree(31337, self.safe)["root"], 6, 0))
-            self.assertEqual(seed, owner.tree_seed(31337, own, self.safe, 0))
+            root, seed, height, start, gen = owner.read_tree(self.rpc, own, self.safe)
+            self.assertEqual((abi.b2h(root), height, start, gen), (mem.active_tree(31337, self.safe)["root"], 6, 0, 0))
+            self.assertEqual(seed, owner.tree_seed(31337, own, self.safe, 0, 0, 0))
+            self.assertEqual(owner.read_device(self.rpc, own, 0), (mem.key, 0, True))  # the member key, device 0
             mem.close()
         own = self.owners["m1"]
         mem = Member(self.homes["m1"], lock=False)
@@ -235,7 +237,7 @@ class EndToEnd(unittest.TestCase):
         old_root = abi.b2h(owner.read_tree(self.rpc, self.owners["m2"], self.safe)[0])
         text = self.cmd("m2", "enroll", "--safe", self.safe, home=new_home)
         self.assertIn("nonces 2–", text)
-        root, _, _, start = owner.read_tree(self.rpc, self.owners["m2"], self.safe)
+        root, _, _, start, _ = owner.read_tree(self.rpc, self.owners["m2"], self.safe)
         self.assertNotEqual(abi.b2h(root), old_root)
         self.assertEqual(start, 2)
         # the old device's approval no longer counts
@@ -260,10 +262,10 @@ class EndToEnd(unittest.TestCase):
             "m2", "propose", "--safe", self.safe, "--to", RECIPIENT, "--value", "0.01", home=old_home, expect=2))
         self.assertEqual(owner.read_tree(self.rpc, self.owners["m2"], self.safe)[0], restored_root)  # untouched
         # --take-over, both ways: each fresh tree starts after the one it replaces, so no key is ever shared
-        _, _, _, restored_start = owner.read_tree(self.rpc, self.owners["m2"], self.safe)
+        _, _, _, restored_start, _ = owner.read_tree(self.rpc, self.owners["m2"], self.safe)
         self.assertIn("WARNING: another device has taken over",
                       self.cmd("m2", "enroll", "--safe", self.safe, "--take-over", home=old_home))
-        _, _, _, old_again = owner.read_tree(self.rpc, self.owners["m2"], self.safe)
+        _, _, _, old_again, _ = owner.read_tree(self.rpc, self.owners["m2"], self.safe)
         self.assertGreater(old_again, restored_start)
         self.assertIn("REPLACED", self.cmd("m2", "status", "--safe", self.safe, home=new_home))
         self.cmd("m2", "enroll", "--safe", self.safe, "--take-over", home=new_home)
@@ -302,10 +304,10 @@ class EndToEnd(unittest.TestCase):
         # a certificate the member's key signed for the implementation's address doesn't enrol a tree there
         mem = Member(self.homes["m1"])
         root = b"\x5a" * 24
-        cert = mem.stateless_sign(owner.certificate_digest(31337, impl, self.safe, root, 4, 100))
+        cert = mem.stateless_sign(owner.certificate_digest(31337, impl, self.safe, 0, 0, root, 4, 100))
         mem.close()
         with self.assertRaises(Reverted):
-            self.rpc.eth_call(impl, owner.enroll_calldata(self.safe, root, 4, 100, cert))
+            self.rpc.eth_call(impl, owner.enroll_calldata(self.safe, 0, root, 4, 100, cert))
         # a 1-of-1 Safe whose owner is the implementation: its contract signature is refused (GS024)
         lone, _ = devchain.create_safe(self.rpc, self.deployer, self.release, [impl], 1, salt_nonce=7)
         t2 = SafeTx(to=RECIPIENT, nonce=0)
@@ -377,7 +379,7 @@ class EndToEnd(unittest.TestCase):
             with open(path, "r+b") as f:
                 f.write(data)
                 f.truncate()
-        self.assertIn("device ACTIVE", self.cmd("m3", "status", home=new))  # offline it looks fine
+        self.assertIn("key log ACTIVE", self.cmd("m3", "status", home=new))  # offline it looks fine
         newer = os.path.join(self.tmp.name, "m3-newer")
         mc2 = code_in(run(["--home", newer, "move", "start", "--phrase", pfile, "--insecure-plaintext-seed"]))
         bundle2 = os.path.join(self.tmp.name, "m3-move-2.json")

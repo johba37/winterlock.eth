@@ -9,7 +9,8 @@ from winterlock_signer import abi, owner
 from winterlock_signer.bridge import Bridge, RpcFail, Ui
 
 SAFE = "0x5B81D3ce1Ca48be48F154D8AD060Cf9f883E86B2"
-OWNERS = ["0x7141F0c30ABcF3Dc35d9409FFc3383009235c47d", "0x2D3C9197237D1F1e1165b1EEE748BC9e1c3f1123"]
+KEY = bytes(range(1, 33))  # the member key of the member at the keyboard
+OWNERS = [owner.owner_address(KEY), "0x2D3C9197237D1F1e1165b1EEE748BC9e1c3f1123"]
 OTHER = "0x000000000000000000000000000000000000cafE"
 CHAIN = 11155111
 
@@ -48,7 +49,9 @@ class Ctx:
 
 class Member:
     owner = OWNERS[0]
-    key = bytes(range(1, 33))
+    key = KEY
+    device_no = 0
+    is_device = False
 
 
 class Handling(unittest.TestCase):
@@ -124,7 +127,7 @@ class Handling(unittest.TestCase):
             self.fails("personal_sign", ["0x68656c6c6f", SAFE], 4001, "the member rejected the message")
         finally:
             builtins.input = orig
-        self.assertEqual(asked, ["Sign this message with your stateless key? [y/N] "])
+        self.assertEqual(asked, ["Sign this message with your member key? [y/N] "])
         self.assertTrue(any("OFF-CHAIN" in line for line in self.shown))
 
     def test_execution_watch_survives_a_lagging_node(self):

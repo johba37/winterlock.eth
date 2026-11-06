@@ -56,7 +56,7 @@ class Cli(unittest.TestCase):
         self.assertEqual(seedfile.read(m.seed_path, lambda: PASSPHRASE), phrase.to_seed(" ".join(words)))
         m.close()
         text = self.ok(["--home", self.path("m"), "status"])
-        for s in ("device ACTIVE", "created here", "seed file encrypted with a passphrase", "recovery phrase checked"):
+        for s in ("key log ACTIVE", "created here", "seed file encrypted with a passphrase", "recovery phrase checked"):
             self.assertIn(s, text)
         self.ok(["--home", self.path("m"), "init"], Terminal(), expect=2)  # never over an existing signer
 
@@ -185,7 +185,7 @@ class Cli(unittest.TestCase):
         text = self.ok(["--home", old, "move", "export", "--code", code, "--out", bundle])  # confirmed: y
         self.assertIn("locked for good", text)
         text = self.ok(["--home", old, "status"])
-        self.assertIn("device MOVED", text)
+        self.assertIn("key log MOVED", text)
         self.assertIn("seed file not on this device", text)
         self.assertIn("moved its keys to another device", self.ok(["--home", old, "backup"], expect=2))
         self.assertIn("moved its keys", self.ok(["--home", old, "passphrase"], expect=2))
@@ -198,7 +198,7 @@ class Cli(unittest.TestCase):
         self.assertIn("Not checked online", text)
         self.assertFalse(os.path.exists(bundle))  # consumed
         text = self.ok(["--home", new, "status"])
-        for s in ("device ACTIVE", "moved in from another device", rec["root"][:18], "1 one-time key used",
+        for s in ("key log ACTIVE", "moved in from another device", rec["root"][:18], "1 one-time key used",
                   "recovery phrase checked"):
             self.assertIn(s, text)
         # cancel only applies to a pending move
@@ -213,13 +213,13 @@ class Cli(unittest.TestCase):
         copy = self.path("copy")
         shutil.copytree(home, copy)
         text = self.ok(["--home", copy, "status"])
-        self.assertIn("device LOCKED", text)
+        self.assertIn("key log LOCKED", text)
         self.assertIn("WARNING: the key log is another file", text)
         self.assertIn("looks like a copy", self.ok(["--home", copy, "move", "export", "--code", move.new_code(),
                                                      "--out", self.path("b.json")], expect=2))
         text = self.ok(["--home", copy, "device", "adopt"])
         self.assertIn("Adopted", text)
-        self.assertIn("device ACTIVE", self.ok(["--home", copy, "status"]))
+        self.assertIn("key log ACTIVE", self.ok(["--home", copy, "status"]))
         self.assertIn("nothing to adopt", self.ok(["--home", copy, "device", "adopt"]))
         # a rollback in place: adopt is refused, fresh trees retire everything
         log_path = os.path.join(home, "keylog.jsonl")

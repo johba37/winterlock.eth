@@ -23,6 +23,8 @@ class Encoding(unittest.TestCase):
 
     def test_owner_constants(self):
         self.assertEqual(owner.verifier_address(), "0x6Dc4DFBccDe0fbeC30b0a4078aB6f45496Fec254")  # docs/decisions.md
+        self.assertEqual(owner.TX_HEADER, 342)  # v2: [slot][device][safe][SafeTx]
+        self.assertEqual((owner.MESSAGE_LEN, owner.APPROVED_LEN), (5738, 53))
         cd = owner.deploy_and_enroll_calldata(b"\x11" * 32, A, b"\x22" * 24, 6, 3, b"\x33" * 5684)
         self.assertEqual(cd[:4], abi.selector("deployAndEnroll(bytes32,address,bytes32,uint8,uint64,bytes)"))
         self.assertEqual(abi.dec_word(cd[4:], 2), b"\x22" * 24 + bytes(8))  # root high-aligned
@@ -114,7 +116,8 @@ class PinnedBytecode(unittest.TestCase):
         import os
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         pinned_by_name = {"WinterlockOwner": owner.IMPLEMENTATION_CREATION,
-                          "WinterlockOwnerFactory": owner.FACTORY_CREATION, "LeanSphincsAsm": owner.VERIFIER_CREATION}
+                          "WinterlockOwnerFactory": owner.FACTORY_CREATION, "LeanSphincsAsm": owner.VERIFIER_CREATION,
+                          "SharedWotsVerifier": owner.WOTS_VERIFIER_CREATION}
         for name, pinned in pinned_by_name.items():
             sol = f"{name}.sol"
             path = os.path.join(root, "contracts", "out", sol, f"{name}.json")

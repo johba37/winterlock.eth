@@ -18,8 +18,9 @@ signs decides again from the original request.
 SafeMessage (Safe's CompatibilityFallbackHandler, v1.3.0 to v1.5.0), for an app's isValidSignature(bytes32 h, sig):
   message = abi.encode(h); msgHash = keccak256(message)
   safeMessageHash = keccak256(0x1901 ‖ Safe's domain separator ‖ keccak256(abi.encode(SAFE_MSG_TYPEHASH, msgHash)))
-Owner signature data (WinterlockOwner): [0x02][safe: 20][msgHash: 32][stateless signature of
-  messageDigest(chain, owner, safe, safeMessageHash): 5,684]
+Owner signature data (WinterlockOwner v2):
+  message   [0x02][device: 1][safe: 20][msgHash: 32][stateless signature of
+            messageDigest(chain, owner, safe, device, generation, safeMessageHash): 5,684]
 """
 
 import re
@@ -92,14 +93,16 @@ def safe_message_hash(chain_id: int, safe: str, app_hash: bytes) -> bytes:
     return eip712(chain_id, safe, keccak256(SAFE_MSG_TYPEHASH + message_hash(app_hash)))
 
 
-def signature_data(member, chain_id: int, safe: str, app_hash: bytes) -> bytes:
-    """This member's owner signature data for the SafeMessage of `app_hash`, signed with the stateless key. The
-    signature is recorded in the key log (it counts against the stateless key's budget) before it is made."""
+def signature_data(member, chain_id: int, safe: str, app_hash: bytes, generation: int = 0) -> bytes:
+    """This home's owner signature data for the SafeMessage of `app_hash`, signed with its stateless key (the member
+    key, or a device key at `generation`: the device's current one on the chain). The signature is recorded in the key
+    log (it counts against the key's budget) before it is made."""
     smh = safe_message_hash(chain_id, safe, app_hash)
-    digest = owner.message_digest(chain_id, member.owner, safe, smh)
-    member.log.append({"t": "msg", "chain": chain_id, "safe": safe, "hash": b2h(smh)})
+    digest = owner.message_digest(chain_id, member.owner, safe, member.device_no, generation, smh)
+    member.log.append({"t": "msg", "chain": chain_id, "safe": safe, "hash": b2h(smh), "device": member.device_no,
+                       "gen": generation})
     sig = member.stateless_sign(digest)
-    return bytes([KIND_MESSAGE]) + h2b(safe) + message_hash(app_hash) + sig
+    return owner.message_signature_data(member.device_no, safe, message_hash(app_hash), sig)
 
 
 # --- deciding ---

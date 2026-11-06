@@ -1,28 +1,40 @@
-"""A member's signer state: the secret seed, the key log, and everything derived from them.
+"""A signer home: the secret seed, the key log, and everything derived from them. Two kinds (owner v2,
+docs/notes/owner-v2.md):
+
+  the member key's home  device 0. Its seed is the recovery phrase's: the member key (the stateless key fixed in the
+                         member's owner, whose address follows from it) certifies and revokes device keys and can sign
+                         everything itself. Restores and moves work from the phrase.
+  a device home          device 1, 2 or 3 of a member. Its seed is random and has no phrase. Its device key, certified
+                         on-chain by the member key (per chain), certifies this home's own key trees and signs
+                         messages. If it is lost, the member key revokes it and a new device is paired instead.
 
 Home directory (default ~/.winterlock-signer, or WINTERLOCK_HOME), mode 700:
-  seed         the 32-byte secret, mode 600, encrypted with a passphrase (seedfile.py). Its backup is the recovery
-               phrase: 24 BIP-39 words that encode these 32 bytes (phrase.py). Removed when the device moves away.
+  seed         the 32-byte secret, mode 600, encrypted with a passphrase (seedfile.py). For the member key's home its
+               backup is the recovery phrase: 24 BIP-39 words that encode these 32 bytes (phrase.py). Removed when the
+               home moves away.
   keylog.jsonl the key log (keylog.py), mode 600
   cache/       public values only, rebuilt when missing: the stateless key's kept leaves, operation tree leaves
   move-request.json  only on a new device waiting for a move's bundle (move.py)
 
 Derivations (keccak256 of abi.encode(label, ...)):
-  stateless seed   ("winterlock.signer.stateless.v1", seed) -> leanSphincs key, kept subtree of height 10.
+  member key       ("winterlock.signer.stateless.v1", seed) -> leanSphincs key, kept subtree of height 10.
                    Deterministic: a restored signer has the same KEY and the same owner address.
-  tree secret seed ("winterlock.signer.ops.v1", seed, chain, owner, safe, start, salt), salt = 32 random bytes
-                   recorded only in the key log. A lost log can't bring an old tree back; two restores never make
-                   the same tree.
+  device key       ("winterlock.signer.device-key.v1", seed) -> leanSphincs key, kept subtree of height 10
+  tree secret seed ("winterlock.signer.ops.v2", seed, chain, owner, safe, device, generation, start, salt), salt = 32
+                   random bytes recorded only in the key log. A lost log can't bring an old tree back; two restores
+                   never make the same tree.
   WOTS secrets     wots.Prf.SIGNER over the tree secret seed
 
-Device states (state()): active; locked (a move was started and not finished, or this key log looks like a copy:
-device.py); moved (the log was handed to another device, which now signs instead). Only an active signer signs.
+Key log states (state()): active; locked (a move was started and not finished, or this key log looks like a copy:
+device.py); moved (the log was handed to another machine, which now signs instead). Only an active home signs. Whether
+a device key is active on a chain is the contract's to say (owner.read_device), and the command line checks it.
 """
 
 import os
 import secrets
 
 from . import device, leansphincs, owner, seedfile, wots
+from .abi import address as abi_address
 from .abi import b2h, h2b, read_file, word
 from .keccak import keccak256
 from .keylog import KeyLog, Refused, _fsync_dir
@@ -30,6 +42,10 @@ from .keylog import KeyLog, Refused, _fsync_dir
 STATELESS_B = leansphincs.DEFAULT_B
 DEFAULT_HEIGHT = 10
 REQUEST = "move-request.json"
+DEVICE_COPY_REMEDY = ("A device key now exists in two places. If the original device home still works, sign there, not "
+                      "here. If this copy is the one to keep, `device fresh-trees` makes it safe to sign with (fresh "
+                      "key trees: a fee per Safe and chain). If you don't know who has the other copy, revoke this "
+                      "device from the member key's home (`device revoke`) and pair a new one.")
 COPY_REMEDY = ("If the original signer still works, move from it instead (`move export` there, `move import` here). "
                "If it is gone for good, `device fresh-trees` makes this copy safe to use (fresh key trees: a fee per "
                "Safe and chain); `device adopt` trusts this copy as complete, which is only right if it was made after "
@@ -49,14 +65,33 @@ def _abi_label(label: bytes, *words) -> bytes:
     return keccak256(head + word(len(label)) + label + bytes((-len(label)) % 32))
 
 
-def stateless_key(seed: bytes) -> leansphincs.Key:
-    return leansphincs.Key(_abi_label(b"winterlock.signer.stateless.v1", seed), STATELESS_B)
+MEMBER_KEY_LABEL = b"winterlock.signer.stateless.v1"
+DEVICE_KEY_LABEL = b"winterlock.signer.device-key.v1"
+
+
+def stateless_key(seed: bytes, label: bytes = MEMBER_KEY_LABEL) -> leansphincs.Key:
+    return leansphincs.Key(_abi_label(label, seed), STATELESS_B)
 
 
 def identity_of(seed: bytes):
-    """(stateless public key, owner address) that a seed gives, without a signer directory (about 0.1 s)"""
+    """(member key, owner address) that a recovery phrase's seed gives, without a signer directory (about 0.1 s)"""
     key = stateless_key(seed).public_key
     return key, owner.owner_address(key)
+
+
+def device_key_of(seed: bytes) -> bytes:
+    """The device key that a device home's seed gives"""
+    return stateless_key(seed, DEVICE_KEY_LABEL).public_key
+
+
+def check_code(owner_addr: str, device: int, key: bytes) -> str:
+    """The pairing check code: five BIP-39 words from keccak256("winterlock.device-pairing.v1" ‖ owner ‖ device ‖
+    key). The new device shows it with its key; the member key's home shows it for what it is about to certify. The
+    same words mean the same owner, device number and key (55 bits: a substituted key would need about 2^54 key
+    generations to match)."""
+    from .phrase import _M
+    h = int.from_bytes(keccak256(b"winterlock.device-pairing.v1" + h2b(owner_addr) + bytes([device]) + key), "big")
+    return " ".join(_M.wordlist[(h >> (256 - 11 * (i + 1))) & 0x7FF] for i in range(5))
 
 
 class Member:
@@ -89,11 +124,24 @@ class Member:
         ident = self.log.identity()
         if ident is None and not has_seed:
             raise Refused(f"{self.home} has neither a seed nor an identity in its key log")
+        self.device_no = ident.get("device", 0) if ident and ident["t"] == "device-new" else 0
         self.key = h2b(ident["key"]) if ident else self.stateless().public_key
-        self.owner = owner.owner_address(self.key)
+        if self.device_no:
+            self.owner = ident["owner"]
+            if ident.get("implementation") != owner.implementation_address():
+                raise Refused(f"this device home was made for the owner implementation {ident.get('implementation')}, "
+                              f"and this signer's is {owner.implementation_address()}: the pinned owner contracts "
+                              "changed. Pair a new device.")
+        else:
+            self.owner = owner.owner_address(self.key)
         if ident and ident["owner"] != self.owner:
+            if ident.get("version", 1) < owner.VERSION:
+                raise Refused(f"{self.home} was set up for WinterlockOwner v1 (owner {ident['owner']}); this signer is "
+                              f"for v2, where the same recovery phrase gives the owner {self.owner}. Use v1's signer "
+                              "for v1 owners. For v2, `init --restore` the phrase into a new --home (fresh key trees, "
+                              "one `enroll` per Safe and chain).")
             raise Refused(f"the owner address changed since init ({ident['owner']} -> {self.owner}): the pinned "
-                          "owner contracts (implementation, factory or verifier) differ from the ones this signer was "
+                          "owner contracts (implementation, factory or verifiers) differ from the ones this signer was "
                           "set up with")
         self.problems = []
         dev = self.log.last("device")
@@ -133,11 +181,60 @@ class Member:
         m = Member(home, passphrase=passphrase, _seed=seed)
         how = "restore" if restore_seed is not None else "init"
         m.log.append({"t": how, "owner": m.owner, "key": b2h(m.key), "params": "D6", "stateless_b": STATELESS_B,
-                      "owner_code": owner.PINNED_COMMIT})
+                      "owner_code": owner.PINNED_COMMIT, "version": owner.VERSION,
+                      "implementation": owner.implementation_address()})
         m.add_device(how)
         if backup:
             m.log.append({"t": "backup", "how": backup})
         return m
+
+    @staticmethod
+    def init_device(home: str, owner_addr: str, device_no: int, passphrase: str = None, scrypt_n: int = None,
+                    new_seed: bytes = None):
+        """A device home: a random device seed (encrypted with `passphrase`; None writes plain hex, for tests), the
+        member's owner address and this device's number (1 to 3), and an empty key log. It holds no recovery phrase:
+        the member key certifies its device key on each chain (`device certify`)."""
+        home = home or default_home()
+        if not 1 <= device_no <= owner.MAX_DEVICE:
+            raise Refused(f"a device key is device 1 to {owner.MAX_DEVICE} (device 0 is the member key)")
+        owner_addr = abi_address(owner_addr)
+        os.makedirs(home, mode=0o700, exist_ok=True)
+        os.chmod(home, 0o700)
+        for name, what in (("seed", "a seed"), ("keylog.jsonl", "a key log"), (REQUEST, "a pending move")):
+            if os.path.exists(os.path.join(home, name)):
+                raise Refused(f"{home} already has {what}: a device home needs an empty directory (--home)")
+        seed = new_seed or secrets.token_bytes(32)
+        seedfile.write(os.path.join(home, "seed"), seed, passphrase, n=scrypt_n)
+        _fsync_dir(home)
+        key = device_key_of(seed)
+        log = KeyLog(os.path.join(home, "keylog.jsonl"))
+        try:
+            log.append({"t": "device-new", "owner": owner_addr, "device": device_no, "key": b2h(key), "params": "D6",
+                        "stateless_b": STATELESS_B, "owner_code": owner.PINNED_COMMIT, "version": owner.VERSION,
+                        "implementation": owner.implementation_address()})
+        finally:
+            log.close()
+        m = Member(home, passphrase=passphrase, _seed=seed)
+        m.add_device("device-new")
+        return m
+
+    # --- what kind of home ---
+
+    @property
+    def is_device(self) -> bool:
+        """A device home (device 1 to 3), not the member key's"""
+        return self.device_no != 0
+
+    def what(self) -> str:
+        return f"device {self.device_no}" if self.device_no else "the member key (device 0)"
+
+    def require_member_key(self, action: str):
+        if self.is_device:
+            raise Refused(f"{action}: only the member key does that, on the home with your recovery phrase. This is a "
+                          f"device home (device {self.device_no}), which has no phrase.")
+
+    def check_code(self) -> str:
+        return check_code(self.owner, self.device_no, self.key)
 
     # --- the seed ---
 
@@ -153,6 +250,7 @@ class Member:
 
     def use_seed(self, seed: bytes):
         """Takes the seed from the recovery phrase (on a device whose seed file is gone); refuses another signer's"""
+        self.require_member_key("a recovery phrase")
         if stateless_key(seed).public_key != self.key:
             raise Refused("this recovery phrase belongs to another signer")
         self._seed_value = seed
@@ -213,7 +311,7 @@ class Member:
                              f"{mo['request']}) and never signs again")
         if self.problems:
             return "locked", ("this key log looks like a copy: " + "; ".join(p[1] for p in self.problems) + ". "
-                              + COPY_REMEDY)
+                              + (DEVICE_COPY_REMEDY if self.is_device else COPY_REMEDY))
         return "active", ""
 
     def require_active(self):
@@ -258,7 +356,7 @@ class Member:
 
     def stateless(self) -> leansphincs.Key:
         if self._sk is None:
-            seed = _abi_label(b"winterlock.signer.stateless.v1", self._seed)
+            seed = _abi_label(DEVICE_KEY_LABEL if self.is_device else MEMBER_KEY_LABEL, self._seed)
             cache = os.path.join(self.home, "cache", f"stateless-b{STATELESS_B}.bin")
             kept = None
             if os.path.exists(cache):
@@ -287,26 +385,30 @@ class Member:
     # --- operation trees ---
 
     def _tree_sk_seed(self, rec: dict) -> bytes:
-        return _abi_label(b"winterlock.signer.ops.v1", self._seed, rec["chain"], rec["owner"], rec["safe"],
-                          rec["start"], h2b(rec["salt"]))
+        return _abi_label(b"winterlock.signer.ops.v2", self._seed, rec["chain"], rec["owner"], rec["safe"],
+                          rec["device"], rec["gen"], rec["start"], h2b(rec["salt"]))
 
-    def active_tree(self, chain: int, safe: str):
-        trees = self.log.trees(chain, safe)
+    def active_tree(self, chain: int, safe: str, generation: int = None):
+        """The newest tree for a Safe on a chain (of `generation`, if given)"""
+        trees = [t for t in self.log.trees(chain, safe) if generation is None or t["gen"] == generation]
         return trees[-1] if trees else None
 
-    def new_tree(self, chain: int, safe: str, start: int, height: int = DEFAULT_HEIGHT) -> dict:
-        """Generates a fresh tree (fresh random salt) and records it, fsynced, before it is certified"""
+    def new_tree(self, chain: int, safe: str, start: int, height: int = DEFAULT_HEIGHT, generation: int = 0) -> dict:
+        """Generates a fresh tree (fresh random salt) of this home's device at `generation` and records it, fsynced,
+        before it is certified"""
         self.require_active()
         if not 1 <= height <= owner.MAX_HEIGHT or not 0 <= start <= owner.MAX_START:
             raise Refused("bad key tree height or start")
         if height > 20:
             raise Refused("key trees above height 20 take too long to generate here")
+        if self.device_no == 0 and generation != 0:
+            raise Refused("the member key is device 0, at generation 0 for good")
         prior = self.log.trees(chain, safe)
         if prior and start <= max(t["start"] for t in prior):
             raise Refused(f"a new key tree must start after nonce {max(t['start'] for t in prior)}")
-        rec = {"t": "tree", "chain": chain, "safe": safe, "owner": self.owner, "start": start, "height": height,
-               "salt": b2h(secrets.token_bytes(32))}
-        seed = owner.tree_seed(chain, self.owner, safe, start)
+        rec = {"t": "tree", "chain": chain, "safe": safe, "owner": self.owner, "device": self.device_no,
+               "gen": generation, "start": start, "height": height, "salt": b2h(secrets.token_bytes(32))}
+        seed = owner.tree_seed(chain, self.owner, safe, self.device_no, generation, start)
         tree = wots.Tree.create(seed, self._tree_sk_seed(rec), height)
         rec["root"] = b2h(tree.root)
         self.log.append(rec)
@@ -322,7 +424,7 @@ class Member:
             f.write(tree.to_bytes())
 
     def tree(self, rec: dict) -> wots.Tree:
-        seed = owner.tree_seed(rec["chain"], rec["owner"], rec["safe"], rec["start"])
+        seed = owner.tree_seed(rec["chain"], rec["owner"], rec["safe"], rec["device"], rec["gen"], rec["start"])
         path = self._tree_cache(rec)
         if os.path.exists(path):
             try:
@@ -338,13 +440,50 @@ class Member:
         return t
 
     def certificate(self, rec: dict) -> bytes:
-        """The stateless key's signature of the tree's certificate digest; recorded before it is released"""
+        """This home's key's signature of the tree's certificate digest; recorded before it is released"""
         self.require_active()
-        digest = owner.certificate_digest(rec["chain"], rec["owner"], rec["safe"], h2b(rec["root"]), rec["height"],
-                                          rec["start"])
+        digest = owner.certificate_digest(rec["chain"], rec["owner"], rec["safe"], rec["device"], rec["gen"],
+                                          h2b(rec["root"]), rec["height"], rec["start"])
         self.log.append({"t": "cert", "chain": rec["chain"], "safe": rec["safe"], "root": rec["root"],
                          "digest": b2h(digest)})
         return self.stateless_sign(digest)
+
+    # --- device keys (the member key's home only) ---
+
+    def device_certificate(self, chain: int, device_no: int, generation: int, key: bytes) -> bytes:
+        """The member key's signature of the device certificate digest; recorded before it is released (revoking
+        later defaults to every chain this log certified the device on)"""
+        self.require_member_key("certifying a device key")
+        self.require_active()
+        owner.check_key(key)
+        if not 1 <= device_no <= owner.MAX_DEVICE:
+            raise Refused(f"device keys are devices 1 to {owner.MAX_DEVICE}")
+        digest = owner.device_digest(chain, self.owner, device_no, generation, key)
+        self.log.append({"t": "device-cert", "chain": chain, "device": device_no, "gen": generation, "key": b2h(key),
+                         "digest": b2h(digest)})
+        return self.stateless_sign(digest)
+
+    def revocation(self, chain: int, device_no: int, generation: int) -> bytes:
+        """The member key's signature of the revocation digest; recorded before it is released"""
+        self.require_member_key("revoking a device key")
+        self.require_active()
+        digest = owner.revocation_digest(chain, self.owner, device_no, generation)
+        self.log.append({"t": "device-revoke", "chain": chain, "device": device_no, "gen": generation,
+                         "digest": b2h(digest)})
+        return self.stateless_sign(digest)
+
+    def certified_chains(self, device_no: int) -> list:
+        """The chains this key log certified device `device_no` on, in the order first certified"""
+        out = []
+        for r in self.log.records:
+            if r["t"] == "device-cert" and r["device"] == device_no and r["chain"] not in out:
+                out.append(r["chain"])
+        return out
+
+    def stateless_signatures(self) -> int:
+        """How many signatures this home's stateless key made: certificates, messages, device certificates and
+        revocations"""
+        return sum(1 for r in self.log.records if r["t"] in ("cert", "msg", "device-cert", "device-revoke"))
 
     # --- transactions ---
 
@@ -368,4 +507,4 @@ class Member:
         path = tree.path(k)
         if wots.verify_root(tree.seed, k, h, sig, path) != tree.root:
             raise RuntimeError("WOTS signature failed its own verification: not released")
-        return owner.tx_signature_data(slot, safe, safe_tx.words(), sig, path), slot, k, h
+        return owner.tx_signature_data(slot, self.device_no, safe, safe_tx.words(), sig, path), slot, k, h

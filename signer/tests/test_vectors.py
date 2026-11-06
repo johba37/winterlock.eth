@@ -1,5 +1,7 @@
 """Byte-for-byte agreement with the Solidity reference signers (tests/vectors/solidity.json, from
-tools/gen_vectors.py): WotsSigner and WotsTree, StatelessSigner, and the live test's owner-format helper."""
+tools/gen_vectors.py): WotsSigner and WotsTree, StatelessSigner, and the v1 live test's owner-format helper, whose
+transaction signatures v2 extends by a device byte. The v2 digests and signature kinds are checked against the
+compiled WinterlockOwner itself on anvil: tests/test_owner_v2.py."""
 import json
 import os
 import unittest
@@ -49,6 +51,7 @@ class DeploymentAgainstSolidity(unittest.TestCase):
         self.assertEqual(len(V["deployment"]), 2)
         for d in V["deployment"]:
             self.assertEqual(owner.verifier_address(), d["verifier"])
+            self.assertEqual(owner.wots_verifier_address(), d["wots_verifier"])
             self.assertEqual(owner.implementation_address(), d["implementation"])
             self.assertEqual(owner.factory_address(), d["factory"])
             self.assertEqual(owner.owner_address(h2b(d["key"])), d["owner"])
@@ -66,7 +69,8 @@ class DeploymentAgainstSolidity(unittest.TestCase):
 
 
 class OwnerFormatsAgainstSolidity(unittest.TestCase):
-    """bench/safe/SafeSignerHelper.sol, which signed the live Sepolia run: its derivations, rebuilt here"""
+    """bench/safe/SafeSignerHelper.sol, which signed v1's live Sepolia run: its derivations, rebuilt here, with v2's
+    tree seed for device 0 (the generator passes it in) and v2's device byte after the slot"""
 
     def setUp(self):
         self.h = V["helper"]
@@ -79,7 +83,7 @@ class OwnerFormatsAgainstSolidity(unittest.TestCase):
 
     def test_transaction_signatures(self):
         h = self.h
-        seed = owner.tree_seed(h["chainId"], h["owner"], h["safe"], h["start"])
+        seed = owner.tree_seed(h["chainId"], h["owner"], h["safe"], 0, 0, h["start"])
         self.assertEqual(hex(seed), h["treeSeed"])
         sks = _abi_label(b"winterlock.safe-live.ops", h2b(h["tag"]), h["member"], h["chainId"], h["safe"], h["start"])
         tree = wots.Tree.create(seed, sks, 10, 4, TEST)
@@ -89,12 +93,13 @@ class OwnerFormatsAgainstSolidity(unittest.TestCase):
             sh = t.hash(h["chainId"], h["safe"])
             self.assertEqual(sh, h2b(x["hash"]))
             k = owner.key_index(t.nonce, h["start"], x["slot"], 10)
-            data = owner.tx_signature_data(x["slot"], h["safe"], t.words(), wots.sign(seed, sks, k, sh, TEST),
+            data = owner.tx_signature_data(x["slot"], 0, h["safe"], t.words(), wots.sign(seed, sks, k, sh, TEST),
                                            tree.path(k))
-            self.assertEqual(data, h2b(x["data"]))
-            self.assertEqual(len(data), 1757)  # the spike's figure for height 10
-            slot, safe, words, sig, path = owner.parse_tx_signature_data(data)
-            self.assertEqual((slot, safe, words), (x["slot"], h["safe"], t.words()))
+            v1 = h2b(x["data"])  # [slot][safe][SafeTx][WOTS][path]
+            self.assertEqual(data, v1[:1] + b"\x00" + v1[1:])  # v2: [slot][device][safe]...
+            self.assertEqual(len(data), 1758)  # decisions.md, owner v2 at height 10
+            slot, device, safe, words, sig, path = owner.parse_tx_signature_data(data)
+            self.assertEqual((slot, device, safe, words), (x["slot"], 0, h["safe"], t.words()))
 
     def test_certificate(self):
         c = self.h["certificate"]

@@ -1,14 +1,16 @@
-"""Device binding (device.py): copies, rollbacks, adoption, fresh trees, and key logs from before device records."""
+"""Device binding (device.py): copies, rollbacks, adoption, fresh trees, and key logs from before device records. And
+device homes (owner v2's device keys, member.py), offline: creation, the check code, what they record and refuse."""
 import os
 import shutil
 import tempfile
 import unittest
 from unittest import mock
 
-from winterlock_signer import device, owner, seedfile
-from winterlock_signer.abi import b2h
+from tests.term import PASSPHRASE, Terminal, run
+from winterlock_signer import device, leansphincs, owner, phrase, seedfile, wots
+from winterlock_signer.abi import b2h, h2b, read_file
 from winterlock_signer.keylog import KeyLog, Refused
-from winterlock_signer.member import Member, identity_of
+from winterlock_signer.member import Member, check_code, device_key_of, identity_of
 from winterlock_signer.safe import SafeTx
 
 CHAIN = 31337
@@ -162,6 +164,126 @@ class Copies(unittest.TestCase):
             log.append({"t": "sign"})
         log.append({"t": "device", "id": "00", "how": "adopt", "gen": 0})
         log.close()
+
+
+class DeviceHomes(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.member_home = os.path.join(self.dir.name, "m")
+        m = Member.init(self.member_home)
+        self.owner = m.owner
+        m.close()
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def path(self, name):
+        return os.path.join(self.dir.name, name)
+
+    def test_a_device_home(self):
+        home = self.path("d")
+        d = Member.init_device(home, self.owner.lower(), 2)
+        seed = h2b(read_file(os.path.join(home, "seed")).strip())
+        self.assertEqual((d.owner, d.device_no, d.is_device), (self.owner, 2, True))
+        self.assertEqual(d.key, device_key_of(seed))
+        self.assertNotEqual(d.key, identity_of(seed)[0])  # not a member key: another derivation
+        ident = d.log.identity()
+        self.assertEqual((ident["t"], ident["device"], ident["implementation"], ident["version"]),
+                         ("device-new", 2, owner.implementation_address(), 2))
+        self.assertEqual((d.device()["how"], d.state()[0]), ("device-new", "active"))
+        d.close()
+        d = Member(home)  # reopened: the same identity, from the log
+        self.assertEqual((d.owner, d.device_no, d.key), (self.owner, 2, device_key_of(seed)))
+        # its trees carry its device number and the generation they were made under
+        rec = d.new_tree(31337, SAFE, 4, 3, generation=5)
+        self.assertEqual((rec["device"], rec["gen"]), (2, 5))
+        self.assertEqual(d.tree(rec).seed, owner.tree_seed(31337, self.owner, SAFE, 2, 5, 4))
+        data, slot, k, h = d.sign_safe_tx(31337, SAFE, rec, SafeTx(to=TO, value=1, nonce=5))
+        parsed = owner.parse_tx_signature_data(data)
+        self.assertEqual(parsed[:3], (0, 2, SAFE))
+        self.assertEqual(wots.verify_root(d.tree(rec).seed, k, h, parsed[4], parsed[5]), h2b(rec["root"]))
+        cert = d.certificate(rec)
+        digest = owner.certificate_digest(31337, self.owner, SAFE, 2, 5, h2b(rec["root"]), 3, 4)
+        self.assertEqual(d.log.last("cert")["digest"], b2h(digest))
+        self.assertTrue(leansphincs.verify(d.key, digest, cert))
+        # what only the member key does
+        for attempt in (lambda: d.device_certificate(31337, 1, 1, b"\x01" * 32), lambda: d.revocation(31337, 1, 1),
+                        lambda: d.use_seed(seed)):
+            with self.assertRaisesRegex(Refused, "only the member key does that"):
+                attempt()
+        self.assertEqual(d.stateless_signatures(), 1)
+        d.close()
+        with self.assertRaises(Refused):
+            Member.init_device(home, self.owner, 2)  # never over an existing home
+        with self.assertRaises(Refused):
+            Member.init_device(self.path("e"), self.owner, 0)  # device 0 is the member key
+
+    def test_the_check_code(self):
+        key = bytes(range(1, 33))
+        code = check_code(self.owner, 1, key)
+        words = code.split()
+        self.assertEqual(len(words), 5)
+        self.assertTrue(all(phrase.word(w) == w for w in words))  # BIP-39 English words
+        self.assertEqual(code, check_code(self.owner.lower(), 1, key))  # the address, not its spelling
+        for other in (check_code(self.owner, 2, key), check_code(TO, 1, key),
+                      check_code(self.owner, 1, key[:-1] + b"\x00")):
+            self.assertNotEqual(code, other)
+
+    def test_the_member_key_certifies_and_records(self):
+        m = Member(self.member_home)
+        self.assertFalse(m.is_device)
+        key = Member.init_device(self.path("d"), self.owner, 1).key
+        sig = m.device_certificate(31337, 1, 1, key)
+        self.assertTrue(leansphincs.verify(m.key, owner.device_digest(31337, self.owner, 1, 1, key), sig))
+        m.device_certificate(11155111, 1, 1, key)
+        m.revocation(31337, 1, 1)
+        self.assertEqual(m.certified_chains(1), [31337, 11155111])
+        self.assertEqual(m.certified_chains(2), [])
+        self.assertEqual([r["t"] for r in m.log.records[-3:]], ["device-cert", "device-cert", "device-revoke"])
+        self.assertEqual(m.stateless_signatures(), 3)
+        with self.assertRaises(Refused):
+            m.device_certificate(31337, 0, 1, key)  # devices 1 to 3 only
+        with self.assertRaises(Refused):
+            m.new_tree(31337, SAFE, 0, 3, generation=1)  # the member key is at generation 0 for good
+        m.close()
+
+    def test_a_v1_home_says_what_to_do(self):
+        home = self.path("v1")
+        os.makedirs(home, mode=0o700)
+        seed = os.urandom(32)
+        seedfile.write(os.path.join(home, "seed"), seed)
+        key, _ = identity_of(seed)
+        log = KeyLog(os.path.join(home, "keylog.jsonl"))
+        log.append({"t": "init", "owner": "0x00000000000000000000000000000000000000F1", "key": b2h(key),
+                    "params": "D6", "stateless_b": 10, "owner_code": "357c25f"})
+        log.close()
+        with self.assertRaisesRegex(Refused, "set up for WinterlockOwner v1.*init --restore"):
+            Member(home)
+
+    def test_device_new_on_the_command_line(self):
+        home = self.path("d")
+        code, text = run(["--home", home, "device", "new", "--owner", self.owner, "--device", "3"], Terminal())
+        self.assertEqual(code, 0, text)
+        d = Member(home, lock=False)
+        self.assertEqual(seedfile.kind(d.seed_path), "encrypted")
+        self.assertEqual(device_key_of(seedfile.read(d.seed_path, lambda: PASSPHRASE)), d.key)
+        self.assertEqual(d.device_no, 3)
+        self.assertIn(f"check code   {d.check_code()}", text)
+        self.assertIn(f"device certify --device 3 --key {b2h(d.key)} --chain CHAIN", text)
+        d.close()
+        code, text = run(["--home", home, "status"])
+        self.assertEqual(code, 0, text)
+        for s in ("a device home, device 3", "no recovery phrase", "key log ACTIVE", "check code"):
+            self.assertIn(s, text)
+        self.assertNotIn("NEVER CHECKED", text)
+        code, text = run(["--home", home, "address"])
+        self.assertIn("this home        device 3", text)
+        code, text = run(["--home", home, "backup"])
+        self.assertEqual(code, 2, text)
+        self.assertIn("a device home has no recovery phrase", text)
+        code, text = run(["--home", self.path("x"), "device", "new", "--owner", "0x1234", "--device", "1"])
+        self.assertEqual(code, 1, text)
+        self.assertIn("--owner: not an address", text)
 
 
 if __name__ == "__main__":

@@ -138,7 +138,8 @@ class MemberRails(unittest.TestCase):
         data, slot, k, h = m.sign_safe_tx(CHAIN, safe, rec, t1)
         self.assertEqual((slot, k), (0, 4))
         s = owner.parse_tx_signature_data(data)
-        self.assertEqual(wots.verify_root(tree.seed, k, h, s[3], s[4]), tree.root)
+        self.assertEqual(s[1], 0)  # the member key's home is device 0
+        self.assertEqual(wots.verify_root(tree.seed, k, h, s[4], s[5]), tree.root)
         # the same transaction again: the same signature, no new record
         n = len(m.log.records)
         self.assertEqual(m.sign_safe_tx(CHAIN, safe, rec, t1)[0], data)

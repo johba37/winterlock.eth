@@ -5,17 +5,22 @@ the signature it covers leaves the signer, so a crash can lose a signature but n
 line (a crash during the write) is cut off when the log is opened: its signature was never released.
 
 Records (field "t"):
-  init / restore  the signer's identity (owner, KEY); restore marks a device set up again from the seed alone
-  tree            an operation tree: chain, safe, root, height, start, and the random salt its secrets derive from.
-                  The salt exists only here, so a signer that lost its log can't rebuild, and so can't reuse, an old
-                  tree: it must certify a fresh one (D11, D12).
-  cert            the stateless key certified a tree (enrolment)
+  init / restore  the member key's home: its identity (owner, the member key); restore marks a home set up again from
+                  the recovery phrase alone
+  device-new      a device home: its identity (the member's owner, its device number 1 to 3, its device key)
+  tree            an operation tree: chain, safe, device, generation, root, height, start, and the random salt its
+                  secrets derive from. The salt exists only here, so a signer that lost its log can't rebuild, and so
+                  can't reuse, an old tree: it must certify a fresh one (D11, D12).
+  cert            the home's stateless key certified a tree (enrolment)
+  device-cert     the member key certified a device key: chain, device, generation, key
+  device-revoke   the member key revoked a device: chain, device, generation
+  msg             the home's stateless key signed a SafeMessage
   sign            a one-time key signed: chain, safe, tree root, nonce, slot, key index, and the SafeTx hash
-  device          the device this log belongs to now (device.py): a random id and how it got the log (init, restore,
-                  move-in, adopt, fresh-trees, upgrade). With "retire": true, every tree recorded before it is retired:
-                  never signed with again, and enroll certifies a fresh one
+  device          the machine this log belongs to now (device.py), not a device number: a random id and how it got
+                  the log (init, restore, device-new, move-in, adopt, fresh-trees, upgrade). With "retire": true, every
+                  tree recorded before it is retired: never signed with again, and enroll certifies a fresh one
   backup          the recovery phrase was checked (at init, by `backup`, or typed in for a restore or a move)
-  move-out        this device handed its log to another (`move export`): the device is locked for good; nothing is
+  move-out        this home handed its log to another machine (`move export`): it is locked for good; nothing is
                   appended after it
 Rules enforced here: a key signs one hash only (signing the same hash again is allowed: signatures are
 deterministic); slots are picked by the signer, never the user: slot 0 first, slot 1 for a second, different SafeTx
@@ -129,7 +134,7 @@ class KeyLog:
 
     def identity(self):
         for r in self.records:
-            if r["t"] in ("init", "restore"):
+            if r["t"] in ("init", "restore", "device-new"):
                 return r
         return None
 

@@ -10,10 +10,11 @@ agrees.
   wallet_sendCalls       EIP-5792: one call, or a batch as a delegatecall to Safe's MultiSendCallOnly; the id is the
                          SafeTx hash; wallet_getCallsStatus reports it (100 pending, 200 executed, 400 replaced,
                          500 reverted).
-  personal_sign,         D14 (messages.py decides): off-chain messages are signed with the stateless key and the other
-  eth_signTypedData_v4   members' signatures gathered from message files; k of them, combined and checked with the
-                         Safe's isValidSignature, go to the dapp. On-chain messages are approved by a proposed Safe
-                         transaction through SignMessageLib; the dapp gets 0x once it has executed.
+  personal_sign,         D14 (messages.py decides): off-chain messages are signed with this home's stateless key (the
+  eth_signTypedData_v4   member key or a device key) and the other members' signatures gathered from message files; k
+                         of them, combined and checked with the Safe's isValidSignature, go to the dapp. On-chain
+                         messages are approved by a proposed Safe transaction through SignMessageLib; the dapp gets 0x
+                         once it has executed.
   refused                eth_sign, eth_signTransaction, raw transactions, contract creation, Safe self-calls that change
                          owners, modules, guard or fallback handler, and any message messages.py refuses.
 
@@ -449,11 +450,14 @@ class Bridge:
         valid = messages.valid_signatures(self.rpc, doc, owners)
         mine = any(o.lower() == self.m.owner.lower() for o, _, _ in valid)
         if len(valid) < threshold and not mine:
-            if not self.cli.owner_deployed(self.ctx, self.m):
-                raise RpcFail(-32000, f"your owner {self.m.owner} isn't deployed on this chain yet: run `enroll`")
-            if not self.ui.ask("Sign this message with your stateless key?"):
+            try:
+                gen = self.cli.home_generation(self.ctx, self.m)
+            except Refused as e:
+                raise RpcFail(-32000, f"the signer refuses: {e}") from None
+            key = "device key" if self.m.is_device else "member key"
+            if not self.ui.ask(f"Sign this message with your {key}?"):
                 raise RpcFail(4001, "the member rejected the message")
-            data = messages.signature_data(self.m, self.chain, self.safe, d.app_hash)
+            data = messages.signature_data(self.m, self.chain, self.safe, d.app_hash, gen)
             if not owner.is_valid_signature(self.rpc, self.m.owner, h2b(smh), data):
                 raise RpcFail(-32000, "your owner contract refuses the message signature (eth_call): not sent")
             messages.add_signature(doc, self.m.owner, b2h(contract_signature(self.m.owner, data)))
@@ -556,6 +560,8 @@ def cmd_connect(args):
     nonce, threshold, owners = cli.safe_state(ctx.rpc, safe)
     if m.owner.lower() not in [o.lower() for o in owners]:
         raise Refused(f"your owner {m.owner} is not an owner of {safe}")
+    if m.is_device:
+        cli.home_generation(ctx, m)  # a revoked, replaced or uncertified device signs nothing: say so now
     relay_url = args.relay or os.environ.get("WALLETCONNECT_RELAY") or DEFAULT_RELAY
     project = os.environ.get("WALLETCONNECT_PROJECT_ID")
     if relay_url.rstrip("/") == DEFAULT_RELAY and not project:
@@ -669,13 +675,12 @@ def cmd_message(args):
     valid = messages.valid_signatures(ctx.rpc, doc, owners)
     cli.out(f"Signatures   {len(valid)} of {threshold} so far: " + ", ".join(o for o, _, _ in valid))
     if any(o.lower() == m.owner.lower() for o, _, _ in valid):
-        cli.out("You have signed this message already.")
+        cli.out("Your owner has signed this message already.")
         return
-    if not cli.owner_deployed(ctx, m):
-        raise Refused(f"your owner {m.owner} isn't deployed on this chain yet: run `enroll`")
-    cli.confirm_prompt(args, "Sign this message with your stateless key?")
+    gen = cli.home_generation(ctx, m)
+    cli.confirm_prompt(args, f"Sign this message with your {'device' if m.is_device else 'member'} key?")
     smh = h2b(doc["safeMessageHash"])
-    data = messages.signature_data(m, ctx.chain, safe, d.app_hash)
+    data = messages.signature_data(m, ctx.chain, safe, d.app_hash, gen)
     if not owner.is_valid_signature(ctx.rpc, m.owner, smh, data):
         raise cli.Abort("your owner contract refuses the message signature (eth_call): not added")
     sig = b2h(contract_signature(m.owner, data))

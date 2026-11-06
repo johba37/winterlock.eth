@@ -7,8 +7,10 @@
                    someone else may have it -> no restore: the team replaces this member
   backup      shows the phrase again and checks it (--check: only the check)
   passphrase  changes the seed file's passphrase, or encrypts a plain one (--forgot: set a new one from the phrase)
-  move        start (new device), export (old device), import (new device), cancel: move.py
-  device      adopt or fresh-trees, for a key log that looks like a copy (device.py)
+  move        start (new device), export (old device), import (new device), cancel: move.py. The member key's
+              home only: a device home has no phrase to move with; a new device is paired instead (cli_devices.py)
+  device adopt, device fresh-trees   for a key log that looks like a copy (device.py); the `device` command itself,
+              with its device-key actions, is in cli_devices.py
 """
 
 import calendar
@@ -32,7 +34,9 @@ ENROLL_COST = ("about 0.25M gas (0.39M with Glamsterdam's pricing, as on Sepolia
 CHECK_EVERY_DAYS = 90
 HOW = {"init": "created here", "restore": "restored from the recovery phrase, with fresh key trees",
        "move-in": "moved in from another device", "adopt": "an adopted copy", "upgrade": "bound on first use",
-       "fresh-trees": "fresh key trees after a suspected copy"}
+       "fresh-trees": "fresh key trees after a suspected copy", "device-new": "made here as a device home"}
+NO_PHRASE = ("a device home has no recovery phrase: if this device is lost or its passphrase forgotten, revoke it "
+             "from the member key's home (`device revoke`) and pair a new device (`device new`)")
 
 
 def ask(prompt: str, secret: bool = False) -> str:
@@ -278,7 +282,7 @@ def lost_report(m, ctx, safes):
         if m.owner.lower() not in [o.lower() for o in owners]:
             continue
         out(f"Safe {safe} on {chain_label(ctx.chain)}: {threshold} of {len(owners)}, next nonce {safe_nonce}")
-        root, _, height, start = owner.read_tree(ctx.rpc, m.owner, safe) if deployed else (None, 0, 0, 0)
+        root, _, height, start, _ = owner.read_tree(ctx.rpc, m.owner, safe) if deployed else (None, 0, 0, 0, 0)
         if root is None:
             out("  no key tree enrolled for you yet")
         else:
@@ -301,6 +305,8 @@ def lost_report(m, ctx, safes):
 
 def cmd_backup(args):
     m = open_member(args)
+    if m.is_device:
+        raise Refused(NO_PHRASE)
     m.require_active()  # a moved device has no seed; a locked one can't record the check
     words = phrase.to_phrase(m.seed())
     if not args.check:
@@ -316,6 +322,8 @@ def cmd_passphrase(args):
     if m.move_out():
         raise Refused(m.state()[1])
     if args.forgot:
+        if m.is_device:
+            raise Refused(NO_PHRASE)
         m.use_seed(read_phrase(args.phrase))
     else:
         m.seed()
@@ -363,7 +371,7 @@ def check_online(m, ctx, purpose):
     deployed = owner_deployed(ctx, m)
     for safe in safes:
         safe_nonce, _, owners = safe_state(ctx.rpc, safe)
-        root, _, height, start = owner.read_tree(ctx.rpc, m.owner, safe) if deployed else (None, 0, 0, 0)
+        root, _, height, start, _ = owner.read_tree(ctx.rpc, m.owner, safe) if deployed else (None, 0, 0, 0, 0)
         rec = m.log.tree_by_root(ctx.chain, safe, b2h(root)) if root else None
         if root is None:
             out(f"  Safe {safe}: nonce {safe_nonce}; no key tree enrolled yet")
@@ -397,6 +405,11 @@ def check_online(m, ctx, purpose):
 
 def move_export(args):
     m = open_member(args)
+    if m.is_device:
+        raise Refused(f"a device home doesn't move: its key never leaves the device. On the new machine, make a new "
+                      f"device home (`device new`), have the member key certify it (`device certify`), then revoke "
+                      f"this one (`device revoke --device {m.device_no}`). It costs a certificate per chain and an "
+                      "enrolment per Safe and chain, about 0.25M gas each.")
     code = move.normalize_code(args.code)
     st, why = m.state()
     mo = m.move_out()
@@ -450,7 +463,8 @@ def move_import(args):
     staged = move.stage(home, records)
     try:
         if args.chain and (args.rpc or os.environ.get("WINTERLOCK_RPC")):
-            view = SimpleNamespace(owner=payload["owner"], key=h2b(payload["key"]), log=staged)
+            view = SimpleNamespace(owner=payload["owner"], key=h2b(payload["key"]), log=staged, is_device=False,
+                                   device_no=0)
             check_online(view, Ctx(args), "import")
         else:
             out("  Not checked online. With --chain (and --rpc or WINTERLOCK_RPC), the import first checks the log "
@@ -556,15 +570,20 @@ def status_lines(m) -> list:
         how = HOW.get(dev["how"], dev["how"])
         if dev["how"] == "move-in" and dev.get("from_device"):
             how += f" ({dev['from_device']})"
-        lines.append(f"  device {st.upper()}: id {dev['id']}, {how} on {dev['at']}")
+        lines.append(f"  key log {st.upper()} on this machine: id {dev['id']}, {how} on {dev['at']}")
     else:
-        lines.append(f"  device {st.upper()}: not bound yet (a key log from before device checks; the next command "
-                     "that signs binds it)")
+        lines.append(f"  key log {st.upper()}: not bound to this machine yet (a key log from before device checks; the "
+                     "next command that signs binds it)")
     for _, p in m.problems:
         lines.append(f"  WARNING: {p}")
     if why:  # a copy's reason repeats the warnings above: only what to do
-        lines.append(f"    {member.COPY_REMEDY if why.startswith('this key log looks like a copy') else why}")
+        remedy = member.DEVICE_COPY_REMEDY if m.is_device else member.COPY_REMEDY
+        lines.append(f"    {remedy if why.startswith('this key log looks like a copy') else why}")
     lines.append(f"  seed file {seedfile.describe(m.seed_path)}")
+    if m.is_device:
+        lines.append("  no recovery phrase (a device home): if this device is lost, the member key revokes it and you "
+                     "pair a new one")
+        return lines
     b = m.log.last("backup")
     if b:
         days = (time.time() - calendar.timegm(time.strptime(b["at"], "%Y-%m-%dT%H:%M:%SZ"))) / 86400
@@ -598,6 +617,9 @@ def add_parsers(sub, chain_opts, commands):
     commands["passphrase"] = cmd_passphrase
     sp = sub.add_parser("move", help="move this signer to a new device: start, export, import, cancel")
     msub = sp.add_subparsers(dest="action", required=True)
+    from .cli import global_options
+    _add = msub.add_parser
+    msub.add_parser = lambda name, **kw: global_options(_add(name, **kw))
     s = msub.add_parser("start", help="new device: take the phrase and show a move code")
     s.add_argument("--phrase", metavar="FILE", help="the phrase from FILE (- for stdin) instead of a prompt")
     s.add_argument("--insecure-plaintext-seed", action="store_true", help="TESTS ONLY: no passphrase")
@@ -614,6 +636,3 @@ def add_parsers(sub, chain_opts, commands):
     s.add_argument("--keep-bundle", action="store_true", help="don't delete the bundle file after the import")
     msub.add_parser("cancel", help="new device: drop a pending move")
     commands["move"] = cmd_move
-    sp = sub.add_parser("device", help="adopt, or start fresh key trees on, a key log that looks like a copy")
-    sp.add_argument("action", choices=("adopt", "fresh-trees"))
-    commands["device"] = cmd_device

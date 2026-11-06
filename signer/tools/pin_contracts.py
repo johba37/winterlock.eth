@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Pins the creation code of the WinterlockOwner implementation, the WinterlockOwnerFactory and the stateless verifier
-(LeanSphincsAsm) into signer/winterlock_signer/contracts.json, from the build in contracts/out (`forge build` in
-contracts/).
+"""Pins the creation code of the WinterlockOwner implementation (v2), the WinterlockOwnerFactory, the stateless verifier
+(LeanSphincsAsm) and the shared WOTS verifier (SharedWotsVerifier) into signer/winterlock_signer/contracts.json, from
+the build in contracts/out (`forge build` in contracts/).
 
-All three are deployed through the deterministic deployment proxy with fixed salts, and a member's owner is the
-factory's CREATE2 proxy of the implementation with the member's key (script/DeploySafeOwner.s.sol), so every owner
-address depends on these exact bytes. The signer predicts and deploys from the pinned copy; its tests check that the
-copy still matches the repository's build. Re-pin after a change to any of the three: it changes every owner address.
+All four are deployed through the deterministic deployment proxy with fixed salts, and a member's owner is the
+factory's CREATE2 proxy of the implementation with the member key (script/DeploySafeOwner.s.sol). The implementation's
+init code holds both verifiers' addresses, so every owner address depends on these exact bytes. The signer predicts
+and deploys from the pinned copy; its tests check that the copy still matches the repository's build. Re-pin after a
+change to any of the four: it changes every owner address.
 """
 import json
 import os
@@ -24,6 +25,8 @@ ARTIFACTS = {
                                "contracts/src/safe/WinterlockOwnerFactory.sol"),
     "LeanSphincsAsm": ("contracts/out/LeanSphincsAsm.sol/LeanSphincsAsm.json",
                        "contracts/src/vendor/sphincs-minus/LeanSphincsAsm.sol"),
+    "SharedWotsVerifier": ("contracts/out/SharedWotsVerifier.sol/SharedWotsVerifier.json",
+                           "contracts/src/SharedWotsVerifier.sol"),
 }
 
 
