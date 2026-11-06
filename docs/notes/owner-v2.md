@@ -4,10 +4,11 @@
 
 ## Why a new version
 
-Three changes each move every owner's address (decisions.md, open questions), so they belong in one version:
+Two changes each move every owner's address (decisions.md, open questions), so they belong in one version:
 1. **Permits for dapps that verify with viem.** viem refuses the empty signature that an on-chain approval answers with (D14).
 2. **Several devices per member,** with a way to cut off a lost or stolen device on-chain.
-3. **Room for other stateless schemes,** such as a standard LeanSPHINCS (the draft ERC), without yet another owner.
+
+The third candidate, alignment with the draft LeanSPHINCS ERC, has nothing to align with yet: the draft fixes no parameters, encodings or domains.
 
 ## The question behind "several devices"
 
@@ -36,8 +37,8 @@ The phrase can then live offline (paper, or a hardware wallet), while laptops an
 ## Contract
 
 **Devices.** Device 0 is the member key itself. Devices 1–3 are device keys, so a member has at most four. A small fixed number keeps the storage and the checks simple, and it is enough for laptop, phone and a spare.
-- **Record per device** (two storage words): its key (32 bytes); its verifier, a generation counter and an active flag.
-- **`certifyDevice(device, generation, verifier, key, signature)`:**
+- **Record per device** (two storage words): its key (32 bytes); a generation counter and an active flag.
+- **`certifyDevice(device, generation, key, signature)`:**
   - the signature is the member key's, over the device certificate below
   - the generation must be the stored one plus one, so an old certificate can't come back
   - certifying a device that is active replaces its old key
@@ -50,10 +51,7 @@ The phrase can then live offline (paper, or a hardware wallet), while laptops an
 - **Start nonces only grow,** per Safe and device and within a generation.
 - **Validity:** a tree verifies only while its device is active at the same generation.
 
-**The verifier per device.** A device certificate names the verifier contract for that device's key.
-- **What it buys:** a new stateless scheme, such as a standard LeanSPHINCS once the draft ERC settles, arrives as a new device key, with no new owner.
-- **What stays fixed:** the member key stays leanSphincs-keccak with today's verifier, because the address is bound to it.
-- **The risk:** the member key can certify any verifier. So the signer certifies only verifiers on a pinned list.
+**One verifier.** Device keys are leanSphincs-keccak keys, checked by the same stateless verifier as the member key, fixed in the implementation. A new stateless scheme needs a new owner version (decision 4).
 
 **Signatures** (byte 0 is the kind; one byte more than today for the device):
 
@@ -72,7 +70,7 @@ The phrase can then live offline (paper, or a hardware wallet), while laptops an
 
 | Digest | Signed by | Fields |
 |---|---|---|
-| Device certificate | member key | chain, owner, device, generation, verifier, key |
+| Device certificate | member key | chain, owner, device, generation, key |
 | Revocation | member key | chain, owner, device, generation |
 | Tree certificate | device key (member key for device 0) | chain, owner, Safe, device, generation, root, height, start |
 | Message | device key (member key for device 0) | chain, owner, Safe, device, generation, SafeMessage hash |
@@ -124,10 +122,10 @@ Approved on 2026-11-06:
 5. **The approved kind (`0x03`)** for permits checked with viem.
 6. **A table, not an ERC-8403 root,** in the Safe owner.
 
-Open:
-4. **A verifier per device:** who chooses it, and how a shortlist is enforced.
+Dropped:
+4. **A verifier per device.** A shortlist of verifiers can't be enforced on-chain without either a fixed list, which removes the flexibility, or an admin, which adds a trusted party. And a bad verifier is no worse than a bad key, which the member key can certify anyway. The real guard is the pairing check: comparing the device key's check code on both devices before certifying.
 
-Once the open one is settled, the order is:
+The order:
 1. the contracts and their tests, including a viem check of a permit against a forked Safe
 2. the signer
 3. deployment on Sepolia and swapping the test Safes' owners
