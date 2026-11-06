@@ -90,7 +90,7 @@ Open:
   - **Built:** a cheap owner deployment (proxy owners, about 0.34M gas per member under Glamsterdam) and a minimal signer (see Measurements, 2026-11-05).
   - **Decided:** messages follow D14 (on-chain approval for on-chain checks, collection outside Safe's service for off-chain checks).
   - **To build:** the signer's port to proxy owners, and its WalletConnect support.
-  - **To check:** whether Safe's app lets an account that isn't an owner execute.
+  - **Checked (2026-11-06):** Safe's app lets an account that isn't an owner execute a transaction that Winterlock owners have confirmed (see "Who executes" under Measurements).
 
 **D14. Safe messages: on-chain approval for on-chain checks, collection outside Safe's service for off-chain checks** (2026-11-05)
 - **Keep leanSphincs as the stateless key** (D12 stands). leanSphincs-s would fit Safe's 5,000-byte cap, but its signature budget is only estimated, and switching means new keys, owners and validators for everyone.
@@ -634,7 +634,7 @@ The question: can Winterlock be a Safe owner, an EIP-1271 contract owner checked
   - Even then, apps receive 11.7 KB for 2-of-3 and pay 190–230k gas per check. Some off-chain consumers may cap signature sizes.
 - **Enrolment comes first.** Each member needs an `enroll` transaction per Safe and chain (251k gas, 5.9 KB) before the Transaction Service accepts that member's confirmations, because it checks them against chain state. A rotation invalidates confirmations already collected under the old tree.
 - **Deployment is costly:** 1.6M gas per member per chain for a full contract. Under Glamsterdam's state pricing, which made the validator's deployment cost seven times more on Sepolia than on Arbitrum Sepolia, that could reach about 11M on L1. An ERC-1167 clone carrying KEY as an immutable argument would cost under 0.1M gas (estimate) and up to about 3k more per transaction (a delegatecall to the shared implementation, warm after the first owner). Not built.
-- **Who executes:** a WinterlockOwner has no EOA. Once a transaction has its signatures, anyone with gas can execute it: a relayer, or any member's wallet. Unverified: whether Safe's app lets a wallet that isn't an owner execute, and whether it shows confirmations from these owners. Only a live test can tell.
+- **Who executes:** a WinterlockOwner has no EOA. Once a transaction has its signatures, anyone with gas can execute it: a relayer, or any member's wallet. **Checked live on 2026-11-06:** Safe's app shows the Winterlock owners' confirmations. An ordinary MetaMask account that isn't an owner executed a transaction there that the two proxy owners had confirmed through the signer (2-of-2 test Safe on Sepolia, nonce 6, 293,777 gas, the same as executing from the signer). So a team can sign with the signer and execute from Safe's familiar UI with any funded wallet.
 - **No delegates:** the Transaction Service registers a proposer (delegate) with an owner's EIP-1271 signature over an EIP-712 `Delegate` hash, which WinterlockOwner refuses by design. A proposal must therefore carry a WinterlockOwner's own signature, with that owner as sender.
 - **Typed data of modules gets no answer:** WinterlockOwner signs only SafeTx and SafeMessage. A module that asks the Safe to check its own typed data, such as Safe's 4337 module with its SafeOp, needs its type added, with its own nonce binding.
 - **The lock-down is more than the owners:** the constraint "no ECDSA path left over" applies to modules, the guard and the fallback handler too. The upgrade test checks the owners only.
