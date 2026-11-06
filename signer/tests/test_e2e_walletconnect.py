@@ -9,7 +9,9 @@ process) through a stand-in relay (tests/mock_relay.py), as a scripted dapp (tes
                   a message file, member 2 signs the file (`message`), and the dapp gets the combined 2-of-3 signature
                   (11,670 bytes), which the Safe's isValidSignature accepts on-chain.
   permit          eth_signTypedData_v4 of a Permit2 PermitSingle: an approval through SignMessageLib is proposed,
-                  confirmed and executed; the dapp gets 0x, and the Safe's isValidSignature accepts the empty signature.
+                  confirmed and executed; the dapp gets two approved signatures of the v2 owners (300 bytes), which
+                  the Safe's isValidSignature accepts, and so does viem's verifyTypedData, which refuses 0x (with Node
+                  and viem: WINTERLOCK_NODE_MODULES or NODE_PATH naming a node_modules that holds viem).
   refusals        a bare hash, eth_sign, a validator's enable data, the Safe's own typed data, a self-call that adds an
                   owner, a sign-in for another site, a request for another chain.
 Needs Foundry's anvil and Safe v1.4.1's release build (contracts/setup.sh).
@@ -46,6 +48,19 @@ OTHER = "0x000000000000000000000000000000000000cafE"
 HAVE_TOOLS = os.path.exists(os.path.join(devchain.SAFE_141, "SignMessageLib.sol", "SignMessageLib.json")) and bool(
     shutil.which("anvil") or os.path.exists(os.path.join(devchain.FOUNDRY_BIN, "anvil")))
 CHAIN = 31337
+
+
+def viem_modules():
+    """A node_modules that holds viem: WINTERLOCK_NODE_MODULES, or an entry of NODE_PATH; None without one or Node"""
+    if not shutil.which("node"):
+        return None
+    for d in [os.environ.get("WINTERLOCK_NODE_MODULES"), *(os.environ.get("NODE_PATH") or "").split(os.pathsep)]:
+        if d and os.path.isfile(os.path.join(d, "viem", "package.json")):
+            return d
+    return None
+
+
+VIEM = viem_modules()
 
 
 def siwe(safe, domain="app.example", chain=CHAIN):
@@ -305,13 +320,45 @@ class WalletConnectEndToEnd(unittest.TestCase):
         self.cmd("m3", "execute", "--safe-tx-hash", h)
         t.join(60)
         self.assertNotIn("error", box, str(box.get("error")))
-        self.assertEqual(box["result"], "0x")
-        self.assertTrue(self.is_valid(app_hash, b""))
+        # the approved signatures of two of the three v2 owners, in Safe's encoding: 150 bytes each, lowest owner first
+        sig = h2b(box["result"])
+        self.assertEqual(len(sig), 2 * 150)
+        lowest = sorted(self.owners.values(), key=lambda o: int(o, 16))[:2]
+        self.assertEqual([abi.checksum(sig[i * 65 + 12: i * 65 + 32]) for i in range(2)], lowest)
+        self.assertEqual([sig[i * 65 + 64] for i in range(2)], [0, 0])  # v = 0: contract signatures
+        data = owner.approved_signature_data(self.safe, messages.message_hash(app_hash))
+        self.assertEqual(sig[130:130 + 32 + 53], abi.word(53) + data)
+        self.assertTrue(self.is_valid(app_hash, sig))
+        self.assertTrue(self.is_valid(app_hash, b""))  # the empty signature still works for contracts that take it
+        self.assertFalse(self.is_valid(TypedData(permit2_single(nonce=1)).hash(), sig))  # an unapproved permit
         log = self.connect_log()
         self.assertIn("Permit2 PermitSingle", log)
-        self.assertIn("viem refuse 0x", log)
+        self.assertIn("The app gets 2 approved signatures of v2 owners (300 bytes)", log)
         # asked again: answered at once from the Safe's approval
-        self.assertEqual(self.request("eth_signTypedData_v4", [self.safe, json.dumps(typed)]), "0x")
+        self.assertEqual(self.request("eth_signTypedData_v4", [self.safe, json.dumps(typed)]), box["result"])
+        type(self).permit = (typed, box["result"])
+
+    @unittest.skipUnless(VIEM, "needs Node and viem: set WINTERLOCK_NODE_MODULES (or NODE_PATH) to a node_modules "
+                               "that holds viem")
+    def test_5b_viem_accepts_the_approved_signatures(self):
+        """What a dapp that verifies with viem makes of the answers: the approved signatures verify, 0x doesn't, and
+        neither verifies a permit the Safe hasn't approved"""
+        typed, approved = self.permit
+        other = permit2_single(nonce=1)
+
+        def viem(typed_data, signatures):
+            p = subprocess.run(["node", os.path.join(HERE, "viem_verify.js")], input=json.dumps(
+                {"rpc": self.chain.url, "address": self.safe, "typedData": typed_data, "signatures": signatures}),
+                capture_output=True, text=True, timeout=120, env=dict(os.environ, NODE_PATH=VIEM))
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+            return json.loads(p.stdout.strip().splitlines()[-1])
+
+        got = viem(typed, {"approved": approved, "empty": "0x"})
+        self.assertIs(got["results"]["approved"], True, got)
+        self.assertIsNot(got["results"]["empty"], True, got)  # false, or a refusal
+        got = viem(other, {"approved": approved})
+        self.assertIsNot(got["results"]["approved"], True, got)
+        print(f"\n  viem {got['viem']}: verifyTypedData accepts the approved signatures and refuses 0x", file=sys.stderr)
 
     def test_6_refusals(self):
         def refused(method, params, needle, chain=CHAIN, code=4001):

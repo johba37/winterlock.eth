@@ -96,7 +96,8 @@ async function main() {
     return { safeTxHash: h, error: 'no receipt in time' };
   });
 
-  // a Permit2 permit: the wallet approves it on-chain through SignMessageLib and answers 0x
+  // a Permit2 permit: the wallet approves it on-chain through SignMessageLib and answers with the owners' approved
+  // signatures (owner v2's kind 0x03), or 0x if the Safe has too few v2 owners
   await step('permit2', async () => {
     const s = Date.now();
     const sig = await ask('eth_signTypedData_v4', [safe, JSON.stringify(sc.permit2)], 900);

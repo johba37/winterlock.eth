@@ -10,18 +10,42 @@ from winterlock_signer.bridge import Bridge, RpcFail, Ui
 
 SAFE = "0x5B81D3ce1Ca48be48F154D8AD060Cf9f883E86B2"
 KEY = bytes(range(1, 33))  # the member key of the member at the keyboard
-OWNERS = [owner.owner_address(KEY), "0x2D3C9197237D1F1e1165b1EEE748BC9e1c3f1123"]
+KEYS = [KEY, bytes(range(101, 133))]
+OWNERS = [owner.owner_address(k) for k in KEYS]
+PERMIT2 = {"types": {"EIP712Domain": [{"name": "name", "type": "string"}, {"name": "chainId", "type": "uint256"},
+                                      {"name": "verifyingContract", "type": "address"}],
+                     "PermitSingle": [{"name": "details", "type": "PermitDetails"},
+                                      {"name": "spender", "type": "address"}, {"name": "sigDeadline", "type": "uint256"}],
+                     "PermitDetails": [{"name": "token", "type": "address"}, {"name": "amount", "type": "uint160"},
+                                       {"name": "expiration", "type": "uint48"}, {"name": "nonce", "type": "uint48"}]},
+           "primaryType": "PermitSingle",
+           "domain": {"name": "Permit2", "chainId": 11155111,
+                      "verifyingContract": "0x000000000022D473030F116dDEE9F6B43aC78BA3"},
+           "message": {"details": {"token": "0x1111111111111111111111111111111111111111", "amount": "1000000",
+                                   "expiration": 4102444800, "nonce": 0},
+                       "spender": "0x2222222222222222222222222222222222222222", "sigDeadline": "4102444800"}}
 OTHER = "0x000000000000000000000000000000000000cafE"
 CHAIN = 11155111
 
 
 class FakeRpc:
-    """The Safe's views, and a record of what is passed through"""
+    """The Safe's views, and a record of what is passed through. The Safe has approved every message on-chain
+    (signedMessages), and its isValidSignature accepts the empty signature and whatever `accepts` allows."""
 
     def __init__(self):
         self.calls = []
+        self.v2_owners = {OWNERS[0]}
+        self.accepts = lambda sig: True
+        self.checked = []
 
     def eth_call(self, to, data, **kw):
+        if data[:4] == abi.selector("signedMessages(bytes32)"):
+            return abi.encode(["uint256"], [1])
+        if data[:4] == abi.selector("isValidSignature(bytes32,bytes)"):
+            sig = abi.dec_bytes(data[4:], 1)
+            self.checked.append(sig)
+            ok = sig == b"" or self.accepts(sig)
+            return (owner.MAGIC if ok else b"\xff" * 4).ljust(32, b"\x00")
         if data == abi.calldata("nonce()"):
             return abi.encode(["uint256"], [7])
         if data == abi.calldata("getThreshold()"):
@@ -31,8 +55,9 @@ class FakeRpc:
         raise AssertionError(f"unexpected eth_call {data[:4].hex()}")
 
     def code(self, addr):
-        if addr == Member.owner:  # the member's proxy owner
-            return owner.proxy_runtime(owner.implementation_address(), Member.key)
+        if addr in self.v2_owners:  # a member's proxy owner
+            key = KEYS[OWNERS.index(addr)]
+            return owner.proxy_runtime(owner.implementation_address(), key)
         return b"\x60\x80"
 
     def call(self, method, params=()):
@@ -129,6 +154,36 @@ class Handling(unittest.TestCase):
             builtins.input = orig
         self.assertEqual(asked, ["Sign this message with your member key? [y/N] "])
         self.assertTrue(any("OFF-CHAIN" in line for line in self.shown))
+
+    def test_approved_answers(self):
+        """A message the Safe has approved on-chain is answered with k approved signatures of v2 owners, checked with
+        the Safe's isValidSignature; with fewer than k v2 owners, or if the Safe refuses them, with 0x and a warning"""
+        import json
+        from winterlock_signer import messages
+        from winterlock_signer.eip712 import TypedData
+        params = [SAFE, json.dumps(PERMIT2)]
+        app_hash = TypedData(PERMIT2).hash()
+        rpc = self.ctx.rpc
+        # one of the two owners is a v2 owner, the threshold is 2: 0x, with the reason
+        self.assertEqual(self.handle("eth_signTypedData_v4", params), "0x")
+        self.assertTrue(any("WARNING: only 1 of the Safe's 2 owners are v2 Winterlock owners, fewer than its "
+                            "threshold of 2" in line for line in self.shown), self.shown)
+        self.assertEqual(rpc.checked[-1], b"")  # the empty signature was checked too before it was released
+        # both are: two approved signatures, 150 bytes each, sorted by owner, checked by the Safe before release
+        rpc.v2_owners = set(OWNERS)
+        answer = abi.h2b(self.handle("eth_signTypedData_v4", params))
+        self.assertEqual(answer, messages.approved_signatures(SAFE, app_hash, OWNERS))
+        self.assertEqual(len(answer), 300)
+        first, second = sorted(OWNERS, key=lambda o: int(o, 16))
+        self.assertEqual((abi.checksum(answer[12:32]), abi.checksum(answer[77:97])), (first, second))
+        self.assertEqual([int.from_bytes(answer[32:64], "big"), int.from_bytes(answer[97:129], "big")], [130, 215])
+        self.assertEqual(answer[130:162], abi.word(53))
+        self.assertEqual(answer[162:215], b"\x03" + abi.h2b(SAFE) + messages.message_hash(app_hash))
+        self.assertEqual(rpc.checked[-1], answer)
+        # the Safe refuses them (it shouldn't): 0x instead, with a warning
+        rpc.accepts = lambda sig: False
+        self.assertEqual(self.handle("eth_signTypedData_v4", params), "0x")
+        self.assertTrue(any("refuses the approved signatures" in line for line in self.shown))
 
     def test_execution_watch_survives_a_lagging_node(self):
         """A node behind the one that gave the proposal's block refuses the log range: not executed yet, no error"""

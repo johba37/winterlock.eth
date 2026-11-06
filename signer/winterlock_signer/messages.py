@@ -7,7 +7,8 @@
              collection endpoint (collect.py).
   on-chain   for messages apps check on-chain (permits, Permit2, orders a contract settles). The team approves the
              message in an ordinary WOTS-signed Safe transaction that delegatecalls SignMessageLib.signMessage; after
-             it executes, the Safe accepts an empty signature (0x) for that message.
+             it executes, the Safe accepts an empty signature (0x) for that message, and k approved signatures (owner
+             v2's kind 0x03, 150 bytes each), which apps that verify with viem accept too (approved_answer).
   refused    what the signer can't decode, or what could be an attack: a bare 32-byte hash, binary data, hidden
              characters, a sign-in for another account, chain or site, the Safe's own typed data (SafeTx,
              SafeMessage, SafeOp), a validator's enable data (Kernel's Enable), permits that only accept ECDSA.
@@ -21,6 +22,7 @@ SafeMessage (Safe's CompatibilityFallbackHandler, v1.3.0 to v1.5.0), for an app'
 Owner signature data (WinterlockOwner v2):
   message   [0x02][device: 1][safe: 20][msgHash: 32][stateless signature of
             messageDigest(chain, owner, safe, device, generation, safeMessageHash): 5,684]
+  approved  [0x03][safe: 20][msgHash: 32], valid once Safe.signedMessages(safeMessageHash) != 0; no key signs it
 """
 
 import re
@@ -453,6 +455,38 @@ def approved_onchain(rpc, safe: str, chain_id: int, app_hash: bytes) -> bool:
     """Whether the Safe has approved the message on-chain (SignMessageLib set signedMessages)"""
     smh = safe_message_hash(chain_id, safe, app_hash)
     return abi.dec_uint(rpc.eth_call(safe, abi.calldata("signedMessages(bytes32)", ["bytes32"], [smh]))) != 0
+
+
+def approved_owners(rpc, owners) -> list:
+    """The Safe's owners that are v2 Winterlock owners of the pinned implementation (their code, checked), in
+    increasing address order"""
+    return [o for o in sorted(owners, key=lambda o: int(o, 16)) if owner.is_v2_owner(rpc, o)]
+
+
+def approved_signatures(safe: str, app_hash: bytes, owners) -> bytes:
+    """The Safe's signature for an approved message from the approved kind of each of `owners`: in Safe's encoding,
+    sorted by owner, each a contract signature (r = owner, s = offset, v = 0) whose data is
+    [0x03][safe][keccak256(message)], 150 bytes per owner"""
+    data = owner.approved_signature_data(safe, message_hash(app_hash))
+    return pack([(o, data, True) for o in owners])
+
+
+def approved_answer(rpc, safe: str, chain_id: int, app_hash: bytes, threshold: int, owners):
+    """(signature, note) for a message the Safe has approved on-chain: `threshold` approved signatures, checked with
+    the Safe's isValidSignature, which apps that verify with viem accept; or b"" (0x) with the reason, if fewer than
+    `threshold` owners are v2 Winterlock owners (ECDSA owners and v1 owners have no approved kind) or the Safe refuses
+    them"""
+    v2 = approved_owners(rpc, owners)
+    if len(v2) < threshold:
+        return b"", (f"only {len(v2)} of the Safe's {len(owners)} owners are v2 Winterlock owners, fewer than its "
+                     f"threshold of {threshold}: no approved signatures, so the app gets 0x, which apps that verify "
+                     "with viem refuse (contracts such as Permit2 accept it)")
+    blob = approved_signatures(safe, app_hash, v2[:threshold])
+    if not safe_accepts(rpc, safe, app_hash, blob):
+        return b"", ("the Safe's isValidSignature refuses the approved signatures: the app gets 0x instead, which apps "
+                     "that verify with viem refuse")
+    return blob, (f"{threshold} approved signatures of v2 owners ({len(blob):,} bytes), which the Safe's "
+                  "isValidSignature accepts (eth_call)")
 
 
 def sign_message_calldata(app_hash: bytes) -> bytes:

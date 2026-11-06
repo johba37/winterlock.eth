@@ -2,14 +2,15 @@
 """A live WalletConnect run on Sepolia, through Reown's relay: a dapp on the official SDK (tools/live_dapp.js) pairs
 with member 1's `connect` and sees the team's Safe. Member 2 and the gas account are played by this script.
 
-  sign-in      personal_sign of a sign-in with Ethereum message. Member 1 signs with its stateless key and writes a
+  sign-in      personal_sign of a sign-in with Ethereum message. Member 1 signs with its member key and writes a
                message file; this script has member 2 sign a copy (`message --file`) and returns it. The dapp gets
                the Safe's combined signature and checks it with viem's verifyMessage.
   transaction  eth_sendTransaction of 1e11 wei to the gas account. Member 1 proposes it to Safe's Transaction
                Service; the dapp gets the SafeTx hash. Member 2 confirms, the gas account executes, and the dapp,
                asking the wallet for the receipt of the SafeTx hash, gets the execution's receipt.
   permit2      eth_signTypedData_v4 of a Permit2 PermitSingle. Member 1 proposes the approval through SignMessageLib;
-               member 2 confirms, the gas account executes, and the dapp gets 0x. It reports what viem makes of it.
+               member 2 confirms, the gas account executes, and the dapp gets the v2 owners' approved signatures (0x
+               with fewer v2 owners than the threshold). It reports what viem makes of it.
 Member 2 signs only those two transactions (checked against the scenario): anything else in the Safe's queue is left.
 
 Needs: a DIR with two signer homes m1 and m2 whose owners are the Safe's owners, enrolled on it (as tools/

@@ -13,8 +13,10 @@ agrees.
   personal_sign,         D14 (messages.py decides): off-chain messages are signed with this home's stateless key (the
   eth_signTypedData_v4   member key or a device key) and the other members' signatures gathered from message files; k
                          of them, combined and checked with the Safe's isValidSignature, go to the dapp. On-chain
-                         messages are approved by a proposed Safe transaction through SignMessageLib; the dapp gets 0x
-                         once it has executed.
+                         messages are approved by a proposed Safe transaction through SignMessageLib; once it has
+                         executed, the dapp gets k approved signatures of v2 owners (kind 0x03, 150 bytes each, which
+                         viem accepts), checked with the Safe's isValidSignature, or 0x if the Safe has fewer than k v2
+                         owners.
   refused                eth_sign, eth_signTransaction, raw transactions, contract creation, Safe self-calls that change
                          owners, modules, guard or fallback handler, and any message messages.py refuses.
 
@@ -389,19 +391,32 @@ class Bridge:
             return self.approve_onchain(d, deadline)
         return self.collect_offchain(method, params, d, threshold, owners, deadline)
 
+    def approved_answer(self, d) -> str:
+        """The answer for a message the Safe has approved on-chain: k approved signatures of v2 owners, checked with
+        the Safe's isValidSignature, or 0x (with a warning) if the Safe has fewer than k v2 owners"""
+        threshold, owners = self.owners()
+        blob, note = messages.approved_answer(self.rpc, self.safe, self.chain, d.app_hash, threshold, owners)
+        if blob:
+            self.ui.show(f"  The app gets {note}.")
+            return b2h(blob)
+        self.ui.show(f"  WARNING: {note}.")
+        if not messages.safe_accepts(self.rpc, self.safe, d.app_hash, b""):
+            raise RpcFail(-32000, "the Safe's isValidSignature refuses the empty signature too: not answered")
+        return "0x"
+
     def approve_onchain(self, d, deadline):
         if messages.approved_onchain(self.rpc, self.safe, self.chain, d.app_hash):
-            self.ui.show("The Safe has already approved this message on-chain: the app gets 0x (an empty signature)")
-            return "0x"
+            self.ui.show("The Safe has already approved this message on-chain.")
+            return self.approved_answer(d)
         try:
             lib = safelibs.check(self.rpc, safelibs.SIGN_MESSAGE_LIB, self.sign_message_lib)
         except safelibs.UnknownLibrary as e:
             raise RpcFail(-32000, str(e)) from None
         self.ui.show(
             "On-chain approval: a Safe transaction delegatecalls Safe's SignMessageLib at " + lib + " (code checked),",
-            "  which records the message in the Safe. Once it executes, the Safe accepts an empty signature for it,",
-            "  and the app gets 0x. Apps that verify with viem refuse 0x (its ERC-6492 check needs 32 bytes or more);",
-            "  contracts such as Permit2 accept it. An approval can't be withdrawn with Safe's own contracts.")
+            "  which records the message in the Safe. Once it executes, the Safe accepts it, and the app gets the",
+            "  owners' approved signatures (150 bytes each, which viem accepts; with too few v2 owners, 0x). An",
+            "  approval can't be withdrawn with Safe's own contracts.")
         t = SafeTx(to=lib, data=messages.sign_message_calldata(d.app_hash), operation=1, nonce=self.next_nonce())
         h = self.propose(t, question="Sign and propose this approval?", header=False)
         until = time.strftime('%H:%M:%S', time.localtime(deadline + MARGIN))
@@ -409,11 +424,11 @@ class Bridge:
                      f"request expires ({until})")
         while time.time() < deadline and not self.stop.is_set():
             if messages.approved_onchain(self.rpc, self.safe, self.chain, d.app_hash):
-                self.ui.show("Approved on-chain: the app gets 0x")
-                return "0x"
+                self.ui.show("Approved on-chain.")
+                return self.approved_answer(d)
             time.sleep(self.poll)
-        raise RpcFail(-32000, f"the approval {h} hasn't executed yet; once it has, ask again: the signer answers 0x "
-                              "at once")
+        raise RpcFail(-32000, f"the approval {h} hasn't executed yet; once it has, ask again: the signer answers at "
+                              "once")
 
     def _doc_path(self, smh: str) -> str:
         return os.path.join(self.exchange_dir, f"safe-message-{smh[2:14]}.json")
