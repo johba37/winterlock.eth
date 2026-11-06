@@ -14,7 +14,7 @@ import {WinterlockOwner} from "../../src/safe/WinterlockOwner.sol";
 import {IStatelessVerifier} from "../../src/interfaces/IStatelessVerifier.sol";
 import {ValidatorDeployment} from "../../script/DeployValidator.s.sol";
 import {SafeOwnerDeployment} from "../../script/DeploySafeOwner.s.sol";
-import {WotsParams, WotsKey, Ops} from "../utils/WotsSigner.sol";
+import {WotsParams, WotsKey, WotsSigner, WotsTree, Ops} from "../utils/WotsSigner.sol";
 import {StatelessKey, StatelessSigner} from "../utils/StatelessSigner.sol";
 import {StatelessSignerS} from "../utils/StatelessSignerS.sol";
 import {WinterlockOwnerS} from "../utils/WinterlockOwnerS.sol";
@@ -48,12 +48,32 @@ contract Permit2SignatureCheck {
     }
 }
 
+/// The same check as AppProbe, but not a view, so that Forge runs a call to it as a transaction of its own (isolate):
+/// everything it touches is cold
+contract ColdAppProbe {
+    function check(address target, bytes32 hash, bytes calldata sig) external returns (bool valid, uint256 used) {
+        used = gasleft();
+        (bool ok, bytes memory ret) = target.staticcall(abi.encodeCall(IERC1271.isValidSignature, (hash, sig)));
+        used -= gasleft();
+        valid = ok && ret.length == 32 && bytes4(bytes32(ret)) == IERC1271.isValidSignature.selector;
+    }
+}
+
 /// TEST ONLY. Clears an on-chain message approval, signedMessages[hash], when a Safe transaction delegatecalls it.
 /// Safe ships no such library: SignMessageLib only sets the flag, and no Safe function clears it (v1.4.1, v1.5.0).
 /// The layout is Safe's own (SafeStorage, the same in both releases).
 contract UnsignMessageLib is SafeStorage {
     function unsignMessage(bytes32 safeMessageHash) external {
         signedMessages[safeMessageHash] = 0;
+    }
+}
+
+/// TEST ONLY. Sets signedMessages[hash] for any hash, a SafeTx hash included, when a Safe transaction delegatecalls
+/// it. No Safe library does this (SignMessageLib sets only SafeMessage hashes); it shows that the approved kind still
+/// can't approve a transaction.
+contract MarkSignedLib is SafeStorage {
+    function markSigned(bytes32 hash) external {
+        signedMessages[hash] = 1;
     }
 }
 
@@ -65,13 +85,15 @@ contract PermitToken is ERC20Permit {
 }
 
 /// Safe messages with WinterlockOwner owners (docs/notes/safe-messages.md): the Transaction Service caps a message
-/// signature at 5,000 bytes, and a leanSphincs one is 5,834. Three ways out, on both Safe releases:
+/// signature at 5,000 bytes, and a leanSphincs one is 5,835 (5,834 in v1). Three ways out, on both Safe releases:
 /// - A. leanSphincs-s as the stateless key (test-only WinterlockOwnerS and verifier): sizes, gas, end to end
 /// - B. on-chain approval: a Safe transaction, signed with members' WOTS keys, delegatecalls Safe's SignMessageLib;
 ///      then the fallback handler accepts an empty signature
-/// - C. the stateless 2-of-3 signature collected outside Safe's service (11,668 bytes), checked as apps check it
+/// - C. the stateless 2-of-3 signature collected outside Safe's service (11,670 bytes), checked as apps check it
 /// and how common consumers verify: sign-in with Ethereum (an eth_call), Permit2 (EIP-1271 on-chain), EIP-2612
-/// (OpenZeppelin's ERC20Permit, ecrecover only).
+/// (OpenZeppelin's ERC20Permit, ecrecover only). And owner v2's approved kind (0x03), which turns B's approval into k
+/// owner signatures for apps that refuse the empty one (viem).
+/// Option A's owner (test-only WinterlockOwnerS) is a copy of owner v1 and keeps v1's formats.
 /// SignMessageLib is compiled from each release's source by the project's compiler, because setup.sh builds no
 /// SignMessageLib artifact with the release settings. The release build's gas may differ slightly (not measured).
 abstract contract SafeMessagesTest is Test {
@@ -82,6 +104,7 @@ abstract contract SafeMessagesTest is Test {
     SafeRelease internal rel;
     address internal signMessageLib;
     AppProbe internal probe;
+    ColdAppProbe internal coldProbe;
     Permit2SignatureCheck internal permit2;
 
     /// Production owners (leanSphincs), as in SafeWinterlockOwner.t.sol
@@ -106,6 +129,7 @@ abstract contract SafeMessagesTest is Test {
     uint256 internal constant SEPOLIA = 11155111;
     bytes4 internal constant MAGIC = 0x1626ba7e;
     bytes4 internal constant LEGACY_MAGIC = 0x20c13b0b;
+    bytes4 internal constant INVALID = 0xffffffff;
     /// The Transaction Service's cap on a message signature, the whole entry (SIGNATURE_LENGTH)
     uint256 internal constant SERVICE_CAP = 5000;
 
@@ -125,6 +149,7 @@ abstract contract SafeMessagesTest is Test {
         rel = SafeHarness.deployRelease(_version());
         signMessageLib = _deploySignMessageLib();
         probe = new AppProbe();
+        coldProbe = new ColdAppProbe();
         permit2 = new Permit2SignatureCheck();
         for (uint256 i; i < 3; ++i) {
             sks[i] = StatelessSigner.testKey(_label(i));
@@ -168,7 +193,7 @@ abstract contract SafeMessagesTest is Test {
 
     /// Member i's WOTS signature of `t`, from its enrolled tree
     function _sign(uint256 i, ISafe s, SafeTx memory t, uint256 slot) internal view returns (OwnerSignature memory) {
-        (,,, uint64 start) = owners[i].tree(address(s));
+        (,,, uint64 start,) = owners[i].tree(address(s), 0);
         bytes memory data = OwnerSigner.txSignature(_tree(i, address(s), start), start, slot, address(s), t, s.hash(t));
         return SafeHarness.contractSig(address(owners[i]), data);
     }
@@ -278,7 +303,11 @@ abstract contract SafeMessagesTest is Test {
 
         bytes32 h = safe.hash(t);
         bytes memory phished = abi.encodePacked(
-            uint8(2), address(safe), bytes32(0), StatelessSigner.sign(sks[0], owners[0].messageDigest(address(safe), h))
+            uint8(2),
+            uint8(0),
+            address(safe),
+            bytes32(0),
+            StatelessSigner.sign(sks[0], owners[0].messageDigest(address(safe), 0, 0, h))
         );
         bytes memory sigs = SafeHarness.pack(SafeHarness.contractSig(address(owners[0]), phished), _sign(1, safe, t, 0));
         vm.expectRevert("GS024");
@@ -305,6 +334,131 @@ abstract contract SafeMessagesTest is Test {
         assertTrue(safe.exec(t, _signed(safe, t, 1, 2)));
         assertEq(safe.signedMessages(safeMsgHash), 0);
         assertFalse(_check(safe, appHash, ""), "revoked");
+    }
+
+    // --- the approved kind (owner v2) ---
+
+    /// Member i's approved signature for the SafeMessage of `appHash`: [0x03][safe][keccak256(message)], no key
+    function _approvedSig(uint256 i, ISafe s, bytes32 appHash) internal view returns (OwnerSignature memory) {
+        bytes memory data = OwnerSigner.approvedSignature(address(s), SafeHarness.messageHash(appHash));
+        return SafeHarness.contractSig(address(owners[i]), data);
+    }
+
+    function _approvedSigs(ISafe s, bytes32 appHash, uint256 a, uint256 b) internal view returns (bytes memory) {
+        return SafeHarness.pack(_approvedSig(a, s, appHash), _approvedSig(b, s, appHash));
+    }
+
+    /// keccak256 preimage of the SafeMessage hash for `appHash`, as Safe v1.4.1 passes it to an owner
+    function _messagePreimage(ISafe s, bytes32 appHash) internal view returns (bytes memory pre) {
+        bytes32 structHash =
+            keccak256(abi.encode(keccak256("SafeMessage(bytes message)"), SafeHarness.messageHash(appHash)));
+        pre = abi.encodePacked(bytes2(0x1901), s.domainSeparator(), structHash);
+        assertEq(keccak256(pre), _safeMessageHash(s, appHash));
+    }
+
+    /// The approved kind: before the quorum approves the message on-chain, k approved signatures are refused, like
+    /// the empty signature; after the SignMessageLib transaction, the Safe's isValidSignature accepts them through
+    /// either release's fallback handler, from any k owners, and each owner answers both entry points. 150 bytes per
+    /// owner in Safe's encoding, so the answer passes viem's ERC-6492 length check (at least 32 bytes); Permit2
+    /// accepts it.
+    function test_approved_beforeAndAfter() public {
+        bytes32 appHash = keccak256("a Permit2 PermitSingle digest");
+        bytes memory sigs = _approvedSigs(safe, appHash, 0, 1);
+        assertEq(sigs.length, 2 * (65 + 32 + 53));
+        assertFalse(_check(safe, appHash, sigs), "not approved yet");
+        vm.expectRevert();
+        permit2.verify(sigs, appHash, address(safe));
+        bytes32 safeMsgHash = _safeMessageHash(safe, appHash);
+        bytes memory one = _approvedSig(2, safe, appHash).data;
+        assertEq(owners[2].isValidSignature(safeMsgHash, one), INVALID);
+
+        _approve(safe, appHash);
+        assertTrue(_check(safe, appHash, sigs));
+        assertTrue(_check(safe, appHash, _approvedSigs(safe, appHash, 1, 2)), "any two owners");
+        assertTrue(_check(safe, appHash, ""), "and the empty signature, as before");
+        permit2.verify(sigs, appHash, address(safe));
+        assertEq(owners[2].isValidSignature(safeMsgHash, one), MAGIC);
+        assertEq(owners[2].isValidSignature(_messagePreimage(safe, appHash), one), LEGACY_MAGIC);
+        OwnerSignature[] memory single = new OwnerSignature[](1);
+        single[0] = _approvedSig(0, safe, appHash);
+        assertFalse(_check(safe, appHash, SafeHarness.pack(single)), "one of two");
+        // mixed with a stateless signature
+        assertTrue(
+            _check(safe, appHash, SafeHarness.pack(_approvedSig(0, safe, appHash), _messageSig(1, safe, appHash)))
+        );
+        // after the approval is withdrawn (test-only library), refused again
+        UnsignMessageLib unsign = new UnsignMessageLib();
+        SafeTx memory t =
+            SafeHarness.call(address(unsign), abi.encodeCall(UnsignMessageLib.unsignMessage, (safeMsgHash)), 1);
+        t.operation = 1;
+        assertTrue(safe.exec(t, _signed(safe, t, 1, 2)));
+        assertFalse(_check(safe, appHash, sigs), "withdrawn");
+    }
+
+    /// The approved kind can't approve a Safe transaction. Approved signatures for an approved message don't execute
+    /// a transaction; and even with signedMessages set for the SafeTx hash itself (by a library no Safe ships), no
+    /// approved signature names it, because the owner accepts only the Safe's SafeMessage hashes.
+    function test_approved_cannotApproveSafeTx() public {
+        bytes32 appHash = keccak256("permit: 100 TST to app, nonce 7");
+        _approve(safe, appHash); // nonce 0
+        SafeTx memory t = SafeHarness.transfer(recipient, 1 ether, 2);
+        bytes32 h = safe.hash(t);
+        MarkSignedLib mark = new MarkSignedLib();
+        SafeTx memory m = SafeHarness.call(address(mark), abi.encodeCall(MarkSignedLib.markSigned, (h)), 1);
+        m.operation = 1;
+        assertTrue(safe.exec(m, _signed(safe, m, 0, 1)));
+        assertEq(safe.signedMessages(h), 1);
+
+        bytes32[3] memory named = [SafeHarness.messageHash(appHash), h, keccak256(abi.encode(h))];
+        for (uint256 i; i < named.length; ++i) {
+            bytes memory one = OwnerSigner.approvedSignature(address(safe), named[i]);
+            assertEq(owners[0].isValidSignature(h, one), INVALID);
+            bytes memory sigs = SafeHarness.pack(
+                SafeHarness.contractSig(address(owners[0]), one), SafeHarness.contractSig(address(owners[1]), one)
+            );
+            vm.expectRevert("GS024");
+            safe.exec(t, sigs);
+        }
+        assertTrue(safe.exec(t, _signed(safe, t, 0, 1))); // control
+    }
+
+    /// Every kind is bound to the Safe and the hash it names. For each kind, a signature that is valid for `safe` is
+    /// refused for the twin's hash (a Safe with the same owners, trees enrolled and the message approved there too),
+    /// refused once it names the twin, and refused for another hash.
+    function test_safeAndHashBoundForEveryKind() public {
+        ISafe twin = SafeHarness.createSafe(rel, _ownerList(), 2, 1);
+        vm.deal(address(twin), 1 ether);
+        for (uint256 i; i < 3; ++i) {
+            _enrol(i, address(twin), 0);
+        }
+        bytes32 appHash = keccak256("permit: 100 TST to app, nonce 7");
+        _approve(safe, appHash);
+        _approve(twin, appHash);
+        SafeTx memory t = SafeHarness.transfer(recipient, 1 ether, 1);
+        bytes[3] memory sigs = [
+            _sign(0, safe, t, 0).data,
+            _messageSig(0, safe, appHash).data,
+            OwnerSigner.approvedSignature(address(safe), SafeHarness.messageHash(appHash))
+        ];
+        bytes32[3] memory hashes = [safe.hash(t), _safeMessageHash(safe, appHash), _safeMessageHash(safe, appHash)];
+        bytes32[3] memory twinHashes = [twin.hash(t), _safeMessageHash(twin, appHash), _safeMessageHash(twin, appHash)];
+        for (uint256 k; k < 3; ++k) {
+            assertEq(owners[0].isValidSignature(hashes[k], sigs[k]), MAGIC, "control");
+            assertEq(owners[0].isValidSignature(twinHashes[k], sigs[k]), INVALID, "the twin's hash");
+            // the Safe's address sits after the kind and, but for the approved kind, the device
+            bytes memory renamed = _renameSafe(sigs[k], address(twin), k == 2 ? 1 : 2);
+            assertEq(owners[0].isValidSignature(hashes[k], renamed), INVALID, "naming the twin");
+            assertEq(owners[0].isValidSignature(keccak256("another hash"), sigs[k]), INVALID, "another hash");
+        }
+    }
+
+    /// `sig` with `to` written over the 20 bytes at `at`
+    function _renameSafe(bytes memory sig, address to, uint256 at) internal pure returns (bytes memory out) {
+        out = bytes.concat(sig);
+        bytes20 a = bytes20(to);
+        for (uint256 i; i < 20; ++i) {
+            out[at + i] = a[i];
+        }
     }
 
     // --- consumers ---
@@ -350,12 +504,12 @@ abstract contract SafeMessagesTest is Test {
         assertEq(token.allowance(address(safe), spender), 0);
     }
 
-    /// C, as common consumers verify: the members' stateless 2-of-3 signature (11,668 bytes), with no on-chain state.
+    /// C, as common consumers verify: the members' stateless 2-of-3 signature (11,670 bytes), with no on-chain state.
     /// Sign-in with Ethereum (eth_call) and Permit2 accept it; EIP-2612 can't carry it (v, r, s only).
     function test_consumers_statelessSignature() public {
         bytes32 siwe = _siweHash(address(safe));
         bytes memory sigs = SafeHarness.pack(_messageSig(0, safe, siwe), _messageSig(2, safe, siwe));
-        assertEq(sigs.length, 2 * (65 + 32 + 1 + 20 + 32 + 5684));
+        assertEq(sigs.length, 2 * (65 + 32 + 2 + 20 + 32 + 5684));
         vm.prank(address(0));
         assertEq(IERC1271(address(safe)).isValidSignature(siwe, sigs), MAGIC);
 
@@ -371,12 +525,6 @@ abstract contract SafeMessagesTest is Test {
 
     function _labelS(uint256 i) internal pure returns (string memory) {
         return string(abi.encode("safe member s", i));
-    }
-
-    /// Member i with its leanSphincs-s key. OwnerSigner types the owner as WinterlockOwner; WinterlockOwnerS has
-    /// the same functions (treeSeed, certificateDigest, messageDigest), so the cast only reuses the tree helpers.
-    function _memberS(uint256 i) internal view returns (Member memory) {
-        return Member(_labelS(i), sksS[i], WinterlockOwner(address(ownersS[i])));
     }
 
     function _ownerListS() internal view returns (address[] memory list) {
@@ -401,20 +549,30 @@ abstract contract SafeMessagesTest is Test {
         }
     }
 
+    /// Member i's operation tree of `s` from `start` for its leanSphincs-s owner, which keeps owner v1's tree seed
+    function _treeS(uint256 i, address s, uint64 start) internal view returns (WotsKey memory) {
+        bytes32 skSeed = keccak256(abi.encode(_labelS(i), "safe ops", block.chainid, s, start));
+        return WotsTree.create(_p(), ownersS[i].treeSeed(s, start), skSeed, H, K);
+    }
+
     /// WinterlockOwnerS.enroll with member i's leanSphincs-s certificate for its tree of `s` from `start`
     function _enrollCalldataS(uint256 i, address s, uint64 start) internal view returns (bytes memory) {
-        Member memory m = _memberS(i);
-        WotsKey memory tree = OwnerSigner.opsTree(_p(), m, s, start, H, K);
+        WotsKey memory tree = _treeS(i, s, start);
         // forge-lint: disable-next-line(unsafe-typecast)
         uint8 height = uint8(tree.height);
-        bytes memory cert = StatelessSignerS.sign(m.sk, ownersS[i].certificateDigest(s, tree.root, height, start));
+        bytes memory cert = StatelessSignerS.sign(sksS[i], ownersS[i].certificateDigest(s, tree.root, height, start));
         return abi.encodeCall(WinterlockOwnerS.enroll, (s, tree.root, height, start, cert));
     }
 
+    /// Member i's slot-0 signature of `t` in owner v1's format: [slot][safe][SafeTx words][WOTS signature][path]
     function _signS(uint256 i, ISafe s, SafeTx memory t) internal view returns (OwnerSignature memory) {
         (,,, uint64 start) = ownersS[i].tree(address(s));
-        WotsKey memory tree = OwnerSigner.opsTree(_p(), _memberS(i), address(s), start, H, K);
-        bytes memory data = OwnerSigner.txSignature(tree, start, 0, address(s), t, s.hash(t));
+        WotsKey memory tree = _treeS(i, address(s), start);
+        uint256 keyIndex = (t.nonce - start) * 2;
+        bytes memory wots = bytes.concat(
+            WotsSigner.sign(tree.p, tree.seed, tree.skSeed, keyIndex, s.hash(t)), WotsTree.path(tree, keyIndex)
+        );
+        bytes memory data = abi.encodePacked(uint8(0), address(s), SafeHarness.words(t), wots);
         return SafeHarness.contractSig(address(ownersS[i]), data);
     }
 
@@ -433,7 +591,7 @@ abstract contract SafeMessagesTest is Test {
     }
 
     /// A: with leanSphincs-s, one member's message confirmation, as the Transaction Service counts it (65 + 32 + data),
-    /// is 4,314 bytes and fits the 5,000-byte cap; leanSphincs's is 5,834. The owner answers the service's checks (an
+    /// is 4,314 bytes (in owner v1's format) and fits the 5,000-byte cap; leanSphincs's is 5,835 in owner v2's. The owner answers the service's checks (an
     /// eth_call with the SafeMessage hash, then the legacy entry with its preimage). The combined 2-of-3 signature
     /// (8,628 bytes) passes the fallback handler and Permit2. Transactions stay on WOTS and are unchanged.
     function test_A_leanSphincsSMessagesFitTheService() public {
@@ -458,7 +616,7 @@ abstract contract SafeMessagesTest is Test {
         assertEq(m0.data.length, 1 + 20 + 32 + 4164);
         assertEq(_confirmation(m0).length, 4314);
         assertLe(_confirmation(m0).length, SERVICE_CAP, "fits the service");
-        assertEq(_confirmation(_messageSig(0, safe, appHash)).length, 5834);
+        assertEq(_confirmation(_messageSig(0, safe, appHash)).length, 5835);
         assertGt(_confirmation(_messageSig(0, safe, appHash)).length, SERVICE_CAP, "leanSphincs doesn't");
 
         bytes memory sigs = SafeHarness.pack(m0, m2);
@@ -503,6 +661,25 @@ abstract contract SafeMessagesTest is Test {
         console.log("approval tx gas, 2-of-3 ECDSA owners    ", ecdsaApproval);
         console.log("app's check, empty signature (cold)     ", emptyCheck);
         console.log("app's check, 2-of-3 leanSphincs (cold)  ", statelessCheck);
+    }
+
+    /// Owner v2's approved kind, once the message is approved: the app's check (Safe.isValidSignature through the
+    /// fallback handler) with two approved signatures against the empty signature, and one owner's check on its own,
+    /// each call in a transaction of its own, so everything is cold. The gas of the call, without the app's calldata.
+    function test_gas_approvedKind() public {
+        bytes32 appHash = keccak256("permit: 100 TST to app, nonce 7");
+        _approve(safe, appHash);
+        bytes memory sigs = _approvedSigs(safe, appHash, 0, 1);
+        (bool v1, uint256 empty) = coldProbe.check(address(safe), appHash, "");
+        (bool v2, uint256 approved) = coldProbe.check(address(safe), appHash, sigs);
+        bytes memory one = _approvedSig(2, safe, appHash).data;
+        (bool v3, uint256 owner) = coldProbe.check(address(owners[2]), _safeMessageHash(safe, appHash), one);
+        assertTrue(v1 && v2 && v3);
+        console.log(string.concat("Safe ", rel.version, ", the approved kind (owner v2), cold"));
+        console.log("app's check, empty signature        ", empty);
+        console.log("app's check, 2 approved signatures  ", approved, ", more", approved - empty);
+        console.log("one owner's check, approved kind     ", owner);
+        console.log("2 approved signatures, bytes        ", sigs.length);
     }
 
     function _ecdsaApprovalGas(bytes32 appHash) internal returns (uint256) {
@@ -559,7 +736,8 @@ abstract contract SafeMessagesTest is Test {
         uint256 bytesL = lastCalldataBytes;
         ISafe twinS = SafeHarness.createSafe(rel, _ownerListS(), 2, 101);
         uint256 firstS = _txGas(address(ownersS[0]), _enrollCalldataS(0, address(twinS), 0));
-        assertEq(bytesL - lastCalldataBytes, 5696 - 4192); // the signatures, ABI-padded to whole words
+        // the signatures, ABI-padded to whole words, and owner v2's device argument
+        assertEq(bytesL - lastCalldataBytes, 5696 - 4192 + 32);
         console.log("enroll, first tree, tx gas: leanSphincs", firstL, ", leanSphincs-s", firstS);
         console.log("enroll calldata bytes:      leanSphincs", bytesL, ", leanSphincs-s", lastCalldataBytes);
     }

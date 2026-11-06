@@ -236,43 +236,76 @@ library SafeHarness {
     }
 }
 
-/// A member's keys for a WinterlockOwner: the stateless key (its public key is the owner's KEY) and the label its
-/// operation-tree secrets derive from. Test use only: secrets come from public labels.
+/// A member's member key for a WinterlockOwner (device 0): its stateless key, whose public key is the owner's KEY, and
+/// the label its operation-tree secrets derive from. Test use only: secrets come from public labels.
 struct Member {
     string label;
     StatelessKey sk;
     WinterlockOwner owner;
 }
 
-/// Test signer for WinterlockOwner. An operation tree per Safe, chain and start, of height `h` with 2^k real keys
-/// (WotsTree): its public seed comes from the owner (treeSeed), its secret seed from the label, the chain, the Safe and
-/// the start, so every Safe and chain gets its own keys.
+/// A signing device of a member: device 0 is the member key (generation 0); devices 1 to 3 hold device keys, each
+/// certified by the member key at a generation. A device's operation-tree secrets derive from its label, its device
+/// number and its generation.
+struct DeviceKey {
+    string label;
+    StatelessKey sk;
+    WinterlockOwner owner;
+    uint8 device;
+    uint16 generation;
+}
+
+/// Test signer for WinterlockOwner (v2). An operation tree per Safe, chain, device, generation and start, of height `h`
+/// with 2^k real keys (WotsTree): its public seed comes from the owner (treeSeed), its secret seed from the device's
+/// label, the chain, the Safe, the device, the generation and the start, so every Safe, chain and device gets its own
+/// keys. The overloads that take a Member sign as device 0.
 library OwnerSigner {
-    /// Signature kind of a SafeMessage
     uint8 internal constant KIND_MESSAGE = 0x02;
+    uint8 internal constant KIND_APPROVED = 0x03;
+
+    /// The member key as device 0
+    function memberDevice(Member memory m) internal pure returns (DeviceKey memory) {
+        return DeviceKey(m.label, m.sk, m.owner, 0, 0);
+    }
+
+    function opsTree(WotsParams memory p, DeviceKey memory d, address safe, uint64 start, uint256 h, uint256 k)
+        internal
+        view
+        returns (WotsKey memory)
+    {
+        bytes32 skSeed = keccak256(abi.encode(d.label, "safe ops", block.chainid, safe, d.device, d.generation, start));
+        return WotsTree.create(p, d.owner.treeSeed(safe, d.device, d.generation, start), skSeed, h, k);
+    }
 
     function opsTree(WotsParams memory p, Member memory m, address safe, uint64 start, uint256 h, uint256 k)
         internal
         view
         returns (WotsKey memory)
     {
-        bytes32 skSeed = keccak256(abi.encode(m.label, "safe ops", block.chainid, safe, start));
-        return WotsTree.create(p, m.owner.treeSeed(safe, start), skSeed, h, k);
+        return opsTree(p, memberDevice(m), safe, start, h, k);
     }
 
-    /// The stateless key's signature of the certificate for `tree` (certified from `start`) of `safe` on this chain
-    function certificate(Member memory m, WotsKey memory tree, address safe, uint64 start)
+    /// The device key's signature of the certificate for `tree` (certified from `start`) of `safe` on this chain
+    function certificate(DeviceKey memory d, WotsKey memory tree, address safe, uint64 start)
         internal
         view
         returns (bytes memory)
     {
         // forge-lint: disable-next-line(unsafe-typecast)
-        bytes32 digest = m.owner.certificateDigest(safe, tree.root, uint8(tree.height), start);
-        return StatelessSigner.sign(m.sk, digest);
+        bytes32 digest = d.owner.certificateDigest(safe, d.device, d.generation, tree.root, uint8(tree.height), start);
+        return StatelessSigner.sign(d.sk, digest);
     }
 
-    /// Calldata of WinterlockOwner.enroll for `tree`
-    function enrollCalldata(Member memory m, WotsKey memory tree, address safe, uint64 start)
+    function certificate(Member memory m, WotsKey memory tree, address safe, uint64 start)
+        internal
+        view
+        returns (bytes memory)
+    {
+        return certificate(memberDevice(m), tree, safe, start);
+    }
+
+    /// Calldata of WinterlockOwner.enroll for the device's `tree`
+    function enrollCalldata(DeviceKey memory d, WotsKey memory tree, address safe, uint64 start)
         internal
         view
         returns (bytes memory)
@@ -280,11 +313,59 @@ library OwnerSigner {
         return abi.encodeCall(
             // forge-lint: disable-next-line(unsafe-typecast)
             WinterlockOwner.enroll,
-            (safe, tree.root, uint8(tree.height), start, certificate(m, tree, safe, start))
+            (safe, d.device, tree.root, uint8(tree.height), start, certificate(d, tree, safe, start))
         );
     }
 
-    /// [slot][safe][SafeTx words][WOTS signature of safeTxHash by key (nonce - start) * 2 + slot][path]
+    function enrollCalldata(Member memory m, WotsKey memory tree, address safe, uint64 start)
+        internal
+        view
+        returns (bytes memory)
+    {
+        return enrollCalldata(memberDevice(m), tree, safe, start);
+    }
+
+    /// The member key's certificate of device key `d` (its device, generation and public key)
+    function deviceCertificate(Member memory m, DeviceKey memory d) internal view returns (bytes memory) {
+        bytes32 digest = m.owner.deviceDigest(d.device, d.generation, StatelessSigner.publicKey(d.sk));
+        return StatelessSigner.sign(m.sk, digest);
+    }
+
+    /// Calldata of WinterlockOwner.certifyDevice for `d`, signed by the member key
+    function certifyCalldata(Member memory m, DeviceKey memory d) internal view returns (bytes memory) {
+        return abi.encodeCall(
+            WinterlockOwner.certifyDevice,
+            (d.device, d.generation, StatelessSigner.publicKey(d.sk), deviceCertificate(m, d))
+        );
+    }
+
+    /// The member key's revocation of `device` at `generation`
+    function revocation(Member memory m, uint8 device, uint16 generation) internal view returns (bytes memory) {
+        return StatelessSigner.sign(m.sk, m.owner.revocationDigest(device, generation));
+    }
+
+    /// Calldata of WinterlockOwner.revokeDevice for `d`, signed by the member key
+    function revokeCalldata(Member memory m, DeviceKey memory d) internal view returns (bytes memory) {
+        return
+            abi.encodeCall(
+                WinterlockOwner.revokeDevice, (d.device, d.generation, revocation(m, d.device, d.generation))
+            );
+    }
+
+    /// [slot][device][safe][SafeTx words][WOTS signature of safeTxHash by key (nonce - start) * 2 + slot][path]
+    function txSignature(
+        WotsKey memory tree,
+        uint8 device,
+        uint64 start,
+        uint256 slot,
+        address safe,
+        SafeTx memory t,
+        bytes32 safeTxHash
+    ) internal pure returns (bytes memory) {
+        return txSignatureWithKey(tree, device, (t.nonce - start) * 2 + slot, slot, safe, t, safeTxHash);
+    }
+
+    /// The same by device 0
     function txSignature(
         WotsKey memory tree,
         uint64 start,
@@ -293,12 +374,13 @@ library OwnerSigner {
         SafeTx memory t,
         bytes32 safeTxHash
     ) internal pure returns (bytes memory) {
-        return txSignatureWithKey(tree, (t.nonce - start) * 2 + slot, slot, safe, t, safeTxHash);
+        return txSignature(tree, 0, start, slot, safe, t, safeTxHash);
     }
 
     /// The same with any key index, for tests of keys used at the wrong nonce
     function txSignatureWithKey(
         WotsKey memory tree,
+        uint8 device,
         uint256 keyIndex,
         uint256 slot,
         address safe,
@@ -308,6 +390,7 @@ library OwnerSigner {
         return abi.encodePacked(
             // forge-lint: disable-next-line(unsafe-typecast)
             uint8(slot),
+            device,
             safe,
             SafeHarness.words(t),
             WotsSigner.sign(tree.p, tree.seed, tree.skSeed, keyIndex, safeTxHash),
@@ -315,14 +398,38 @@ library OwnerSigner {
         );
     }
 
-    /// [0x02][safe][keccak256(message)][stateless signature of messageDigest(safe, SafeMessage hash)]
+    function txSignatureWithKey(
+        WotsKey memory tree,
+        uint256 keyIndex,
+        uint256 slot,
+        address safe,
+        SafeTx memory t,
+        bytes32 safeTxHash
+    ) internal pure returns (bytes memory) {
+        return txSignatureWithKey(tree, 0, keyIndex, slot, safe, t, safeTxHash);
+    }
+
+    /// [0x02][device][safe][keccak256(message)][device key's stateless signature of
+    /// messageDigest(safe, device, generation, SafeMessage hash)]
+    function messageSignature(DeviceKey memory d, address safe, bytes32 msgHash, bytes32 safeMsgHash)
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes32 digest = d.owner.messageDigest(safe, d.device, d.generation, safeMsgHash);
+        return abi.encodePacked(KIND_MESSAGE, d.device, safe, msgHash, StatelessSigner.sign(d.sk, digest));
+    }
+
     function messageSignature(Member memory m, address safe, bytes32 msgHash, bytes32 safeMsgHash)
         internal
         view
         returns (bytes memory)
     {
-        return abi.encodePacked(
-            KIND_MESSAGE, safe, msgHash, StatelessSigner.sign(m.sk, m.owner.messageDigest(safe, safeMsgHash))
-        );
+        return messageSignature(memberDevice(m), safe, msgHash, safeMsgHash);
+    }
+
+    /// [0x03][safe][keccak256(message)]: no key, valid once the Safe has approved the message on-chain
+    function approvedSignature(address safe, bytes32 msgHash) internal pure returns (bytes memory) {
+        return abi.encodePacked(KIND_APPROVED, safe, msgHash);
     }
 }

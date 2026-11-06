@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {WinterlockOwner} from "../../src/safe/WinterlockOwner.sol";
 import {IStatelessVerifier} from "../../src/interfaces/IStatelessVerifier.sol";
+import {IWotsVerifier} from "../../src/interfaces/IWotsVerifier.sol";
 
 /// Test only: a WinterlockOwner as a full contract, with the member's key an immutable of its own code, as in the
 /// Safe owner spike before owners became proxies. It runs the same code without the proxy, so the gas tests can
@@ -10,8 +11,8 @@ import {IStatelessVerifier} from "../../src/interfaces/IStatelessVerifier.sol";
 contract FullWinterlockOwner is WinterlockOwner {
     bytes32 internal immutable FULL_KEY;
 
-    constructor(uint256 params, IStatelessVerifier statelessVerifier, bytes32 key)
-        WinterlockOwner(params, statelessVerifier)
+    constructor(uint256 params, IStatelessVerifier statelessVerifier, IWotsVerifier wotsVerifier, bytes32 key)
+        WinterlockOwner(params, statelessVerifier, wotsVerifier)
     {
         if (uint256(key) >> 128 == 0 || uint128(uint256(key)) == 0) revert InvalidConfig();
         FULL_KEY = key;

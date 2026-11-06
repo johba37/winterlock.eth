@@ -19,6 +19,7 @@ import {
     SafeTx,
     OwnerSignature,
     Member,
+    DeviceKey,
     OwnerSigner,
     IERC1271
 } from "../utils/SafeHarness.sol";
@@ -78,9 +79,10 @@ contract SafeNonceProbe {
     }
 }
 
-/// Winterlock as Safe owners: three members' WinterlockOwners own a 2-of-3 Safe, checked by Safe's own multisig path
-/// (contract signatures, v = 0). Each owner is a member's proxy of the shared implementation, created by the factory
-/// (SafeOwnerDeployment). Safe's contracts come from their release builds (setup.sh). Parameter set D6.
+/// Winterlock as Safe owners: three members' WinterlockOwners (v2) own a 2-of-3 Safe, checked by Safe's own multisig
+/// path (contract signatures, v = 0). Each owner is a member's proxy of the shared implementation, created by the
+/// factory (SafeOwnerDeployment). Members sign with their member keys (device 0) unless a test certifies device keys.
+/// Safe's contracts come from their release builds (setup.sh). Parameter set D6.
 /// Run once per Safe release by the contracts below.
 abstract contract SafeWinterlockOwnerTest is Test {
     using SafeHarness for ISafe;
@@ -186,7 +188,7 @@ abstract contract SafeWinterlockOwnerTest is Test {
         view
         returns (OwnerSignature memory)
     {
-        (,,, uint64 start) = o.tree(address(s));
+        (,,, uint64 start,) = o.tree(address(s), 0);
         bytes memory data =
             OwnerSigner.txSignature(_treeOf(o, i, address(s), start), start, slot, address(s), t, s.hash(t));
         return SafeHarness.contractSig(address(o), data);
@@ -449,7 +451,11 @@ abstract contract SafeWinterlockOwnerTest is Test {
         // the hash is a SafeMessage of the Safe.
         bytes32 h = safe.hash(t);
         bytes memory phished = abi.encodePacked(
-            uint8(2), address(safe), bytes32(0), StatelessSigner.sign(sks[0], owners[0].messageDigest(address(safe), h))
+            uint8(2),
+            uint8(0),
+            address(safe),
+            bytes32(0),
+            StatelessSigner.sign(sks[0], owners[0].messageDigest(address(safe), 0, 0, h))
         );
         assertEq(owners[0].isValidSignature(h, phished), INVALID);
         _execExpectRevert(
@@ -469,6 +475,146 @@ abstract contract SafeWinterlockOwnerTest is Test {
         vm.prank(app);
         (bool ok, bytes memory ret) = address(s).staticcall(abi.encodeCall(IERC1271.isValidSignature, (appHash, sigs)));
         assertTrue(!ok || abi.decode(ret, (bytes4)) != MAGIC, "message refused");
+    }
+
+    // --- devices ---
+
+    /// Member i's device key from `label`, as device `device` at `generation`
+    function _deviceKey(uint256 i, string memory label, uint8 device, uint16 generation)
+        internal
+        view
+        returns (DeviceKey memory)
+    {
+        string memory name = string.concat(_label(i), " ", label);
+        return DeviceKey(name, StatelessSigner.testKey(name), owners[i], device, generation);
+    }
+
+    /// Member i's member key certifies device key `d`, sent by a relayer
+    function _certifyDevice(uint256 i, DeviceKey memory d) internal {
+        bytes memory cd = OwnerSigner.certifyCalldata(_member(i), d);
+        vm.prank(relayer);
+        (bool ok,) = address(owners[i]).call(cd);
+        assertTrue(ok, "certifyDevice");
+    }
+
+    /// Member i's member key revokes device key `d`, sent by a relayer
+    function _revokeDevice(uint256 i, DeviceKey memory d) internal {
+        bytes memory cd = OwnerSigner.revokeCalldata(_member(i), d);
+        vm.prank(relayer);
+        (bool ok,) = address(owners[i]).call(cd);
+        assertTrue(ok, "revokeDevice");
+    }
+
+    function _deviceTree(DeviceKey memory d, address s, uint64 start) internal view returns (WotsKey memory) {
+        return OwnerSigner.opsTree(_p(), d, s, start, H, K);
+    }
+
+    /// Device key `d` certifies its own tree of `s` from `start`, sent by a relayer
+    function _enrolDevice(DeviceKey memory d, address s, uint64 start) internal {
+        bytes memory cd = OwnerSigner.enrollCalldata(d, _deviceTree(d, s, start), s, start);
+        vm.prank(relayer);
+        (bool ok,) = address(d.owner).call(cd);
+        assertTrue(ok, "enroll (device)");
+    }
+
+    /// Device key `d`'s WOTS signature of `t` for `s` with `slot`, from its enrolled tree
+    function _signByDevice(DeviceKey memory d, ISafe s, SafeTx memory t, uint256 slot)
+        internal
+        view
+        returns (OwnerSignature memory)
+    {
+        (,,, uint64 start,) = d.owner.tree(address(s), d.device);
+        WotsKey memory tree = _deviceTree(d, address(s), start);
+        bytes memory data = OwnerSigner.txSignature(tree, d.device, start, slot, address(s), t, s.hash(t));
+        return SafeHarness.contractSig(address(d.owner), data);
+    }
+
+    /// Device key `d`'s stateless signature of the SafeMessage the fallback handler builds for `appHash`
+    function _messageSigByDevice(DeviceKey memory d, ISafe s, bytes32 appHash)
+        internal
+        view
+        returns (OwnerSignature memory)
+    {
+        bytes32 msgHash = SafeHarness.messageHash(appHash);
+        bytes memory data =
+            OwnerSigner.messageSignature(d, address(s), msgHash, SafeHarness.safeMessageHash(s, msgHash));
+        return SafeHarness.contractSig(address(d.owner), data);
+    }
+
+    /// Trees per device: member 0's member key (device 0) and laptop (device 1) each hold a tree for the Safe from
+    /// nonce 0, and both sign the same transaction at nonce 0 with slot 0. Both signatures verify, from different
+    /// one-time keys at the same key index, and neither verifies under the other's device number. The member's two
+    /// devices count once, as one owner.
+    function test_devicesSignTheSameNonce() public {
+        DeviceKey memory laptop = _deviceKey(0, "laptop", 1, 1);
+        _certifyDevice(0, laptop);
+        _enrolDevice(laptop, address(safe), 0);
+        SafeTx memory t = SafeHarness.transfer(recipient, 1 ether, 0);
+        bytes32 h = safe.hash(t);
+        OwnerSignature memory byMemberKey = _sign(0, safe, t, 0);
+        OwnerSignature memory byLaptop = _signByDevice(laptop, safe, t, 0);
+        assertEq(owners[0].isValidSignature(h, byMemberKey.data), MAGIC);
+        assertEq(owners[0].isValidSignature(h, byLaptop.data), MAGIC);
+
+        // under the other device's number: the laptop's signature differs beyond the device byte, and neither verifies
+        bytes memory asZero = bytes.concat(byLaptop.data);
+        asZero[1] = 0x00;
+        assertTrue(keccak256(asZero) != keccak256(byMemberKey.data), "different one-time keys");
+        assertEq(owners[0].isValidSignature(h, asZero), INVALID);
+        bytes memory asOne = bytes.concat(byMemberKey.data);
+        asOne[1] = 0x01;
+        assertEq(owners[0].isValidSignature(h, asOne), INVALID);
+
+        _execExpectRevert(safe, t, SafeHarness.pack(byMemberKey, byLaptop), "GS026"); // one owner, twice
+        assertTrue(safe.exec(t, SafeHarness.pack(byLaptop, _sign(1, safe, t, 0))));
+        assertEq(recipient.balance, 2 ether);
+    }
+
+    /// A revoked device: a confirmation it gave before the revoke (as Safe's service would hold it) stops counting,
+    /// while the member's other devices still sign. A replaced device (a lost phone, certified anew with a new key at
+    /// the next generation): the same for the old key; the new key signs once it has enrolled its own tree, from a
+    /// start the old generation's tree doesn't bound.
+    function test_revokedOrReplacedDeviceConfirmationRefused() public {
+        DeviceKey memory laptop = _deviceKey(0, "laptop", 1, 1);
+        _certifyDevice(0, laptop);
+        _enrolDevice(laptop, address(safe), 0);
+        SafeTx memory t = SafeHarness.transfer(recipient, 1 ether, 0);
+        OwnerSignature memory collected = _signByDevice(laptop, safe, t, 0);
+        OwnerSignature memory other = _sign(1, safe, t, 0);
+        vm.prank(address(0)); // the service's eth_call
+        assertEq(owners[0].isValidSignature(safe.hash(t), collected.data), MAGIC);
+
+        _revokeDevice(0, laptop);
+        assertEq(owners[0].isValidSignature(safe.hash(t), collected.data), INVALID);
+        _execExpectRevert(safe, t, SafeHarness.pack(collected, other), "GS024");
+        assertTrue(safe.exec(t, SafeHarness.pack(_sign(0, safe, t, 0), other))); // the member key
+
+        DeviceKey memory phone = _deviceKey(1, "phone", 1, 1);
+        _certifyDevice(1, phone);
+        _enrolDevice(phone, address(safe), 1);
+        t = SafeHarness.transfer(recipient, 1 ether, 1);
+        collected = _signByDevice(phone, safe, t, 0);
+        other = _sign(2, safe, t, 0);
+        DeviceKey memory newPhone = _deviceKey(1, "new phone", 1, 2);
+        _certifyDevice(1, newPhone); // replaces the phone's key
+        assertEq(owners[1].isValidSignature(safe.hash(t), collected.data), INVALID);
+        _execExpectRevert(safe, t, SafeHarness.pack(collected, other), "GS024");
+        _enrolDevice(newPhone, address(safe), 1);
+        assertTrue(safe.exec(t, SafeHarness.pack(_signByDevice(newPhone, safe, t, 0), other)));
+        assertEq(recipient.balance, 3 ether);
+    }
+
+    /// A device key signs SafeMessages for its member through the fallback handler. Once it is revoked, its message
+    /// signatures, those given before included, stop verifying.
+    function test_deviceMessages() public {
+        DeviceKey memory laptop = _deviceKey(0, "laptop", 1, 1);
+        _certifyDevice(0, laptop);
+        bytes32 appHash = keccak256("sign in to app.example");
+        bytes memory sigs = SafeHarness.pack(_messageSigByDevice(laptop, safe, appHash), _messageSig(2, safe, appHash));
+        vm.prank(app);
+        assertEq(IERC1271(address(safe)).isValidSignature(appHash, sigs), MAGIC);
+        _revokeDevice(0, laptop);
+        _expectMessageRefused(safe, appHash, sigs);
     }
 
     // --- upgrade in place ---
@@ -562,7 +708,7 @@ abstract contract SafeWinterlockOwnerTest is Test {
         console.log("as a confirmation (65 + 32 + data)               ", 97 + sigBytes);
         console.log("ERC-20 calldata, bytes, ECDSA owners             ", lastCalldataBytes, ", gas", lastCalldataGas);
         console.log("ERC-20 calldata, bytes, WinterlockOwners          ", wlBytes, ", gas", wlCalldataGas);
-        assertEq(sigBytes, 1 + 20 + 320 + 1176 + 24 * H);
+        assertEq(sigBytes, 2 + 20 + 320 + 1176 + 24 * H);
         assertEq(fullSigBytes, sigBytes);
         assertLt(97 + sigBytes, 5000, "fits the Transaction Service's 5,000-byte confirmation");
     }
@@ -595,7 +741,9 @@ abstract contract SafeWinterlockOwnerTest is Test {
     function _fullOwnerSafe() internal returns (ISafe s, WinterlockOwner[3] memory full) {
         address[] memory list = new address[](3);
         for (uint256 i; i < 3; ++i) {
-            full[i] = new FullWinterlockOwner(Ops.params(_p()), owners[0].STATELESS_VERIFIER(), _key(i));
+            full[i] = new FullWinterlockOwner(
+                Ops.params(_p()), owners[0].STATELESS_VERIFIER(), owners[0].WOTS_VERIFIER(), _key(i)
+            );
             list[i] = address(full[i]);
         }
         s = SafeHarness.createSafe(rel, list, 2, 77);
@@ -677,7 +825,7 @@ abstract contract SafeWinterlockOwnerTest is Test {
         console.log("message signature per owner, bytes", m0.data.length);
         console.log("as a confirmation (65 + 32 + data)", 97 + m0.data.length);
         console.log("2-of-3 signatures blob, bytes", sigs.length);
-        assertEq(m0.data.length, 1 + 20 + 32 + 5684);
+        assertEq(m0.data.length, 2 + 20 + 32 + 5684);
     }
 
     /// Transaction gas of the deployments and of enrolment, from a chain with Safe and the members' keys but no
@@ -699,7 +847,7 @@ abstract contract SafeWinterlockOwnerTest is Test {
         uint256 enrolGas = _txGas(address(owner0), cd);
         cd = OwnerSigner.enrollCalldata(m0, OwnerSigner.opsTree(_p(), m0, team, 5, H, K), team, 5);
         uint256 rotateGas = _txGas(address(owner0), cd);
-        (,,, uint64 start) = owner0.tree(team);
+        (,,, uint64 start,) = owner0.tree(team, 0);
         assertEq(start, 5);
         console.log("per Safe and chain, tx gas:");
         console.log("  enroll, first tree       ", enrolGas);
@@ -707,18 +855,22 @@ abstract contract SafeWinterlockOwnerTest is Test {
         console.log("  enroll calldata bytes    ", cd.length);
     }
 
-    /// Once per chain: the stateless verifier, the implementation and the factory
+    /// Once per chain: the stateless verifier, the shared WOTS verifier, the implementation and the factory
     function _gasShared() internal returns (WinterlockOwnerFactory factory) {
         uint256 params = Ops.params(_p());
         address deployer = ValidatorDeployment.DEPLOYER;
         bytes memory init = ValidatorDeployment.verifierInitCode();
         uint256 verifierGas = _txGas(deployer, abi.encodePacked(ValidatorDeployment.VERIFIER_SALT, init));
         address verifier = ValidatorDeployment.predictVerifier();
+        init = SafeOwnerDeployment.wotsVerifierInitCode();
+        uint256 wotsGas = _txGas(deployer, abi.encodePacked(SafeOwnerDeployment.WOTS_VERIFIER_SALT, init));
+        address wots = SafeOwnerDeployment.predictWotsVerifier();
         init = SafeOwnerDeployment.implementationInitCode(params);
         uint256 implGas = _txGas(deployer, abi.encodePacked(SafeOwnerDeployment.IMPLEMENTATION_SALT, init));
         address impl = SafeOwnerDeployment.predictImplementation(params);
         console.log("once per chain, tx gas (runtime bytes, init code bytes):");
         console.log("  stateless verifier       ", verifierGas, verifier.code.length);
+        console.log("  shared WOTS verifier     ", wotsGas, wots.code.length);
         console.log("  WinterlockOwner impl.    ", implGas, impl.code.length, init.length);
         init = SafeOwnerDeployment.factoryInitCode(impl);
         uint256 factoryGas = _txGas(deployer, abi.encodePacked(SafeOwnerDeployment.FACTORY_SALT, init));
@@ -744,13 +896,18 @@ abstract contract SafeWinterlockOwnerTest is Test {
         bytes memory cd =
             abi.encodeCall(WinterlockOwnerFactory.deployAndEnroll, (_key(1), team, t1.root, uint8(H), uint64(0), cert));
         uint256 deployAndEnrolGas = _txGas(address(factory), cd);
-        (bytes32 root,,,) = m1.owner.tree(team);
+        (bytes32 root,,,,) = m1.owner.tree(team, 0);
         assertEq(root, t1.root);
 
         // through the deterministic deployment proxy with its key as the salt
         bytes memory init = abi.encodePacked(
             type(FullWinterlockOwner).creationCode,
-            abi.encode(Ops.params(_p()), ValidatorDeployment.predictVerifier(), _key(2))
+            abi.encode(
+                Ops.params(_p()),
+                ValidatorDeployment.predictVerifier(),
+                SafeOwnerDeployment.predictWotsVerifier(),
+                _key(2)
+            )
         );
         uint256 fullGas = _txGas(ValidatorDeployment.DEPLOYER, abi.encodePacked(_key(2), init));
         address full = ValidatorDeployment._create2(_key(2), init);
@@ -758,6 +915,65 @@ abstract contract SafeWinterlockOwnerTest is Test {
         console.log("  owner, proxy             ", proxyGas, address(owner0).code.length);
         console.log("  owner, proxy + 1st tree  ", deployAndEnrolGas, ", calldata bytes", cd.length);
         console.log("  owner, full contract     ", fullGas, full.code.length);
+    }
+
+    /// Device keys, transaction gas (Forge, Prague pricing, as _txGas): certifying and revoking a device key; a first
+    /// tree (a new slot) enrolled by device 0 and by a device key; and 2-of-3 ETH and ERC-20 transfers at steady state
+    /// signed by members 0 and 1 with their member keys (device 0) and with device keys. The transactions that carry a
+    /// stateless signature (5.7 KB) are logged with their EIP-7623 calldata floor, 21,000 + 10 gas per token, which
+    /// sets their gas when execution costs less.
+    function test_gas_devices() public {
+        DeviceKey[2] memory d = [_deviceKey(0, "laptop", 1, 1), _deviceKey(1, "laptop", 1, 1)];
+        console.log(string.concat("Safe ", rel.version, ", device keys, tx gas"));
+        _gasDeviceSetup(d);
+        _gasDeviceTransfers(d);
+        uint256 revokeGas = _txGas(address(owners[0]), OwnerSigner.revokeCalldata(_member(0), d[0]));
+        console.log("revokeDevice                             ", revokeGas, ", calldata bytes", lastCalldataBytes);
+        console.log("  its EIP-7623 floor                     ", _floor());
+    }
+
+    /// The EIP-7623 floor of the last transaction _txGas measured: 21,000 + 10 per token, a token per zero byte and four
+    /// per other byte (lastCalldataGas counts 4 per token)
+    function _floor() internal view returns (uint256) {
+        return 21000 + lastCalldataGas * 10 / 4;
+    }
+
+    /// Member 0 certifies its laptop (measured), member 1 too; member 0 enrols a first tree with its member key and
+    /// with its laptop (each measured), member 1's laptop enrols too
+    function _gasDeviceSetup(DeviceKey[2] memory d) internal {
+        uint256 certifyGas = _txGas(address(owners[0]), OwnerSigner.certifyCalldata(_member(0), d[0]));
+        console.log("certifyDevice                            ", certifyGas, ", calldata bytes", lastCalldataBytes);
+        console.log("  its EIP-7623 floor                     ", _floor());
+        _certifyDevice(1, d[1]);
+        ISafe twin = SafeHarness.createSafe(rel, _ownerList(), 2, 5);
+        bytes memory cd = OwnerSigner.enrollCalldata(_member(0), _tree(0, address(twin), 0), address(twin), 0);
+        console.log("enroll, first tree, device 0 (member key)", _txGas(address(owners[0]), cd));
+        console.log("  its EIP-7623 floor                     ", _floor());
+        cd = OwnerSigner.enrollCalldata(d[0], _deviceTree(d[0], address(safe), 0), address(safe), 0);
+        console.log("enroll, first tree, device 1 (device key)", _txGas(address(owners[0]), cd));
+        console.log("  its EIP-7623 floor                     ", _floor());
+        _enrolDevice(d[1], address(safe), 0);
+    }
+
+    /// Members 0 and 1 sign ETH and ERC-20 transfers with their member keys, then with their laptops, at steady state
+    function _gasDeviceTransfers(DeviceKey[2] memory d) internal {
+        SafeTx memory t = SafeHarness.transfer(recipient, 1 ether, 0);
+        assertTrue(safe.exec(t, _signed(safe, t, 0, 1))); // nonce 0 -> 1
+        t.nonce = 1;
+        uint256 byMemberKeys = _txGas(address(safe), SafeHarness.execCalldata(t, _signed(safe, t, 0, 1)));
+        t.nonce = 2;
+        bytes memory sigs = SafeHarness.pack(_signByDevice(d[0], safe, t, 0), _signByDevice(d[1], safe, t, 0));
+        uint256 byDeviceKeys = _txGas(address(safe), SafeHarness.execCalldata(t, sigs));
+        console.log("ETH transfer, 2-of-3, device 0           ", byMemberKeys);
+        console.log("ETH transfer, 2-of-3, device keys        ", byDeviceKeys, ", more", byDeviceKeys - byMemberKeys);
+        t = SafeHarness.call(address(token), abi.encodeCall(ERC20.transfer, (recipient, 1 ether)), 3);
+        byMemberKeys = _txGas(address(safe), SafeHarness.execCalldata(t, _signed(safe, t, 0, 1)));
+        t.nonce = 4;
+        sigs = SafeHarness.pack(_signByDevice(d[0], safe, t, 0), _signByDevice(d[1], safe, t, 0));
+        byDeviceKeys = _txGas(address(safe), SafeHarness.execCalldata(t, sigs));
+        console.log("ERC-20 transfer, 2-of-3, device 0        ", byMemberKeys);
+        console.log("ERC-20 transfer, 2-of-3, device keys     ", byDeviceKeys, ", more", byDeviceKeys - byMemberKeys);
+        assertEq(safe.nonce(), 5);
     }
 
     // --- transaction gas ---
