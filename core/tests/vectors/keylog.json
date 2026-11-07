@@ -1,0 +1,467 @@
+{
+ "scenarios": [
+  {
+   "name": "first, second, third version at a nonce",
+   "steps": [
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": true,
+      "appended": false,
+      "slot": 0
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 1
+     },
+     "hash": "0x97f75da303fb9729aab441cf8c627375e8a7858fc3225e246b1de6ad411eb901",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": true,
+      "appended": false,
+      "slot": 1
+     },
+     "hash": "0x97f75da303fb9729aab441cf8c627375e8a7858fc3225e246b1de6ad411eb901",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": true,
+      "appended": false,
+      "slot": 0
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "refused": "third-version"
+     },
+     "hash": "0x44435fa9b570ec7cf244f640d357eb263e784757059001978f9c4e60870f28e2",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0x44435fa9b570ec7cf244f640d357eb263e784757059001978f9c4e60870f28e2",
+     "nonce": 101,
+     "op": "sign",
+     "tree": 0
+    }
+   ],
+   "uses": [
+    {
+     "chain": 421614,
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "key_index": 0,
+     "nonce": 100,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 0,
+     "start": 100
+    },
+    {
+     "chain": 421614,
+     "hash": "0x97f75da303fb9729aab441cf8c627375e8a7858fc3225e246b1de6ad411eb901",
+     "key_index": 1,
+     "nonce": 100,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 1,
+     "start": 100
+    },
+    {
+     "chain": 421614,
+     "hash": "0x44435fa9b570ec7cf244f640d357eb263e784757059001978f9c4e60870f28e2",
+     "key_index": 2,
+     "nonce": 101,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 0,
+     "start": 100
+    }
+   ]
+  },
+  {
+   "name": "explicit slots: reuse refused, the same hash again allowed",
+   "steps": [
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 1
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 102,
+     "op": "record",
+     "slot": 1,
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0x97f75da303fb9729aab441cf8c627375e8a7858fc3225e246b1de6ad411eb901",
+     "nonce": 102,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": true,
+      "appended": false,
+      "slot": 1
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 102,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "refused": "key-reused"
+     },
+     "hash": "0x44435fa9b570ec7cf244f640d357eb263e784757059001978f9c4e60870f28e2",
+     "nonce": 102,
+     "op": "record",
+     "slot": 1,
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": true,
+      "appended": false,
+      "slot": 0
+     },
+     "hash": "0x97f75da303fb9729aab441cf8c627375e8a7858fc3225e246b1de6ad411eb901",
+     "nonce": 102,
+     "op": "record",
+     "slot": 0,
+     "tree": 0
+    },
+    {
+     "expect": {
+      "refused": "key-reused"
+     },
+     "hash": "0x44435fa9b570ec7cf244f640d357eb263e784757059001978f9c4e60870f28e2",
+     "nonce": 102,
+     "op": "record",
+     "slot": 0,
+     "tree": 0
+    },
+    {
+     "expect": {
+      "refused": "third-version"
+     },
+     "hash": "0x44435fa9b570ec7cf244f640d357eb263e784757059001978f9c4e60870f28e2",
+     "nonce": 102,
+     "op": "sign",
+     "tree": 0
+    }
+   ],
+   "uses": [
+    {
+     "chain": 421614,
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "key_index": 5,
+     "nonce": 102,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 1,
+     "start": 100
+    },
+    {
+     "chain": 421614,
+     "hash": "0x97f75da303fb9729aab441cf8c627375e8a7858fc3225e246b1de6ad411eb901",
+     "key_index": 4,
+     "nonce": 102,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 0,
+     "start": 100
+    }
+   ]
+  },
+  {
+   "name": "nonces outside the tree, and a bad slot",
+   "steps": [
+    {
+     "expect": {
+      "refused": "not-in-tree"
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 99,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 131,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "refused": "not-in-tree"
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 132,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "refused": "not-in-tree"
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 110,
+     "op": "record",
+     "slot": 2,
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 110,
+     "op": "sign",
+     "tree": 0
+    }
+   ],
+   "uses": [
+    {
+     "chain": 421614,
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "key_index": 62,
+     "nonce": 131,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 0,
+     "start": 100
+    },
+    {
+     "chain": 421614,
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "key_index": 20,
+     "nonce": 110,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 0,
+     "start": 100
+    }
+   ]
+  },
+  {
+   "name": "trees, Safes and chains are separate",
+   "steps": [
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0x97f75da303fb9729aab441cf8c627375e8a7858fc3225e246b1de6ad411eb901",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 1
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0x44435fa9b570ec7cf244f640d357eb263e784757059001978f9c4e60870f28e2",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 2
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 0
+     },
+     "hash": "0x757ffd0f04e2c7f753e93a32d8874f1fe69adeaa280f3f83f118a75a7f3f46c5",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 3
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 1
+     },
+     "hash": "0xdb54ec601638af75c63ea54c939c142f9130d250546670339ebe977c3dd9892e",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "refused": "third-version"
+     },
+     "hash": "0xe82e21c800037dbaccc1518ddb88d8eda0602f9909d1c12c54c05aba907878b4",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 0
+    },
+    {
+     "expect": {
+      "already": false,
+      "appended": true,
+      "slot": 1
+     },
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "nonce": 100,
+     "op": "sign",
+     "tree": 1
+    }
+   ],
+   "uses": [
+    {
+     "chain": 421614,
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "key_index": 0,
+     "nonce": 100,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 0,
+     "start": 100
+    },
+    {
+     "chain": 421614,
+     "hash": "0x97f75da303fb9729aab441cf8c627375e8a7858fc3225e246b1de6ad411eb901",
+     "key_index": 0,
+     "nonce": 100,
+     "root": "0x1e26375376417440aa28b8de20ea88cfbd88b110bc3aefd2",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 0,
+     "start": 100
+    },
+    {
+     "chain": 421614,
+     "hash": "0x44435fa9b570ec7cf244f640d357eb263e784757059001978f9c4e60870f28e2",
+     "key_index": 0,
+     "nonce": 100,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0x821337C678FA2aB9c9a4975B9041D84337720A1b",
+     "slot": 0,
+     "start": 100
+    },
+    {
+     "chain": 421615,
+     "hash": "0x757ffd0f04e2c7f753e93a32d8874f1fe69adeaa280f3f83f118a75a7f3f46c5",
+     "key_index": 0,
+     "nonce": 100,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 0,
+     "start": 100
+    },
+    {
+     "chain": 421614,
+     "hash": "0xdb54ec601638af75c63ea54c939c142f9130d250546670339ebe977c3dd9892e",
+     "key_index": 1,
+     "nonce": 100,
+     "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 1,
+     "start": 100
+    },
+    {
+     "chain": 421614,
+     "hash": "0xc4ee142aea14ce43d8a4a21e820471bf52fa403998ea7444841de119be96ddce",
+     "key_index": 1,
+     "nonce": 100,
+     "root": "0x1e26375376417440aa28b8de20ea88cfbd88b110bc3aefd2",
+     "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+     "slot": 1,
+     "start": 100
+    }
+   ]
+  }
+ ],
+ "trees": [
+  {
+   "chain": 421614,
+   "height": 6,
+   "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+   "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+   "start": 100
+  },
+  {
+   "chain": 421614,
+   "height": 6,
+   "root": "0x1e26375376417440aa28b8de20ea88cfbd88b110bc3aefd2",
+   "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+   "start": 100
+  },
+  {
+   "chain": 421614,
+   "height": 6,
+   "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+   "safe": "0x821337C678FA2aB9c9a4975B9041D84337720A1b",
+   "start": 100
+  },
+  {
+   "chain": 421615,
+   "height": 6,
+   "root": "0x5b130bcb2dc5224fa112a70fb08ddf9caa3cbac18b0aebf7",
+   "safe": "0xF166373eEdB9378c7F6a29d7eA569e4D3A76544c",
+   "start": 100
+  }
+ ]
+}
