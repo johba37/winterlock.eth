@@ -1,0 +1,38 @@
+[package]
+name         = "winterlock-core"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.88"
+description  = "Winterlock's signer core: keccak256, the recovery phrase, leanSphincs-keccak, WOTS (D6), owner v2 formats and the key log's rules. no_std with alloc."
+license      = "MIT"
+publish      = false
+
+[features]
+default     = ["tiny-keccak"]
+# keccak256 backends: the Keccak-f[1600] permutation under the crate's own sponge. With both on, the
+# backend is picked at run time (keccak::set_backend), tiny-keccak first.
+tiny-keccak = ["dep:tiny-keccak"]
+# RustCrypto's Keccak-f[1600]: the `keccak` crate, which RustCrypto's `sha3` is built on.
+sha3        = ["dep:keccak"]
+# Conveniences that need std (none of the formats or rules do).
+std         = []
+# Counts Keccak-f permutations (keccak::permutations), for measurements.
+count       = []
+
+[dependencies]
+tiny-keccak = { version = "2.0.2", features = ["keccak"], optional = true }
+keccak      = { version = "0.2.2", optional = true }
+sha2        = { version = "0.10.9", default-features = false }
+
+[dev-dependencies]
+serde_json = "1.0"
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
+
+[profile.test]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto           = "fat"
