@@ -17,6 +17,9 @@
 
 #![no_std]
 #![forbid(unsafe_code)]
+// `x % n == 0` and `chunks_exact(8)` read plainly here; a parsed transaction signature is meant
+// to be a large variant.
+#![allow(clippy::manual_is_multiple_of, clippy::chunks_exact_to_as_chunks, clippy::large_enum_variant)]
 
 extern crate alloc;
 #[cfg(any(feature = "std", test))]

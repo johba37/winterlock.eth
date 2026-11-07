@@ -93,8 +93,8 @@ These lines are from a run in QEMU, so the numbers mean nothing:
 
 ```
 RESULT winterlock-esp32-core-check 0.1.0 rev=v3.0 mhz=240 checks=PASS passed=54/54 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=9868/73992 stack1=1644/32768
-RESULT tiny-keccak perm_s=65958 key_1core_ms=2755 key_2core_ms=1782 spx_mean_ms=1717 spx_max_ms=3232 spx_verify_ms=4 h6_1core_ms=525 h6_2core_ms=561 h10_1core_ms=9751 h10_2core_ms=6067 wots_mean_ms=48 wots_max_ms=102
-RESULT sha3 perm_s=37733 key_1core_ms=7068 key_2core_ms=3880 spx_mean_ms=3188 spx_max_ms=6712 spx_verify_ms=9 h6_1core_ms=1580 h6_2core_ms=921 h10_1core_ms=22269 h10_2core_ms=11865 wots_mean_ms=99 wots_max_ms=182
+RESULT tiny-keccak perm_s=74988 key_1core_ms=4800 key_2core_ms=1940 spx_mean_ms=2188 spx_max_ms=4338 spx_verify_ms=6 h6_1core_ms=846 h6_2core_ms=425 h10_1core_ms=13277 h10_2core_ms=8106 wots_mean_ms=53 wots_max_ms=98
+RESULT sha3 perm_s=32340 key_1core_ms=6862 key_2core_ms=3868 spx_mean_ms=4371 spx_max_ms=9608 spx_verify_ms=11 h6_1core_ms=1784 h6_2core_ms=956 h10_1core_ms=23662 h10_2core_ms=12975 wots_mean_ms=80 wots_max_ms=131
 ```
 
 The first line: the chip, whether all 54 checks passed, the peak heap use and both stacks' peak use (bytes). The others, per backend: keccak256 hashes per second, then each operation in ms (`spx` is the stateless signature, `h6` and `h10` the WOTS trees, `1core` and `2core` one core and both).

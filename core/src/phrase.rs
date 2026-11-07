@@ -168,9 +168,14 @@ pub fn to_seed(text: &str) -> Result<[u8; 32], PhraseError> {
     from_words(&parse(raw)?)
 }
 
-/// Whether `answer` is word `position` (1-based) of `words`, as typed.
+/// Whether `answer` is word `position` (1-based) of `words`, as typed. As in Python, position 0
+/// is the last word (phrase.py indexes `words[position - 1]`); past the end is false (Python
+/// raises IndexError).
 pub fn matches(words: &[&str], position: usize, answer: &str) -> bool {
-    position >= 1 && position <= words.len() && word(answer) == Some(words[position - 1])
+    let Some(&w) = (if position == 0 { words.last() } else { words.get(position - 1) }) else {
+        return false;
+    };
+    word(answer) == Some(w)
 }
 
 /// The pairing check code: five words from keccak256("winterlock.device-pairing.v1" ‖ owner ‖

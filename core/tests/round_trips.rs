@@ -95,6 +95,18 @@ fn wots_every_key_of_a_small_tree() {
 }
 
 #[test]
+fn python_edges() {
+    // phrase.matches indexes words[position - 1]: position 0 is the last word
+    let words = phrase::to_phrase(&[0; 32]);
+    assert!(phrase::matches(&words, 0, words[23]));
+    assert!(!phrase::matches(&words, 25, words[23]));
+    // owner.key_index takes heights above 40 (no certificate does)
+    assert_eq!(owner::key_index(5, 0, 1, 41), Ok(11));
+    assert_eq!(owner::capacity(64), Ok(1 << 63));
+    assert!(owner::key_index(0, 0, 0, 0).is_err());
+}
+
+#[test]
 fn amounts_and_decimals() {
     for i in 0..200u32 {
         let v = U256(keccak256(&i.to_be_bytes()));

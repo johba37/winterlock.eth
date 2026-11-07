@@ -251,10 +251,11 @@ pub fn message_digest(chain_id: u64, owner: &[u8; 20], safe: &[u8; 20], device: 
 
 // --- key indices ---
 
-/// Nonces a tree of `height` covers (two keys each).
+/// Nonces a tree of `height` covers (two keys each). Like owner.py, this takes heights above
+/// [`MAX_HEIGHT`], which no certificate allows (up to 64 here; Python has no limit).
 pub fn capacity(height: u32) -> Result<u64, Error> {
-    if height == 0 || height > MAX_HEIGHT {
-        return Err(Error::Invalid("tree height is 1 to 40"));
+    if height == 0 || height > 64 {
+        return Err(Error::Invalid("tree height is 1 to 64"));
     }
     Ok(1 << (height - 1))
 }
@@ -266,7 +267,7 @@ pub fn key_index(nonce: u64, start: u64, slot: u8, height: u32) -> Result<u64, E
     }
     let cap = capacity(height)?;
     if nonce < start || nonce - start >= cap {
-        return Err(Error::NonceOutsideTree { nonce: U256::from_u64(nonce), start, last: start + cap - 1 });
+        return Err(Error::NonceOutsideTree { nonce: U256::from_u64(nonce), start, last: start.saturating_add(cap - 1) });
     }
     Ok((nonce - start) * SLOTS as u64 + slot as u64)
 }
