@@ -1,6 +1,6 @@
 # A signer without a terminal: design note (proposal, 2026-11-06)
 
-**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. An ESP32 timing firmware is being built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round.
+**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively and under Node, and in QEMU on the ESP32; a firmware that checks and times it on the board runs on Monday (decisions.md, "2026-11-07: Rust core").
 
 ## Why
 
@@ -35,7 +35,7 @@ Their use should find the edges before the normative spec fixes the formats. The
 
 **Fields in, not hashes.** The core computes the SafeTx hash from the transaction's fields. A board must show what it signs, so it can't take a hash on trust; the app decodes from the same fields.
 
-**Which keccak:** the faster of the RustCrypto and `tiny-keccak` crates on the ESP32 (the timing firmware measures both).
+**Which keccak:** the faster of the RustCrypto and `tiny-keccak` crates on the ESP32 (the timing firmware measures both, and so does the core's check firmware, inside the real operations). The core has both behind features; `tiny-keccak` is the default until then.
 
 **Tests:** native (`cargo test`), WebAssembly under Node, and a `no_std` build for the ESP32 on every change. Each runs the Python vectors.
 
@@ -124,7 +124,11 @@ Decided on 2026-11-06:
 ## Order
 
 1. **Checks:** the ESP32 timings (running); posting to Safe's service without an API key; owner v2 on Arbitrum Sepolia (the testnet deployer has funds there).
-2. **The core,** with the Python vectors, building for native, WebAssembly and the ESP32.
+2. **The core,** with the Python vectors, building for native, WebAssembly and the ESP32. **Built on 2026-11-07** (`core/`, decisions.md, "2026-11-07: Rust core"):
+   - everything under "The core" above, `no_std` with `alloc`; the key log's rules over a two-method storage trait, and a WOTS key signs only from the record its append returns
+   - vectors from `signer/tools/core_vectors.py`; the tests pass natively with both keccak backends and in WebAssembly under Node, and the crate builds for `xtensa-esp32-none-elf` (`core/check.sh`)
+   - natively about 3 to 4 times as fast as the Python signer
+   - `hardware/esp32-core-check/` checks the core on the board and times the real operations with both backends: all 54 checks pass in QEMU; the user flashes it on Monday
 3. **The app and the board's firmware, on Arbitrum Sepolia:** create, add a device, join a Safe, enrol, transfer, confirm, execute, dapps, revoke. A fresh-eyes run by an agent through the app's screens; the board's screens on the user's board.
 4. **Arbitrum One:** deploy (user-funded), the user and one other person end to end, then the rest of the round.
 5. **The normative spec,** after the round, from this note, owner-v2.md and the code.

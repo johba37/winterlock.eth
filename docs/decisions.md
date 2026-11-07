@@ -1145,6 +1145,72 @@ The question: does owner v2 work end to end on Sepolia, with a member signing th
 
 **Not checked:** Safe's app with this Safe (it would list the void confirmation as one of two), and a third-party dapp that verifies with viem (the scripted dapp verifies with viem itself).
 
+**2026-11-07: Rust core** (`core/`, `signer/tools/core_vectors.py`, `hardware/esp32-core-check/`)
+
+Step 2 of [notes/signer-app.md](notes/signer-app.md), "Order". The question: does a `no_std` Rust port of the Python signer's cryptography and key rules give the same bytes as Python, natively, in WebAssembly and on the ESP32? Yes natively, under Node and in Espressif's QEMU. The chip itself runs it on Monday.
+
+**What's built:**
+- **`winterlock-core`** (`core/`), `no_std` with `alloc`, no floating point, no randomness inside (seeds, salts and phrase entropy are parameters):
+  - keccak256: the crate's own sponge over the Keccak-f of `tiny-keccak` (default) or RustCrypto (`sha3` feature: the `keccak` crate under `sha3`). With both features the backend is picked at run time, so one image can time both.
+  - the phrase (24 words ↔ seed, the forgiving parser with Python's Unicode sets, named errors) and the pairing check code
+  - leanSphincs-keccak: pruned keys, leaves over any range (for two cores), a key from cached leaves, sign, verify
+  - WOTS D6: leaves over any range, trees, paths, the Python cache format, `verify_root`
+  - derivations: member key, device key, tree secret seed
+  - owner v2: key indices, all five digests, the three layouts with parsers, owner addresses from the pinned v2 contracts, signing a transaction, message, device certificate or revocation (each checked before it is returned)
+  - SafeTx (fields in: 320-byte words, EIP-712 hash), SafeMessage, EIP-191; amounts shown exactly
+  - **the key log's rules** (`pick_slot`, `record_sign`) over a two-method storage trait the platform implements: find a key's use, append a use durably. A WOTS key signs only from the `Recorded` value that the append returns, so a signature can't exist without its record.
+- **Fewer permutations than Python, same outputs:** a WOTS randomizer's first block and the leanSphincs WOTS+C prefix are absorbed once per signature, not per try (2 permutations per WOTS try instead of 3; 1 per WOTS+C try instead of 6). Key and tree counts equal Python's: 238,624 for a key (b = 10), 848,895 for a height-10 tree.
+- **Size:** 2,640 lines of Rust in the crate, plus 340 lines of generated tables (the word list, Python's whitespace and digit sets); 980 lines of tests and the timing example.
+
+**Vectors** (`core/tests/vectors/`, 380 KB of JSON from `core_vectors.py`; only that script is new on the Python side):
+- phrase: the word list and Unicode sets, 5 round trips, 13 typed variants (case, numbering, commas, abbreviations, Unicode spaces, Arabic-Indic numbering, hex), 10 errors, 20 single words, 6 backup-check answers, 9 check codes
+- keys: 4 seeds' member and device keys (b = 10) with their leaves' hash, owner addresses, 4 tree secret seeds
+- leanSphincs: 4 signatures whose grinds took 243 to 251,953 tries, and a b = 6 key
+- WOTS: trees of height 6 and 10 (roots, leaves, cache), 8 signatures with paths for both slots and the last key, the signer and test PRFs, a partial test tree
+- owner v2: 15 sets of all five digests (devices 0–3, generations 0, 1, 65,535, starts up to 2^40 − 1), 11 key indices with errors, 5 addresses with their init code and runtime, the three layouts with real signatures, the domains, the pinned addresses
+- Safe: 5 SafeTx (empty, a value, ERC-20 data, a delegatecall with 768 bytes of data, every field set with a nonce above 2^64) on 4 chains, 3 SafeMessages, 4 EIP-191 messages, 8 amounts, 10 checksummed addresses
+- key log: 4 scenarios (first, second, third version; explicit slots and reuse; nonces outside the tree; separate trees, Safes and chains) with the records left
+- also checked: the 6 upstream leanSphincs-keccak known answers and the upstream crate's, and the 4 pinned addresses derived from `contracts.json`'s creation code
+
+**Three targets** (`core/check.sh`):
+
+| Target | Result |
+|---|---|
+| native (x86-64) | 29 tests pass with tiny-keccak, with RustCrypto, and with both switched at run time |
+| WebAssembly (`wasm32-unknown-unknown`) | the same 29 pass under Node 24 (wasm-bindgen-test 0.3.80) |
+| ESP32 (`xtensa-esp32-none-elf`, `no_std`) | builds with each backend and with both |
+
+**Native timings,** the inputs of `signer/tools/bench.py`, one process or thread, Ryzen 5 2600. The machine was busy (load average 8 to 10 on 12 threads), so these are the best of three runs and only the ratios are worth much:
+
+| Operation | Python (C keccak) | Rust | Ratio |
+|---|---|---|---|
+| stateless key, b = 10 | 0.38 s | 0.10 s | 3.7× |
+| stateless signature, median of 10 | 0.18 s | 60 ms | 3× |
+| stateless verification | 1.2 ms | 0.14 ms | 8× |
+| WOTS tree, height 10 | 1.04 s | 0.37 s | 2.8× |
+| WOTS signature with its check against the tree, median of 20 | 3.8 ms | 0.9 ms | 4× |
+
+Two threads saved less than half (a height-10 tree in 0.29–0.33 s) on the busy machine.
+
+**The board's firmware** (`hardware/esp32-core-check/`, image `winterlock-esp32-core-check.bin`, 395,072 bytes, SHA-256 `c3558a0b03955655516ce34f3bd3070f33fb97275fcd3d9e0d61c92861a62cab`):
+- **Checks** a compact subset of the vectors built into the image (phrase to seed, member key, owner address, check code, device certificate digest, two SafeTx hashes, a key log scenario, stateless and WOTS verification, both backends' keccak), then **times** the member key (one core, both), four stateless signatures, WOTS trees of height 6 and 10 (one core, both) and eight WOTS signatures through the key log, with each backend, checking every result byte for byte: 54 checks.
+- **In QEMU** (v0.0 and v3.0 chips): all 54 pass; heap peak 82,144 of 180,224 bytes; the first core's stack peaked at 9,868 of 73,992 bytes, the second's at 1,644 of 32,768 over 6 jobs. With `scripted-boot`, BOOT starts the run and turns the summary pages. QEMU's times say nothing about the chip.
+
+**Unverified until Monday:**
+- that the chip computes the same bytes (QEMU emulates the Xtensa core, not the silicon)
+- every timing, and which backend is faster on the chip: the image times both, then the board's firmware builds with the faster feature
+- the second core restarted for each job, and the heap in memory reclaimed from the bootloader, on silicon
+- the OLED (QEMU has none) and the BOOT button
+- chips older than v3.0 on real silicon
+
+**Python, read while porting** (matched in Rust, not changed):
+- `phrase.matches(words, 0, answer)` compares with the last word (`words[position - 1]`); position 25 raises IndexError. Callers only pass 1 to 24.
+- `owner.key_index` takes any height, including heights above 40 that no certificate allows; height 0 fails with Python's "negative shift count".
+- `owner.tx_signature_data` doesn't check the slot: slot 2 gives data the contract refuses.
+- `wots.tweak` doesn't range-check its fields, so `verify_root` with a path of more than 255 levels would spill the level into the chain byte (Rust keeps one byte). Paths are 40 levels at most in practice.
+- `phrase.to_seed` takes a hex seed with `0x` but not `0X`, while `abi.h2b` takes both.
+- `wots.Tree` allows real leaves up to height 40; the signer refuses above 20 (`member.new_tree`). The core refuses above 20 in `Tree` itself: a tree of 2^40 leaves can't be held in memory.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.

@@ -47,6 +47,8 @@ This repository also holds the landing page published at winterlock.eth: a singl
 | `docs/ux/` | The MVP proposal for teams and a clickable mockup |
 | `contracts/` | The contracts: WOTS verifier, Kernel validator, Safe owner (EIP-1271) with its proxy factory, tests, gas benchmarks and testnet tooling |
 | `signer/` | A minimal command-line signer for Safe members (Python) |
+| `core/` | The signer's cryptography and key rules in `no_std` Rust, for the browser and an ESP32 board, tested against the Python signer's vectors |
+| `hardware/` | ESP32 firmware: a keccak256 benchmark, and a check of the Rust core on the board |
 
 ## Contracts
 
