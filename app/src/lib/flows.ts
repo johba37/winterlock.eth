@@ -10,16 +10,15 @@ import {
   OWNER_ABI,
   type SafeState,
   factoryAddress,
-  ctxFor,
   executionResult,
   isValidSignature,
-  missingContracts,
   ownerDeployed,
   readDevice,
   readTree,
   safeState,
   sendFromGas,
   short,
+  usableCtx,
 } from './chain'
 import {
   type CertRecord,
@@ -156,8 +155,7 @@ export async function pairDevice(env: Env, session: Session, step: Step): Promis
     const gens = new Map<number, number[]>()
     for (const c of enabledChains()) {
       step(`Reading your devices on ${c.name}`)
-      const ctx = await ctxFor(env.db, c.id)
-      await requireContracts(ctx, env.core)
+      const ctx = await usableCtx(env.db, env.core, c.id)
       const deployed = await ownerDeployed(ctx, env.core, d.owner, d.memberKey)
       const states = []
       for (let n = 1; n <= MAX_DEVICE; n++) states.push(deployed ? await readDevice(ctx, d.owner, n) : { key: '0x' as Hex, generation: 0, active: false })
@@ -185,11 +183,6 @@ export async function pairDevice(env: Env, session: Session, step: Step): Promis
   return { device: rec, report }
 }
 
-async function requireContracts(ctx: Ctx, core: Core) {
-  const missing = await missingContracts(ctx, core)
-  if (missing.length) throw new Error(`Winterlock's contracts aren't on ${ctx.chain.name} yet (${missing.join(', ')}).`)
-}
-
 /**
  * Sends this device's pending certificates: creates the member's owner first where it doesn't
  * exist (the factory's deploy, as `device certify` does), then certifyDevice. Per chain, a line
@@ -201,8 +194,7 @@ export async function submitCertificates(env: Env, dev: DeviceRecord, step: Step
     const c = chainById(cert.chain)
     if (!c.enabled || cert.status === 'submitted') continue
     try {
-      const ctx = await ctxFor(env.db, c.id)
-      await requireContracts(ctx, env.core)
+      const ctx = await usableCtx(env.db, env.core, c.id)
       if (!(await ownerDeployed(ctx, env.core, dev.owner, dev.memberKey))) {
         step(`Creating your owner contract on ${c.name}`)
         const factory = await factoryAddress(env.core)
@@ -295,7 +287,7 @@ export function parseAddress(s: string): Address {
 }
 
 export async function addSafe(env: Env, chainId: number, safe: Address) {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   const st = await safeState(ctx, safe)
   await putSafe(env.db, { chain: chainId, safe, addedAt: Date.now() })
   return st
@@ -314,7 +306,7 @@ export interface SafeView {
 
 /** Where this member stands with a Safe: owner or not, the device, the key tree and its nonces. */
 export async function safeView(env: Env, dev: DeviceRecord, chainId: number, safe: Address): Promise<SafeView> {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   const state = await safeState(ctx, safe)
   const isOwner = state.owners.some((o) => o.toLowerCase() === dev.owner.toLowerCase())
   const device = await deviceState(env, dev, ctx)
@@ -359,7 +351,7 @@ export async function signingTree(env: Env, dev: DeviceRecord, ctx: Ctx, safe: A
  * this device's key and sent from the gas account (cli.py's enroll).
  */
 export async function enrol(env: Env, dev: DeviceRecord, chainId: number, safe: Address, step: Step, height = TREE_HEIGHT): Promise<{ tree: TreeRecord; hash: Hex; gasUsed: bigint }> {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   const gen = await requireActive(env, dev, ctx)
   const state = await safeState(ctx, safe)
   const onchain = await readTree(ctx, dev.owner, safe, dev.device)
@@ -477,7 +469,7 @@ interface Prepared {
 
 /** The checks before a one-time signature (cli.py's prepare), then the stale-log check. */
 async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Address, tx: SafeTx, step: Step, expect?: Hex): Promise<Prepared> {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   step('Checking the Safe and this device')
   const state = await safeState(ctx, safe)
   if (!state.owners.some((o) => o.toLowerCase() === dev.owner.toLowerCase())) throw new Refused(`Your owner ${dev.owner} isn't an owner of this Safe.`)
@@ -524,7 +516,7 @@ export interface Transfer {
 
 /** Propose an ETH or ERC-20 transfer, signed by this device, to Safe's service. */
 export async function propose(env: Env, dev: DeviceRecord, chainId: number, safe: Address, t: Transfer, step: Step): Promise<{ hash: Hex; nonce: number; slot: number }> {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   const st = await safeState(ctx, safe)
   const nonce = await nextNonce(chainId, safe, st.nonce)
   const tx = t.token
@@ -540,7 +532,7 @@ export async function propose(env: Env, dev: DeviceRecord, chainId: number, safe
 
 /** Confirm a proposal from Safe's service with this device's next one-time key. */
 export async function confirm(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, step: Step): Promise<{ note?: string; slot?: number }> {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   step('Fetching the proposal')
   const rec = await service(chainId).transaction(hash)
   if (getAddress(rec.safe) !== getAddress(safe)) throw new Refused('That proposal is for another Safe.')
@@ -568,7 +560,7 @@ export async function confirm(env: Env, dev: DeviceRecord, chainId: number, safe
  * that no longer counts. Then this device keeps the new signature and uses it when it executes.
  */
 async function keptCheck(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, sig: Hex): Promise<string | undefined> {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   for (let i = 0; i < 3; i++) {
     const rec = await service(chainId).transaction(hash).catch(() => null)
     const held = rec?.confirmations?.find((c) => c.owner?.toLowerCase() === dev.owner.toLowerCase())?.signature
@@ -588,13 +580,18 @@ async function keptCheck(env: Env, dev: DeviceRecord, chainId: number, safe: Add
 export interface Collected {
   sigs: { owner: Address; data: Uint8Array; contract: boolean }[]
   refused: Address[]
+  /** Each signature's data (hex, lower case) and whether it counts now: per signature, since an
+   * owner may have one that counts and an older one that doesn't. */
+  verdicts: Map<string, boolean>
+  /** This owner's signature that the service didn't keep, held on this device. */
+  held?: Hex
   threshold: number
   nonce: number
 }
 
 /** The signatures that count for a proposal: each owner once, checked by its owner contract. */
 export async function collect(env: Env, chainId: number, safe: Address, hash: Hex, rec?: ServiceTx): Promise<Collected> {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   const st = await safeState(ctx, safe)
   rec ??= await service(chainId).transaction(hash)
   const owners = new Set(st.owners.map((o) => o.toLowerCase()))
@@ -602,6 +599,7 @@ export async function collect(env: Env, chainId: number, safe: Address, hash: He
   const found = [...(held ? [{ owner: undefined as Address | undefined, signature: held.signature }] : []), ...(rec.confirmations ?? [])]
   const sigs: Collected['sigs'] = []
   const refused: Address[] = []
+  const verdicts = new Map<string, boolean>()
   const counted = new Set<string>()
   for (const c of found) {
     if (!c.signature) continue
@@ -612,20 +610,23 @@ export async function collect(env: Env, chainId: number, safe: Address, hash: He
       continue
     }
     const o = getAddress(p.owner ?? c.owner!)
-    if (!owners.has(o.toLowerCase()) || counted.has(o.toLowerCase())) continue
-    if (p.contract && !(await isValidSignature(ctx, o, hash, p.data))) {
+    if (!owners.has(o.toLowerCase())) continue
+    const ok = !p.contract || (await isValidSignature(ctx, o, hash, p.data))
+    verdicts.set(toHex(p.data).toLowerCase(), ok)
+    if (!ok) {
       refused.push(o)
       continue
     }
+    if (counted.has(o.toLowerCase())) continue
     counted.add(o.toLowerCase())
     sigs.push({ owner: o, data: p.data, contract: p.contract })
   }
-  return { sigs, refused, threshold: st.threshold, nonce: st.nonce }
+  return { sigs, refused, verdicts, held: held?.signature, threshold: st.threshold, nonce: st.nonce }
 }
 
 /** Execute a fully confirmed transaction, paid by the gas account (cli.py's execute). */
 export async function execute(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, step: Step): Promise<{ tx: Hex; gasUsed: bigint }> {
-  const ctx = await ctxFor(env.db, chainId)
+  const ctx = await usableCtx(env.db, env.core, chainId)
   step('Fetching the proposal and its confirmations')
   const rec = await service(chainId).transaction(hash)
   const tx = fromService(rec)
@@ -658,7 +659,7 @@ export async function revokeDevice(env: Env, dev: DeviceRecord, session: Session
     const d = await derive(session, step)
     if (d.owner.toLowerCase() !== dev.owner.toLowerCase()) throw new Refused('That phrase belongs to another member: its owner address isn’t this one.')
     for (const c of enabledChains()) {
-      const ctx = await ctxFor(env.db, c.id)
+      const ctx = await usableCtx(env.db, env.core, c.id)
       if (!(await ownerDeployed(ctx, env.core, dev.owner, dev.memberKey))) {
         report.push(`${c.name}: no owner there, so no device`)
         continue

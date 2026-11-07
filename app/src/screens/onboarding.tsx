@@ -248,6 +248,7 @@ export function Pair() {
   const app = useApp()
   const [text, setText] = useState('')
   const [report, setReport] = useState<string[] | null>(null)
+  const [paired, setPaired] = useState<{ device: number; owner: string } | null>(null)
   const area = useRef<HTMLTextAreaElement>(null)
   const act = useAction()
 
@@ -273,7 +274,6 @@ export function Pair() {
         const rep = (err as { report?: string[] }).report
         if (rep) {
           // the device is stored; only sending its certificate failed
-          await app.reload()
           setReport(rep)
           throw new Error(`${(err as Error).message} You can send the certificate later from the home screen.`)
         }
@@ -281,16 +281,21 @@ export function Pair() {
       }
     })
     if (r) {
+      setPaired({ device: r.device.device, owner: r.device.owner })
       setReport(r.report)
-      await app.reload()
     }
   }
 
-  if (report && app.device)
+  // the app's state reloads only on Continue: until then this screen shows what happened
+  if (report)
     return (
-      <Screen title="This device is paired" testid="pair-done">
-        <Panel tone="ok">
-          <p class="okline">Device {app.device.device} of owner {app.device.owner.slice(0, 10)}…</p>
+      <Screen title={paired ? 'This device is paired' : 'This device is stored'} testid="pair-done">
+        <Panel tone={paired ? 'ok' : 'warn'}>
+          {paired && (
+            <p class="okline">
+              Device {paired.device} of owner {paired.owner.slice(0, 10)}…
+            </p>
+          )}
           <ul class="list" data-testid="pair-report">
             {report.map((l) => (
               <li key={l} class="small">
@@ -302,7 +307,14 @@ export function Pair() {
         </Panel>
         <ErrorLine error={act.error} />
         <div class="actions">
-          <button type="button" data-testid="done-home" onClick={() => go('/')}>
+          <button
+            type="button"
+            data-testid="done-home"
+            onClick={async () => {
+              await app.reload()
+              go('/')
+            }}
+          >
             Continue
           </button>
         </div>

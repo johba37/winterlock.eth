@@ -182,6 +182,7 @@ export async function confirmTx(d: Device, safe: string, hash: string): Promise<
   const p = d.page
   await openTx(d, safe, hash)
   await screens(d, '17-tx-to-confirm')
+  if (!(await t(p, 'confirm').isVisible())) return 'already confirmed by this owner (a run that stopped after confirming)'
   await t(p, 'confirm').click()
   await waitDone(p, 'done', 5 * 60_000)
   return (await t(p, 'done').textContent()) ?? ''
@@ -202,9 +203,12 @@ export async function executeTx(d: Device, safe: string, hash: string): Promise<
   await expect(t(p, 'execute')).toBeVisible({ timeout: 120_000 })
   await screens(d, '18-tx-ready')
   await t(p, 'execute').click()
-  await waitDone(p, 'done', 10 * 60_000)
+  // the line of an earlier confirmation may still be there: wait for the execution's
+  const done = p.locator('[data-testid="done"][data-tx^="0x"]')
+  await expect(done.or(t(p, 'error')).first()).toBeVisible({ timeout: 10 * 60_000 })
+  if (await t(p, 'error').isVisible()) throw new Error(`the app says: ${await t(p, 'error').textContent()}`)
   await screens(d, '19-tx-executed')
-  return (await t(p, 'done').getAttribute('data-tx'))!
+  return (await done.getAttribute('data-tx'))!
 }
 
 export async function revoke(d: Device, target: number, words: string[]): Promise<string[]> {
@@ -217,4 +221,20 @@ export async function revoke(d: Device, target: number, words: string[]): Promis
   await waitDone(p, 'revoke-report', 10 * 60_000)
   await screens(d, '22-revoke-done')
   return t(p, 'revoke-report').locator('p').allTextContents()
+}
+
+/** The rows of one of the app's IndexedDB stores in this device's profile. */
+export async function idb<T = any>(d: Device, store: string): Promise<T[]> {
+  return d.page.evaluate(async (name) => {
+    const db: IDBDatabase = await new Promise((res, rej) => {
+      const r = indexedDB.open('winterlock')
+      r.onsuccess = () => res(r.result)
+      r.onerror = () => rej(r.error)
+    })
+    return new Promise<any[]>((res, rej) => {
+      const q = db.transaction(name).objectStore(name).getAll()
+      q.onsuccess = () => res(q.result)
+      q.onerror = () => rej(q.error)
+    })
+  }, store)
 }

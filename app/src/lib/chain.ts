@@ -75,13 +75,34 @@ export async function ctxFor(db: IDBDatabase, chainId: number): Promise<Ctx> {
   return ctx
 }
 
-export function forgetContexts() {
-  contexts.clear()
+const checked = new Set<string>()
+
+/** ctxFor, after checking once that the pinned owner v2 contracts have code on the chain. */
+export async function usableCtx(db: IDBDatabase, core: Core, chainId: number): Promise<Ctx> {
+  const ctx = await ctxFor(db, chainId)
+  const id = `${chainId} ${ctx.rpcUrl}`
+  if (!checked.has(id)) {
+    const missing = await missingContracts(ctx, core)
+    if (missing.length) throw new Error(`Winterlock's contracts aren't on ${ctx.chain.name} yet (${missing.join(', ')}).`)
+    checked.add(id)
+  }
+  return ctx
 }
 
+export function forgetContexts() {
+  contexts.clear()
+  checked.clear()
+}
+
+/** A URL's scheme and host only, wherever one appears in `text`. */
+export function stripUrls(text: string): string {
+  return text.replace(/\b(https?|wss?):\/\/([^/\s"'<>]+)[^\s"'<>]*/g, '$1://$2')
+}
+
+/** An error in one line, without URL paths (viem's messages name the RPC URL, which may hold a key). */
 export function short(e: unknown): string {
   const m = (e as any)?.shortMessage ?? (e as Error)?.message ?? String(e)
-  return String(m).split('\n')[0].slice(0, 300)
+  return stripUrls(String(m).split('\n')[0]).slice(0, 1000)
 }
 
 /** The pinned owner v2 contracts this chain lacks (by name). */

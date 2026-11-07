@@ -12,6 +12,8 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   reporter: 'list',
+  // scrubs the run's own files of the .env's values, whatever wrote them
+  globalTeardown: './e2e/scrub.ts',
   outputDir: process.env.E2E_DIR ? `${process.env.E2E_DIR}/test-results` : 'test-results',
   use: {
     baseURL: `http://localhost:${port}`,

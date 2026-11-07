@@ -1,7 +1,8 @@
 // A Safe: joining it (owner address, enrolment), its queue, a transaction, and a new transfer.
 
 import { useEffect, useState } from 'preact/hooks'
-import { type Address, getAddress } from 'viem'
+import { type Address, getAddress, toHex } from 'viem'
+import { short } from '../lib/chain'
 import { useApp, useDevice } from '../app'
 import { ctxFor, fmtEth } from '../lib/chain'
 import { chainById } from '../lib/chains'
@@ -110,7 +111,7 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
         setItems(q)
         for (const it of q) if (it.decoding.decoded.kind === 'erc20') want(it.decoding.decoded.token)
       } catch (e) {
-        if (live) setLoadError((e as Error).message)
+        if (live) setLoadError(short(e))
       }
     })()
     return () => {
@@ -147,10 +148,7 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
               </a>
               .
             </li>
-            <li>
-              Under <strong>Members</strong> (owners), choose <strong>Add new signer</strong>.
-            </li>
-            <li>Paste your owner address, below, and choose the threshold the team agrees on.</li>
+            <li>Add a new owner (Safe’s app calls owners signers): paste your owner address, below, and choose the threshold the team agrees on.</li>
             <li>The Safe’s owners sign and execute that change as usual.</li>
           </ol>
           <Addr value={dev.owner} full />
@@ -247,7 +245,7 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
         if (d.kind === 'erc20') want(d.token)
         setCol(await collect(app.env, props.chain, props.safe, props.hash, r))
       } catch (e) {
-        setLoadError((e as Error).message)
+        setLoadError(short(e))
       }
     })()
   }, [k])
@@ -308,22 +306,24 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
           <Panel title="Signatures" testid="signatures">
             {(rec.confirmations ?? []).length === 0 && <p class="muted">None yet.</p>}
             <ul class="list">
-              {(rec.confirmations ?? []).map((cf) => {
+              {[...(rec.confirmations ?? []).map((cf) => ({ owner: cf.owner, signature: cf.signature, held: false })), ...(col?.held ? [{ owner: dev.owner, signature: col.held, held: true }] : [])].map((cf) => {
                 let dev_: number | undefined
+                let verdict: boolean | undefined
                 try {
-                  dev_ = cf.signature ? signatureDevice(parseSignature(cf.signature).data) : undefined
+                  const p = parseSignature(cf.signature!)
+                  dev_ = signatureDevice(p.data)
+                  verdict = col?.verdicts.get(toHex(p.data).toLowerCase())
                 } catch {
                   /* unknown form */
                 }
-                const counts = col?.sigs.some((s) => s.owner.toLowerCase() === cf.owner.toLowerCase())
-                const refused = col?.refused.some((o) => o.toLowerCase() === cf.owner.toLowerCase())
                 return (
-                  <li key={cf.owner} class="item small">
+                  <li key={`${cf.owner}${cf.held}`} class="item small">
                     <code>{cf.owner}</code>
                     <span>
                       {cf.owner.toLowerCase() === dev.owner.toLowerCase() ? 'you' : 'another owner'}
-                      {dev_ !== undefined ? `, device ${dev_}` : ''}{' '}
-                      {counts ? <span class="tag green">counts</span> : refused ? <span class="tag red">no longer counts</span> : col ? null : '…'}
+                      {dev_ !== undefined ? `, device ${dev_}` : ''}
+                      {cf.held ? ', kept on this device (the service kept an earlier one)' : ''}{' '}
+                      {verdict === true ? <span class="tag green">counts</span> : verdict === false ? <span class="tag red">no longer counts</span> : col ? null : '…'}
                     </span>
                   </li>
                 )
@@ -426,7 +426,7 @@ export function Send(props: { chain: number; safe: Address }) {
         setReview({ to: recipient, amount: parseUnits(amount, 18) })
       }
     } catch (err) {
-      act.setError((err as Error).message)
+      act.setError(short(err))
     }
   }
 

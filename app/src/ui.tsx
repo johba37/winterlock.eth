@@ -3,6 +3,7 @@
 import type { ComponentChildren } from 'preact'
 import { useEffect, useState } from 'preact/hooks'
 import qrcode from 'qrcode-generator'
+import { short } from './lib/chain'
 
 export function go(path: string) {
   location.hash = path
@@ -128,7 +129,7 @@ export function useAction() {
     try {
       return await f((label, p) => setStep({ label, done: p?.done, total: p?.total }))
     } catch (e) {
-      setError((e as Error).message ?? String(e))
+      setError(short(e))
       return undefined
     } finally {
       setBusy(false)

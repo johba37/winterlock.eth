@@ -3,9 +3,10 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks'
 import type { Address } from 'viem'
+import { short } from '../lib/chain'
 import { useApp, useDevice } from '../app'
 import { memberSession } from '../core/client'
-import { ctxFor, fmtEth, forgetContexts, rpcUrlFor } from '../lib/chain'
+import { ctxFor, fmtEth, forgetContexts, rpcUrlFor, usableCtx } from '../lib/chain'
 import { CHAINS, chainById, enabledChains, safeUrl } from '../lib/chains'
 import { type CertRecord, type SafeRecord, certs, putSetting, safes, wipe } from '../lib/db'
 import { type DeviceOnChain, addSafe, deviceState, devicesOn, parseAddress, revokeDevice, submitCertificates } from '../lib/flows'
@@ -33,11 +34,11 @@ function useChainStatus(reloadKey: number) {
       for (const c of enabledChains()) {
         const row: ChainStatus = { chain: c.id, name: c.name, cert: cs.find((x) => x.chain === c.id) }
         try {
-          const ctx = await ctxFor(app.env.db, c.id)
+          const ctx = await usableCtx(app.env.db, app.env.core, c.id)
           row.balance = await ctx.client.getBalance({ address: dev.gasAddress })
           row.state = await deviceState(app.env, dev, ctx)
         } catch (e) {
-          row.error = (e as Error).message
+          row.error = short(e)
         }
         out.push(row)
       }
@@ -231,7 +232,7 @@ export function Settings() {
           try {
             b[c.id] = await (await ctxFor(app.env.db, c.id)).client.getBalance({ address: dev.gasAddress })
           } catch (e) {
-            b[c.id] = (e as Error).message
+            b[c.id] = short(e)
           }
         }
         setBalances(b)
@@ -337,9 +338,9 @@ export function Devices() {
       const out: typeof rows = {}
       for (const c of enabledChains()) {
         try {
-          out[c.id] = await devicesOn(app.env, dev, await ctxFor(app.env.db, c.id))
+          out[c.id] = await devicesOn(app.env, dev, await usableCtx(app.env.db, app.env.core, c.id))
         } catch (e) {
-          out[c.id] = (e as Error).message
+          out[c.id] = short(e)
         }
       }
       setRows(out)

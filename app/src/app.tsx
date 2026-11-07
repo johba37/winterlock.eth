@@ -3,6 +3,7 @@
 import { createContext } from 'preact'
 import { useContext, useEffect, useState } from 'preact/hooks'
 import { core } from './core/client'
+import { short } from './lib/chain'
 import { type DeviceRecord, getDevice, openDb } from './lib/db'
 import type { Env } from './lib/flows'
 import { Create, Install, Pair, Welcome } from './screens/onboarding'
@@ -59,7 +60,7 @@ export function App() {
         setEnv(e)
         setDevice((await getDevice(db)) ?? null)
       } catch (err) {
-        setFatal((err as Error).message)
+        setFatal(short(err))
       }
     })()
   }, [])

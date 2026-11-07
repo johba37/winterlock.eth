@@ -16,7 +16,7 @@ import type { Address, Hex } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import * as app from './app'
 import * as chain from './chain'
-import { log } from './env'
+import { log, redact } from './env'
 import { chainArgs, signer } from './python'
 
 const MAX_SPEND = 25n * 10n ** 15n // 0.025 ETH from the funding account, value moved included
@@ -79,7 +79,12 @@ function step(name: string, f: (st: State, baseURL: string) => Promise<void>) {
       return
     }
     log(`${name}:`)
-    await f(st, baseURL!)
+    try {
+      await f(st, baseURL!)
+    } catch (e) {
+      // viem's errors name the RPC URL, which holds the key: rethrow redacted, without the cause
+      throw new Error(redact(String((e as Error)?.stack ?? e)))
+    }
     st.done.push(name)
     st.notes.spentWei = (await spent(st)).toString()
     save(st)
@@ -134,10 +139,16 @@ test.describe.serial('live on Sepolia', () => {
     const a2 = await app.open('a2', base)
     await app.setRpc(a2)
     await a2.page.goto('/#/')
-    const lines = await app.pair(a2, st.words!)
-    log(`  ${lines.join(' | ')}`)
-    expect(lines.join(' ')).toMatch(/device 2 certified at generation 1/)
-    await record(st, '04', 'certifyDevice, device 2, generation 1 (a2)', hashesIn(lines)[0])
+    if ((await app.idb(a2, 'device')).length === 0) {
+      const lines = await app.pair(a2, st.words!)
+      log(`  ${lines.join(' | ')}`)
+      expect(lines.join(' ')).toMatch(/device 2 certified at generation 1/)
+      await a2.page.getByTestId('done-home').click()
+    } else log('  a2 was paired before (its run stopped after the certificate was sent)')
+    await expect(a2.page.getByTestId('chain-11155111').getByTestId('device-state')).toHaveAttribute('data-kind', 'active', { timeout: 60_000 })
+    const [cert] = await app.idb(a2, 'certs')
+    expect(cert).toMatchObject({ device: 2, generation: 1, status: 'submitted' })
+    await record(st, '04', 'certifyDevice, device 2, generation 1 (a2)', cert.tx)
     expect(await app.gasAddress(a2)).toBe(st.aGas)
     await app.close(a2)
   })
@@ -170,17 +181,7 @@ test.describe.serial('live on Sepolia', () => {
     await app.screens(a1, '12b-safe-enrol')
     const text = await app.enrol(a1)
     log(`  ${text}`)
-    const tree = await a1.page.evaluate(async () => {
-      const db: IDBDatabase = await new Promise((res, rej) => {
-        const r = indexedDB.open('winterlock')
-        r.onsuccess = () => res(r.result)
-        r.onerror = () => rej(r.error)
-      })
-      return new Promise<any[]>((res) => {
-        const q = db.transaction('trees').objectStore('trees').getAll()
-        q.onsuccess = () => res(q.result.map((t: any) => ({ start: t.start, height: t.height, enrolTx: t.enrolTx })))
-      })
-    })
+    const tree = await app.idb(a1, 'trees')
     await record(st, '06', `enroll, a1 (device 1), height ${tree[0].height}, from nonce ${tree[0].start}`, tree[0].enrolTx)
     await app.close(a1)
   })
@@ -191,17 +192,8 @@ test.describe.serial('live on Sepolia', () => {
     const a2 = await app.open('a2', base)
     await app.join(a2, st.safe!)
     await app.enrol(a2)
-    const tx = await a2.page.evaluate(async () => {
-      const db: IDBDatabase = await new Promise((res) => {
-        const r = indexedDB.open('winterlock')
-        r.onsuccess = () => res(r.result)
-      })
-      return new Promise<string>((res) => {
-        const q = db.transaction('trees').objectStore('trees').getAll()
-        q.onsuccess = () => res(q.result[0].enrolTx)
-      })
-    })
-    await record(st, '07', 'enroll, a2 (device 2), height 10', tx)
+    const [tree] = await app.idb(a2, 'trees')
+    await record(st, '07', 'enroll, a2 (device 2), height 10', tree.enrolTx)
     await app.close(a2)
   })
 
@@ -219,36 +211,47 @@ test.describe.serial('live on Sepolia', () => {
     log(`  proposed ${h} (no API key in the app)`)
     signer(pyHome(), ['confirm', h, ...chainArgs()])
     const tx = await app.executeTx(a1, st.safe!, h)
-    await record(st, '09', 'execTransaction, nonce 0: a1 proposed, P confirmed, a1 executed', tx)
+    await record(st, '09', 'execTransaction: a1 proposed, P confirmed, a1 executed', tx)
     await app.close(a1)
   })
 
   step('10 P proposes, a2 confirms and executes', async (st, base) => {
-    const out = signer(pyHome(), ['propose', '--safe', st.safe!, '--to', chain.funder().address, '--value', TRANSFER, ...chainArgs()]).out
-    const h = out.match(/Proposed (0x[0-9a-fA-F]{64})/)![1]
-    st.hashes.transfer2 = h
-    save(st)
+    let h = st.hashes.transfer2
+    if (!h) {
+      const out = signer(pyHome(), ['propose', '--safe', st.safe!, '--to', chain.funder().address, '--value', TRANSFER, ...chainArgs()]).out
+      h = out.match(/Proposed (0x[0-9a-fA-F]{64})/)![1]
+      st.hashes.transfer2 = h
+      save(st)
+    }
     const a2 = await app.open('a2', base)
     await a2.page.goto(`/#/safe/11155111/${st.safe}`)
     await expect(a2.page.getByTestId('queue-item').first()).toBeVisible({ timeout: 60_000 })
     await app.screens(a2, '13b-safe-queue')
     log(`  ${await app.confirmTx(a2, st.safe!, h)}`)
     const tx = await app.executeTx(a2, st.safe!, h)
-    await record(st, '10', 'execTransaction, nonce 1: P proposed, a2 confirmed and executed', tx)
+    await record(st, '10', 'execTransaction: P proposed, a2 confirmed and executed', tx)
     await app.close(a2)
   })
 
   step('11 revoke a2 while its confirmation is pending; a1 confirms again and executes', async (st, base) => {
-    const out = signer(pyHome(), ['propose', '--safe', st.safe!, '--to', chain.funder().address, '--value', TRANSFER, ...chainArgs()]).out
-    const h = out.match(/Proposed (0x[0-9a-fA-F]{64})/)![1] as Hex
-    st.hashes.pending = h
-    save(st)
+    let h = st.hashes.pending as Hex | undefined
+    if (!h) {
+      const out = signer(pyHome(), ['propose', '--safe', st.safe!, '--to', chain.funder().address, '--value', TRANSFER, ...chainArgs()]).out
+      h = out.match(/Proposed (0x[0-9a-fA-F]{64})/)![1] as Hex
+      st.hashes.pending = h
+      save(st)
+    }
     const a2 = await app.open('a2', base)
     log(`  a2: ${await app.confirmTx(a2, st.safe!, h)}`)
     await app.close(a2)
-    // a2's confirmation as the service holds it
-    const svc = await (await fetch(`https://api.safe.global/tx-service/sep/api/v2/multisig-transactions/${h}/`)).json()
-    const mine = svc.confirmations.find((c: any) => c.owner.toLowerCase() === st.aOwner!.toLowerCase())
+    // a2's confirmation as the service holds it (a moment after it was posted)
+    let mine: any
+    for (let i = 0; i < 10 && !mine; i++) {
+      const r = await fetch(`https://api.safe.global/tx-service/sep/api/v2/multisig-transactions/${h}/`)
+      const svc = r.status === 200 ? await r.json() : {}
+      mine = (svc.confirmations ?? []).find((c: any) => c.owner.toLowerCase() === st.aOwner!.toLowerCase())
+      if (!mine) await new Promise((res) => setTimeout(res, 3000))
+    }
     const data = ('0x' + mine.signature.slice(2 + 2 * 97)) as Hex
     const before = await chain.ownerAccepts(st.aOwner!, h, data)
     const a1 = await app.open('a1', base)
@@ -278,7 +281,7 @@ test.describe.serial('live on Sepolia', () => {
     st.notes.a1Reconfirm = note
     log(`  a1: ${note}`)
     const tx = await app.executeTx(a1, st.safe!, h)
-    await record(st, '11', 'execTransaction, nonce 2: P and a1 (a2’s confirmation revoked)', tx)
+    await record(st, '11', 'execTransaction: P and a1 (a2’s confirmation revoked)', tx)
     await app.close(a1)
   })
 
@@ -306,7 +309,7 @@ test.describe.serial('live on Sepolia', () => {
     signer(pyHome(), ['confirm', h, ...chainArgs()])
     const a1b = await app.open('a1', base)
     const tx = await app.executeTx(a1b, st.safe!, h)
-    await record(st, '12', 'execTransaction, nonce 3: a1 (the original) proposed after the copy, P confirmed', tx)
+    await record(st, '12', 'execTransaction: a1 (the original) proposed after the copy, P confirmed', tx)
     await app.close(a1b)
   })
 
@@ -327,5 +330,22 @@ test.describe.serial('live on Sepolia', () => {
     const o = await chain.owners(st.safe!)
     st.notes.final = { ...o, safeBalance: (await chain.balance(st.safe!)).toString(), aGasBalance: (await chain.balance(st.aGas!)).toString() }
     log(`  final: ${JSON.stringify(st.notes.final)}`)
+  })
+
+  step('14 the revoked a2 forgets its key and pairs again: device 2, generation 2', async (st, base) => {
+    const a2 = await app.open('a2', base)
+    await a2.page.goto('/#/devices')
+    await a2.page.getByTestId('forget').click()
+    await app.screens(a2, '30-forget')
+    await a2.page.getByTestId('forget-confirm').click()
+    await a2.page.getByTestId('welcome').waitFor()
+    expect(await app.idb(a2, 'uses')).toHaveLength(0)
+    const lines = await app.pair(a2, st.words!)
+    log(`  ${lines.join(' | ')}`)
+    expect(lines.join(' ')).toMatch(/device 2 certified at generation 2/)
+    await record(st, '14', 'certifyDevice, device 2, generation 2 (a2 paired again after its revocation)', hashesIn(lines)[0])
+    await a2.page.getByTestId('done-home').click()
+    await expect(a2.page.getByTestId('chain-11155111').getByTestId('device-state')).toHaveAttribute('data-kind', 'active', { timeout: 60_000 })
+    await app.close(a2)
   })
 })
