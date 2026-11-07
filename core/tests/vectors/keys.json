@@ -3,6 +3,8 @@
   {
    "device_key": "0xde5f4ddcc0010793a9dfa93903502ec7bd0a8d42478d8f2da30005b527b396c6",
    "device_key_seed": "0x432b2afc83298773edef770f0b4803b78f3ec3bbbbe480faa13cf2f32543ce97",
+   "gas_address": "0x77C19EbfE28Af7fB26e5AEb2755752E3d2EAfa73",
+   "gas_key": "0x6c90626a63dcfa79b2d89bd75f48b20067495eed728d4ce1839593dc83462f80",
    "member_key": "0xbc6a3e07c112b238ce4da8499b32710512e53b695676fce4f52747e9959da172",
    "member_key_seed": "0x2c75eaf697c7b3c8714c11f59eb07b1e3630d59e450faf35b9272d3cfd450eeb",
    "member_leaves_first": [
@@ -19,6 +21,8 @@
   {
    "device_key": "0x4a0e8d469203f27fee02bc9719234c21a872dcebb5e2f7f345fadb533a9bd0d5",
    "device_key_seed": "0x9e3c81bef287b9419665f48967bf0d87fdfabb57eabe83a66517e7c364972600",
+   "gas_address": "0xfc4d616f2163ebe5Ce781014Db7eA6a060e50f9F",
+   "gas_key": "0xe8b091c700bcf5a8bd79e1f40ca4cde82d43b4d1774bb25d71f1f19d4b61f1d1",
    "member_key": "0xd2f6f0721c5ccd5a8c8b9b683bb040ea06da417f7dc7f80ecd343e12c2ca558a",
    "member_key_seed": "0x3306e510bee631fc3943bbbd755fab7f2fec2e7323895cfb53a17c2b2e8d21c4",
    "member_leaves_first": [
@@ -35,6 +39,8 @@
   {
    "device_key": "0x1bc5d5c1845ab36e2e516c9e567ad70e477cdd20af5ad69e18b89ff6090e28fb",
    "device_key_seed": "0x771d263c2c8e26a1f24cce15d259316b4fcb07126c5668459fdc8a89969c476d",
+   "gas_address": "0x01eC04f529865d3023EC3Ec6714C9c5Dfd7912ab",
+   "gas_key": "0x2deb71d469b98117b3403e9d6357633ab2bec963e940eb9c53e469047bf4a97a",
    "member_key": "0x3cfb28b2225920af7c76f82607992e725208bc2f10c7716a73a1c5bb4beda050",
    "member_key_seed": "0xa09683dc7b55d74c201bdf2b539034f04303beffef1314ff1b0839d9a97174b0",
    "member_leaves_first": [
@@ -51,6 +57,8 @@
   {
    "device_key": "0xad6591003d92666ae8b8bf2d7967cf020c81848291170c14b6ee5db71f25bb3d",
    "device_key_seed": "0xaa869297f2bf606fba694429e12546a6239d22e5b48cd6e1e23fb1679bd426bd",
+   "gas_address": "0x79aBD8a131C666cc7314b7E0FF0d9E7f5E9e50ae",
+   "gas_key": "0x96a1cc441fdbb00bd9d28025af7e0caa94a75816a1102d5614838728e4af578d",
    "member_key": "0x580a94021dfd586b2537f1002eea21bdb6a451466d33cb0171146eba471b8d42",
    "member_key_seed": "0x9dab0fccd9d7606d6a771d3479f707ed73d5308e6769380a18268f636d9f8468",
    "member_leaves_first": [

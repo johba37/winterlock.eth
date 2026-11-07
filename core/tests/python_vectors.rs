@@ -94,6 +94,7 @@ fn member_and_device_keys() {
         assert_eq!(owner::owner_address(&mk.public_key()).unwrap(), address(&c["owner"]));
         assert_eq!(derive::device_key_seed(&seed), arr::<32>(&c["device_key_seed"]));
         assert_eq!(derive::device_key(&seed).unwrap().public_key(), arr::<32>(&c["device_key"]));
+        assert_eq!(derive::gas_key(&seed).unwrap(), arr::<32>(&c["gas_key"]));
     }
 }
 

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Known answers from the Python signer for the Rust core (core/), which must match them byte for byte.
 
-Writes JSON to core/tests/vectors/: phrase.json (the word list and parser cases, check codes), keys.json (member and
-device keys, tree secret seeds), leansphincs.json (signatures), wots.json (trees, signatures, paths), owner.json (v2
-digests, key indices, layouts, addresses), safe.json (SafeTx and SafeMessage hashes, amounts), keylog.json (sign
-requests and what the key log answers), and board.json, the compact subset the ESP32 firmware embeds. Every input is a
+Writes JSON to core/tests/vectors/: phrase.json (the word list and parser cases, check codes), keys.json (member,
+device and gas keys, tree secret seeds), leansphincs.json (signatures), wots.json (trees, signatures, paths),
+owner.json (v2 digests, key indices, layouts, addresses), safe.json (SafeTx and SafeMessage hashes, amounts),
+keylog.json (sign requests and what the key log answers), and board.json, the compact subset the ESP32 firmware
+embeds. Every input is a
 fixed public test value: no randomness, so the files only change when the signer does.
 
 usage: signer/.venv/bin/python signer/tools/core_vectors.py [OUT_DIR]
@@ -19,6 +20,7 @@ import unicodedata
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from winterlock_signer import abi, eip712, leansphincs, member, messages, owner, phrase, safe, wots  # noqa: E402
 from winterlock_signer.abi import b2h, checksum, h2b  # noqa: E402
+from winterlock_signer.ethtx import Account  # noqa: E402
 from winterlock_signer.keccak import keccak256  # noqa: E402
 from winterlock_signer.keylog import KeyLog, Refused  # noqa: E402
 
@@ -129,6 +131,17 @@ def phrase_vectors():
 
 # --- keys ---
 
+GAS_KEY_LABEL = b"winterlock.app.gas.v1"  # the signer app's gas account (docs/notes/signer-app.md)
+
+
+def gas_key(seed: bytes) -> dict:
+    """The app's gas account for a phrase's seed: keccak256(abi.encode("winterlock.app.gas.v1", seed)), with the
+    signer's own helpers, and its address"""
+    key = member._abi_label(GAS_KEY_LABEL, seed)
+    acct = Account(b2h(key))  # refuses 0 and keys >= n
+    return {"gas_key": b2h(key), "gas_address": acct.address}
+
+
 def key_vectors():
     out = []
     for s in SEEDS[:4]:
@@ -143,6 +156,7 @@ def key_vectors():
             "owner": owner.owner_address(mk.public_key),
             "device_key_seed": b2h(member._abi_label(member.DEVICE_KEY_LABEL, s)),
             "device_key": b2h(dk.public_key),
+            **gas_key(s),
         })
     trees = []
     for i, (dev, gen, start) in enumerate([(0, 0, 0), (1, 1, 7), (3, 65535, (1 << 40) - 1), (2, 2, 12345)]):
