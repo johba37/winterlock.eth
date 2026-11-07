@@ -1211,6 +1211,103 @@ Two threads saved less than half (a height-10 tree in 0.29–0.33 s) on the busy
 - `phrase.to_seed` takes a hex seed with `0x` but not `0X`, while `abi.h2b` takes both.
 - `wots.Tree` allows real leaves up to height 40; the signer refuses above 20 (`member.new_tree`). The core refuses above 20 in `Tree` itself: a tree of 2^40 leaves can't be held in memory.
 
+**2026-11-07: the signer app, first build** (`app/`, `core-wasm/`, `core/src/derive.rs`; the live run's state and screenshots in its scratch directory, not in the repository)
+
+Step 3 of [notes/signer-app.md](notes/signer-app.md), "Order", without the board and without dapps. The question: can a member who never uses a terminal create a membership, pair a second device, join an existing Safe, enrol, propose, confirm, execute and revoke, from a browser, on the Rust core? Yes, live on Sepolia, through Safe's hosted Transaction Service with no API key in the app, next to the Python signer as the Safe's other member.
+
+**Safe's Transaction Service without a key (checked 2026-11-07, Sepolia):** reads, proposals and confirmations all work from a browser origin. The service answers any origin (`Access-Control-Allow-Origin: *`, preflights allowed), and a POST without a key reaches validation (HTTP 400/422 for a bad body, 201 for a good one). Live, the app proposed (nonce 2, 5) and confirmed (nonce 3, 4) without a key. Without a key the service allows 5,000 requests per window (its reset header said about 23 days); with our key, 50,000. Whether the keyless limit is per address or shared isn't documented. The dev server's proxy for a key (`VITE_SERVICE_PROXY`) exists but wasn't needed.
+
+**What's built:**
+- **`core-wasm/`:** wasm-bindgen 0.2.130 bindings of the core, a separate crate so `core/` stays `no_std` and wasm-bindgen-free. 184 KB of WebAssembly. Keys and trees are built a few leaves at a time, so a worker reports progress between steps.
+- **The gas key** (`core/src/derive.rs`): keccak256(abi.encode("winterlock.app.gas.v1", seed)), the encoding of member.py's other labels, refused if zero or not below secp256k1's n. `core_vectors.py` writes it and its address for four seeds, with the signer's own helpers; only `keys.json` changed, and `core/check.sh` passes on all three targets.
+- **The app** (`app/`): TypeScript, Vite, Preact and viem, a static build of 381 KB of script (120 KB compressed) plus the WebAssembly and the two fonts. Screens for create, pair, join, enrol, the queue, a transaction, a new transfer, devices, revoke and settings; mobile first.
+- **Create:** the phrase from `crypto.getRandomValues` inside a worker; the words leave it once, to be shown. Three words back from the written copy, no skip; a wrong word is named and the phrase can be shown again. Then the member key, owner address and gas account; device key 1 from a fresh seed; the member key certifies it on each enabled chain; the worker that held the seed and the member key is terminated, which discards its memory. The certificate is sent once the gas account holds ETH (the owner contract is created first, through the factory's `deploy`, as `device certify` does).
+- **Pair:** the phrase typed on the new device. The device number is the lowest one active on no enabled chain, so a revoked number is reused at the next generation. The certificate is sent at once.
+- **Revoke:** the phrase typed again; the member key signs the revocation on every enabled chain where the device is active.
+- **Storage** (decision 3): IndexedDB, unencrypted. The device's seed and key, the gas key, key trees with their salts, the key log, and the stateless signatures this device's keys made. The app asks for persistent storage.
+- **iOS:** no device key unless the app runs installed (standalone); the welcome screen says why and links to the install steps. A web app manifest and icons rendered from the brand mark.
+- **No third-party code at run time:** everything is bundled; the production page's Content Security Policy allows scripts only from the app. No analytics. `connect-src` allows any https endpoint because the RPC URL is the member's choice.
+
+**Record, then sign, across the WebAssembly boundary.** The core's `KeyLogStore` is synchronous and IndexedDB isn't, so the core's rules run on both sides of the write, under a Web Lock per device:
+1. the core picks the slot from the uses the log holds, and says which use to record
+2. the app writes it in an IndexedDB transaction with `durability: "strict"` and waits for it to complete; the store's key (chain, Safe, root, key index) refuses a second use of a key
+3. the app reads the uses back, and the core runs `keylog::record` over a store whose `append_use` always fails. It finds the use already recorded, returns the `Recorded`, and only that signs. A use missing from the durable log means no signature.
+
+The owner contract then checks the signature by `eth_call` before anything is sent, as in the Python signer.
+
+**The stale-log check** (`app/src/lib/stale.ts`), before every one-time signature, over the tree's whole range of nonces:
+- **Safe's service:** every transaction it holds for the Safe at those nonces, executed or pending, and each one's confirmations by this member's owner; for executed ones, also the signatures it indexed from the execution.
+- **The chain:** for each execution the service lists, the `execTransaction` calldata of its transaction hash, and this owner's signature inside it. A checked execution is remembered.
+- A signature counts as this tree's when it names this device and the core's WOTS verification against the tree's seed gives the tree's root. If the log doesn't record that key with that hash, the app refuses and says to revoke and pair again.
+- **What it can't see:** signatures passed between members as files or links and never posted; executions the service hasn't indexed (finding those on-chain would need log scans, which free RPC tiers limit); a copy that signs after this check passed; a service that withholds data. It also costs a few service requests per signature, against the shared rate limit.
+- The Python signer checks only the nonce it signs, and only at the service.
+
+**Live on Sepolia** (2026-11-07, Glamsterdam pricing, gas used from receipts). Safe `0xA8B1581F7DDF0DE335828Ba68aEBb4C0D53A1Cc5`, v1.4.1 (SafeL2, canonical factory), made by script with an ECDSA test key as its only owner; the key then added the app member's owner and the Python member's owner with `addOwnerWithThreshold`, threshold 2 of 3, as Safe's app would. Three Chromium profiles played the devices: a1 (member A's first device), a2 (A's second, paired from the phrase) and a1's profile copied (a restored or synced browser). Member P is the Python signer (its own key tree of height 6).
+
+| Step | Gas used | Transaction |
+|---|---|---|
+| a1: A's owner, created by the factory's `deploy` | 334,756 | `0xafb2feebfe360d118d3cc7e54a0f163b65a339098ec1c0e87941f9ff5bc4691e` |
+| a1: `certifyDevice`, device 1, generation 1 (signed at create, sent once funded) | 392,069 | `0xcea606df0d4a75a0a5c78f15aef3df340517d49700763c682bbcf3b815dafaa9` |
+| a2: `certifyDevice`, device 2, generation 1 (paired from the phrase) | 391,711 | `0xd5cb59b18e7568b7006481280eb816527c61fa1c56ff7dd1894b8d6ac6091f9c` |
+| script: create the Safe, ECDSA owner, 1 of 1 | 1,260,437 | `0x34e361a2f55c34e74ebfb0f57ffcb9d4f2325f07b09f19d7d66a8aeb4d0d85c7` |
+| script: `addOwnerWithThreshold(A, 1)` | 295,574 | `0x4b60951d2ae34298c0654d359b46e33500a64479fc7c03d15d1726a34fb643ec` |
+| script: `addOwnerWithThreshold(P, 2)` | 209,185 | `0x07d1b4c49d9eddde21012075fa77f5e732258b0fc40366b2fab82a6071f27340` |
+| a1: `enroll`, height 10, nonces 2–513 | 394,136 | `0xd992da1630de09c62d7b08f369d2a1274b65d9f97e1bf41f23de67405c8a5e18` |
+| P (Python): `deployAndEnroll`, height 6 | 605,984 | `0xdf9a01b168f26b81e7e822c03e2c89071a6cf93ab002234ee6a6ed872ee8e6ec` |
+| a2: `enroll`, height 10 | 394,136 | `0xe588dffa1f3799a58c56c6d6b10255fb2a3d972f69c7cf920c92f931bfd820db` |
+| nonce 2: a1 proposed 1e13 wei, P confirmed, a1 executed | 307,174 | `0xc7ec5044cd01330b32f06ab208b8bba4a28045eb32379de967c2cce89af316c6` |
+| nonce 3: P proposed, a2 confirmed and executed | 307,110 | `0x57aeea8ffa3284d50aadc7145c27cdcf5708df039726816692e8aedbe89f55da` |
+| a1: `revokeDevice`, device 2, with the phrase, while a2's confirmation of nonce 4 was pending | 387,992 | `0xc9525c3b69591d539feadbcc7257e16b42c5c9113dd3af138cc7cc63f58ea98c` |
+| nonce 4: P proposed, a2 confirmed (revoked), a1 confirmed again and executed | 307,170 | `0x030fd087b33c23f5544ca62833f8f9d640bc94c16fd91502105687c6fc75588c` |
+| nonce 5: a1 proposed after its profile was copied, P confirmed, a1 executed | 307,214 | `0x91f66de54e0cf8f95550f6c642e9a6a6693089f4191be1102ef33877294daf60` |
+| a2: forgot its key and paired again: `certifyDevice`, device 2, generation 2 | 390,040 | `0x3f58cf8e264d81f21b11ab1a8cb9243a5a9385bc46a6691d7f692b75794b3aa5` |
+
+- **Revoked:** a2's confirmation of nonce 4 verified before the revocation (`isValidSignature` by `eth_call`: `0x1626ba7e`) and not after (`0xffffffff`). The app on a2 showed the device as revoked and refused to confirm ("This device was REVOKED on Sepolia: it signs nothing there").
+- **Safe's service kept the stale confirmation,** as on 2026-11-06: a1's new confirmation was answered 201 and dropped. The app kept a1's signature in its own storage, said so, and a1 executed with it and P's.
+- **The copied browser:** a1's profile was copied after a1 had signed; a1 then proposed nonce 5. The copy, asked to propose a transfer, refused before signing: "This browser's key log is out of date … (Found: one-time key 6, nonce 5 … in a confirmation at Safe's service)". The original carried on.
+- **Matches the Python signer:** `enroll` 394,136 gas, as the Python signer's on 2026-11-06; `certifyDevice` 390,040 to 392,069 (391,760 then); `revokeDevice` 387,992 (the same). An execution costs about 307k, against 298k to 300k on 2026-11-06 with height-6 trees only: the app's height-10 trees add 96 bytes of path and four hashes to its signature.
+- **Spent:** 0.00246 ETH left the funding account. 0.002 of it is still in member A's gas account and 0.00046 in the test Safe; the four transfers of 1e13 wei went back to the funding account. The fees came to about 1.3e-10 ETH: the base fee was about 20 wei.
+
+**Timings in Chromium** (headless Chromium 158, Ryzen 5 2600 under load; the app's own device worker, `e2e/bench.spec.ts`; three runs):
+
+| Operation | WebAssembly, tiny-keccak | WebAssembly, RustCrypto (`sha3`) | Native, tiny-keccak |
+|---|---|---|---|
+| member key, b = 10 | 116–163 ms | 289–306 ms | 110 ms |
+| key tree, height 10 | 422–485 ms | 1,037–1,229 ms | 358 ms |
+| stateless signature, median of 5 | 41–87 ms | 104–154 ms | 55 ms |
+| one-time signature through the key log, median of 5 | 1.3–3.8 ms | 5.4–6.3 ms | 0.8 ms |
+
+Tiny-keccak stays the default. In Chromium the core takes about 1.1 to 1.4 times its native time; RustCrypto's Keccak-f is about 2.3 times slower in WebAssembly. Phones weren't measured.
+
+**Tests:**
+- **Unit** (`npm test`, vitest, 22): the Python vectors through the app's encodings (gas key and address, SafeTx hashes from the fields, owner address, phrase, a tree's signature recognised); the key log store over fake-indexeddb (strict durability asked, the same hash again, slot 1, a third version refused, a nonce outside the tree, no signature without a durable record, the store's unique key); two and three tabs racing for one key under Node's Web Locks, and two without the lock; the stale-log check against a copied database, through the service's confirmations and through an execution's calldata.
+- **Live** (`e2e/live.spec.ts`): the 15 steps above, resumable.
+- **Screenshots** of every screen at 390 × 844 and 1280 × 860, in the run's scratch directory.
+
+**Not tested:**
+- Safari, Firefox, and any phone. iOS is only emulated (Chromium with an iPhone user agent: create and pair are off in a tab); the standalone check was never run installed.
+- Two tabs racing in a real browser: the race tests run in Node, with Node's Web Locks and fake-indexeddb.
+- The default public RPC for signing: the run set an Alchemy URL in Settings on each device; the public endpoint only served the first screens.
+- ERC-20 transfers live: proposing and decoding are built and unit-tested, not sent.
+- A key tree running low (the prompt shows under a fifth left) and a fresh tree's enrolment over an enrolled one.
+- Arbitrum One: configured and off; the contract check would refuse it today.
+- After the live run, two display fixes: the signatures of a transaction are now judged one by one (the screen marked a2's revoked confirmation as counting, since a1's held signature counted for the same owner), and long messages are no longer cut at 300 characters. Checked by type and unit tests and one screenshot, not by another live run.
+- A copy that signs *before* the original: the original then refuses, by the same check, but the run didn't do it.
+
+**Deviations from the note:**
+- **The certificate at create is sent later.** A new member's gas account is empty, so create stores the member key's certificate and the home screen sends it once the account holds ETH. If another device pairs first and takes device 1, that certificate no longer fits; the app says to forget the device and pair it again.
+- **Pairing creates the owner contract** when it doesn't exist yet, paid by the gas account, rather than requiring the first device to have sent its certificate.
+- **The service's kept confirmation:** the Python signer writes a proposal file for `execute --file`; the app keeps the signature in IndexedDB and uses it when this device executes. Another member's device can't see it, and Safe's app can't execute that transaction.
+- **The member key's signatures** (certificates, revocations) are recorded on the device that typed the phrase. No device sees them all, so the member key's signature budget (about 210,000 at b = 10) isn't counted across devices.
+- **The gas account signs with viem** (secp256k1 from `@noble/curves`), not with the core, which has no secp256k1. Its key comes from the core.
+- **"Forget this device"** (Devices) deletes everything the browser holds; the note doesn't name it, but pairing again needs it.
+- **Dapps over WalletConnect** wait for the next milestone, as do the board, Arbitrum One, publishing (IPFS, ENS) and several chains at once.
+
+**Open:**
+- **Keyless writes and their limit:** the app relies on the service taking writes without a key, and the stale-log check reads the service before every signature. If the keyless limit turns out to be shared, or writes start needing a key, the options in the note stand (a key per user, a proxy holding ours, or signatures passed between members as links or QR codes).
+- **Signatures the service won't keep:** held on the device that made them for now. Links or QR codes between members would let any member execute.
+- **The member key's budget across devices:** not counted, since the member key exists only while the phrase is typed. At about 210,000 signatures it is far away for certificates and revocations.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.

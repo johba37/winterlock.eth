@@ -85,7 +85,7 @@ TypeScript, Vite, Preact (small enough for phones), viem for RPC, ABI and EIP-71
 
 **The members' Safe.** Winterlock owners join it next to its current owners, and Safe counts them like any other owner. All Winterlock owners share one implementation, so a bug that accepted a forged signature would forge all of them at once. While the Winterlock owners are fewer than the threshold, such a bug can't move funds on its own. Tested on Safe v1.4.1 and v1.5.0; an older Safe needs a check first.
 
-**To check first:** whether a browser may post proposals and confirmations to Safe's service without an API key. Reads work without one: on 2026-11-06 the Sepolia service answered without a key and allowed any site to call it, with a rate limit. If writes need a key, the options are a key per user (poor), a small proxy holding ours (a server), or confirmations passed between members as links or QR codes (a signature is about 1.8 KB).
+**To check first:** whether a browser may post proposals and confirmations to Safe's service without an API key. Reads work without one: on 2026-11-06 the Sepolia service answered without a key and allowed any site to call it, with a rate limit. If writes need a key, the options are a key per user (poor), a small proxy holding ours (a server), or confirmations passed between members as links or QR codes (a signature is about 1.8 KB). **Answered on 2026-11-07: writes work without a key too.** The app proposed and confirmed live on Sepolia from a browser origin with no key; keyless callers get 5,000 requests per window (decisions.md, "2026-11-07: the signer app, first build").
 
 ## The board (if the timing firmware says yes)
 
@@ -123,12 +123,17 @@ Decided on 2026-11-06:
 
 ## Order
 
-1. **Checks:** the ESP32 timings (2026-11-09); posting to Safe's service without an API key.
+1. **Checks:** the ESP32 timings (2026-11-09); posting to Safe's service without an API key (**works**, checked live on 2026-11-07: see "To check first").
 2. **The core,** with the Python vectors, building for native, WebAssembly and the ESP32. **Built on 2026-11-07** (`core/`, decisions.md, "2026-11-07: Rust core"):
    - everything under "The core" above, `no_std` with `alloc`; the key log's rules over a two-method storage trait, and a WOTS key signs only from the record its append returns
    - vectors from `signer/tools/core_vectors.py`; the tests pass natively with both keccak backends and in WebAssembly under Node, and the crate builds for `xtensa-esp32-none-elf` (`core/check.sh`)
    - natively about 3 to 4 times as fast as the Python signer
    - `hardware/esp32-core-check/` checks the core on the board and times the real operations with both backends: all 54 checks pass in QEMU; the user flashes it on 2026-11-09
-3. **The app, on Ethereum Sepolia,** without a board: create, add a device, join a Safe, enrol, transfer, confirm, execute, dapps, revoke. A fresh-eyes run by an agent through the app's screens. Then the board's firmware, with the board's screens on the user's board.
+3. **The app, on Ethereum Sepolia,** without a board: create, add a device, join a Safe, enrol, transfer, confirm, execute, dapps, revoke. A fresh-eyes run by an agent through the app's screens. Then the board's firmware, with the board's screens on the user's board. **First build on 2026-11-07, everything but dapps** (`app/`, `core-wasm/`; decisions.md, "2026-11-07: the signer app, first build"):
+   - the core in WebAssembly through a bindings crate, in Web Workers; the member key only in a worker that is terminated after it signs; the gas key derived from the phrase (`winterlock.app.gas.v1`, with a Python vector)
+   - every rule under "Risks a browser adds": IndexedDB with persistent storage, no device key on iOS unless installed, record then sign in a strict-durability transaction under a Web Lock, the stale-log check at Safe's service and on-chain, no third-party code at run time
+   - live on Sepolia through Safe's service without an API key, next to the Python signer: create, pair a second device, join a script-made Safe, enrol, propose, confirm and execute both ways, revoke the second device while its confirmation was pending, a copied browser that refuses, and the revoked device paired again
+   - in Chromium's worker: the member key in about 0.12 s, a height-10 key tree in about 0.45 s, a stateless signature in about 0.07 s
+   - still to do: dapps over WalletConnect, Safari and phones, the fresh-eyes run
 4. **Arbitrum One:** deploy (user-funded; a first measurement of Arbitrum's fees), the user and one other person end to end, then the rest of the round.
 5. **The normative spec,** after the round, from this note, owner-v2.md and the code.
