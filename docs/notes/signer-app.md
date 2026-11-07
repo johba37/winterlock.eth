@@ -1,6 +1,6 @@
 # A signer without a terminal: design note (proposal, 2026-11-06)
 
-**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively and under Node, and in QEMU on the ESP32; a firmware that checks and times it on the board runs on Monday (decisions.md, "2026-11-07: Rust core").
+**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively and under Node, and in QEMU on the ESP32; a firmware that checks and times it on the board runs on 2026-11-09 (decisions.md, "2026-11-07: Rust core").
 
 ## Why
 
@@ -128,7 +128,7 @@ Decided on 2026-11-06:
    - everything under "The core" above, `no_std` with `alloc`; the key log's rules over a two-method storage trait, and a WOTS key signs only from the record its append returns
    - vectors from `signer/tools/core_vectors.py`; the tests pass natively with both keccak backends and in WebAssembly under Node, and the crate builds for `xtensa-esp32-none-elf` (`core/check.sh`)
    - natively about 3 to 4 times as fast as the Python signer
-   - `hardware/esp32-core-check/` checks the core on the board and times the real operations with both backends: all 54 checks pass in QEMU; the user flashes it on Monday
+   - `hardware/esp32-core-check/` checks the core on the board and times the real operations with both backends: all 54 checks pass in QEMU; the user flashes it on 2026-11-09
 3. **The app and the board's firmware, on Arbitrum Sepolia:** create, add a device, join a Safe, enrol, transfer, confirm, execute, dapps, revoke. A fresh-eyes run by an agent through the app's screens; the board's screens on the user's board.
 4. **Arbitrum One:** deploy (user-funded), the user and one other person end to end, then the rest of the round.
 5. **The normative spec,** after the round, from this note, owner-v2.md and the code.

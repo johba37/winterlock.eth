@@ -103,7 +103,7 @@ On the display, `1c` and `2c` are one core and both; `SPX` is the stateless sign
 
 ## Notes
 
-- **Which keccak.** The image has both backends and times both. Outside the timings it uses `tiny-keccak`, the core's default: it was the fastest permutation in QEMU, where the benchmark firmware's times mean nothing. Monday's numbers decide which feature the board's firmware builds with.
+- **Which keccak.** The image has both backends and times both. Outside the timings it uses `tiny-keccak`, the core's default: it was the fastest permutation in QEMU, where the benchmark firmware's times mean nothing. The board's numbers decide which feature the board's firmware builds with.
 - **Chip revision.** esp-hal 1.2 supports ESP32 v3.0 and later, and by default it refuses older chips. This build accepts any revision (`.cargo/esp-config.toml`), as the benchmark firmware does, and prints the revision at start.
 - **The FPU** is turned on at start on both cores, as in the benchmark firmware. The core uses no floating point.
 - **The second core** is started for each two-core job and parked when it's done. If it doesn't start, the first core does its half and the check says FAIL.

@@ -1147,7 +1147,7 @@ The question: does owner v2 work end to end on Sepolia, with a member signing th
 
 **2026-11-07: Rust core** (`core/`, `signer/tools/core_vectors.py`, `hardware/esp32-core-check/`)
 
-Step 2 of [notes/signer-app.md](notes/signer-app.md), "Order". The question: does a `no_std` Rust port of the Python signer's cryptography and key rules give the same bytes as Python, natively, in WebAssembly and on the ESP32? Yes natively, under Node and in Espressif's QEMU. The chip itself runs it on Monday.
+Step 2 of [notes/signer-app.md](notes/signer-app.md), "Order". The question: does a `no_std` Rust port of the Python signer's cryptography and key rules give the same bytes as Python, natively, in WebAssembly and on the ESP32? Yes natively, under Node and in Espressif's QEMU. The chip itself runs it on 2026-11-09.
 
 **What's built:**
 - **`winterlock-core`** (`core/`), `no_std` with `alloc`, no floating point, no randomness inside (seeds, salts and phrase entropy are parameters):
@@ -1196,7 +1196,7 @@ Two threads saved less than half (a height-10 tree in 0.29–0.33 s) on the busy
 - **Checks** a compact subset of the vectors built into the image (phrase to seed, member key, owner address, check code, device certificate digest, two SafeTx hashes, a key log scenario, stateless and WOTS verification, both backends' keccak), then **times** the member key (one core, both), four stateless signatures, WOTS trees of height 6 and 10 (one core, both) and eight WOTS signatures through the key log, with each backend, checking every result byte for byte: 54 checks.
 - **In QEMU** (v0.0 and v3.0 chips): all 54 pass; heap peak 82,144 of 180,224 bytes; the first core's stack peaked at 9,868 of 73,992 bytes, the second's at 1,644 of 32,768 over 6 jobs. With `scripted-boot`, BOOT starts the run and turns the summary pages. QEMU's times say nothing about the chip.
 
-**Unverified until Monday:**
+**Unverified until the board runs it (2026-11-09):**
 - that the chip computes the same bytes (QEMU emulates the Xtensa core, not the silicon)
 - every timing, and which backend is faster on the chip: the image times both, then the board's firmware builds with the faster feature
 - the second core restarted for each job, and the heap in memory reclaimed from the bootloader, on silicon
