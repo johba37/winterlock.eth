@@ -1,6 +1,6 @@
 # A signer without a terminal: design note (proposal, 2026-11-06)
 
-**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively and under Node, and in QEMU on the ESP32; a firmware that checks and times it on the board runs on 2026-11-09 (decisions.md, "2026-11-07: Rust core").
+**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. On 2026-11-07: the app first, without a board, developed on Ethereum Sepolia. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively and under Node, and in QEMU on the ESP32; a firmware that checks and times it on the board runs on 2026-11-09 (decisions.md, "2026-11-07: Rust core").
 
 ## Why
 
@@ -8,7 +8,7 @@ The Python signer (`signer/`) works and stays the reference, but it needs a term
 
 Their use should find the edges before the normative spec fixes the formats. The spec waits for this round.
 
-**Chain:** Arbitrum One, with amounts people can afford to lose: the contracts are not audited. Development and tests run on Arbitrum Sepolia. Deterministic deployment gives the same addresses on both, and on Sepolia.
+**Chain:** Arbitrum One, with amounts people can afford to lose: the contracts are not audited. Development and tests run on Ethereum Sepolia, where owner v2 is deployed and Safe's app and Transaction Service run. Safe's service doesn't run on Arbitrum Sepolia (its chain list has only Arbitrum One, checked 2026-11-07). Deterministic deployment gives the same addresses on every chain.
 
 ## Three parts
 
@@ -16,7 +16,7 @@ Their use should find the edges before the normative spec fixes the formats. The
 |---|---|---|---|
 | **Core** | Rust, `no_std` with `alloc` | the browser (WebAssembly), the ESP32 (firmware), native tests | nothing: functions and the key log's rules |
 | **App** | TypeScript | a current browser, installed to the home screen on phones | a device key, its key log, a gas account |
-| **Board** | Rust firmware on the core | ESP32-WROOM-32 with a 128×64 OLED and the BOOT button | the member key: it makes the phrase, and pairs and revokes devices (decision 2) |
+| **Board** (later) | Rust firmware on the core | ESP32-WROOM-32 with a 128×64 OLED and the BOOT button | the member key: it makes the phrase, and pairs and revokes devices (decision 2) |
 
 **Python stays the reference.** The core must reproduce its outputs byte for byte. The Python signer writes the test vectors; the core's tests read them on every target. These vectors become the normative spec's.
 
@@ -43,11 +43,11 @@ Their use should find the edges before the normative spec fixes the formats. The
 
 ### Where the keys live
 
-- **The board makes the phrase and keeps the member key** (decision 2). It shows the 24 words once, a few per screen. The member writes them down and types three of them into the app, which hands them to the board to compare; there is no skip (as in signer-recovery.md). From then on the board pairs and revokes devices. The phrase is typed again only for a recovery: a lost or broken board.
-- **Without a board** (if the timings rule it out, or for a member who has none), the app makes the phrase the same way, uses the member key to pair this device, and forgets both. The phrase is then typed into the app whenever a device is paired or revoked, and every device that has seen it could have leaked it.
+- **First without a board** (decision 2): the app makes the phrase and shows it once. The member writes it down and types three of its words back; there is no skip (as in signer-recovery.md). The app uses the member key to pair this device and forgets both. The phrase is typed into the app again whenever a device is paired or revoked, and every device that has seen it could have leaked it.
+- **Later, the board makes the phrase and keeps the member key.** It shows the 24 words once, a few per screen, and compares the three words the app passes on. From then on the board pairs and revokes devices, and the phrase is typed again only for a recovery: a lost or broken board.
 - **So the app always signs with a device key** (owner v2, devices 1–3): laptop, phone and a spare. A revoked slot can be certified again with a new key.
 - **The device key** is in the browser's IndexedDB, unencrypted in the first round (decision 3). The device's own screen lock protects it, and a lost or stolen device is revoked. Until then, anyone using the unlocked device, or malware in that browser, can sign as the device. An unlock with the device's passkey waits until the round asks for it.
-- **The gas account** is an ordinary account that the app creates. It pays for the owner's deployment, certificates, enrolments and executions. It isn't an owner. A few dollars of ETH on Arbitrum last a long time.
+- **The gas account** is an ordinary account, one per member: its key comes from the phrase (its own label), so every paired device holds the same account and the member funds it once. It pays for the owner's deployment, certificates, enrolments and executions. It isn't an owner, and its key reveals nothing about the phrase. A lost device can spend it, which costs a few dollars at most. A few dollars of ETH on Arbitrum last a long time.
 - **Losing the browser's data** loses the device key: revoke it and pair the device again, with the phrase. No one-time key can be used twice, because the key log goes with the key.
 
 ### Risks a browser adds, and the rules against them
@@ -60,15 +60,15 @@ Their use should find the edges before the normative spec fixes the formats. The
 
 ### What it does in the first round
 
-1. **Create:** with the board connected, the board makes the phrase and the app runs the check. The app shows the owner address and pairs itself as device 1.
-2. **Add a device:** the new device shows its key, as a QR code or a link, and its check code. The app connected to the board passes the key on; the board shows the check code it computed and signs the certificate on a press of BOOT, once both codes match. An iPhone is paired this way too, through a laptop or an Android phone.
+1. **Create:** the app makes the phrase and runs the check. It shows the owner address and pairs itself as device 1.
+2. **Add a device:** on the new device, the member types the phrase into the app, which pairs that device and forgets the phrase. (With a board, later: the new device shows its key and check code, and the board signs the certificate on a press of BOOT once both codes match.)
 3. **Join the Safe:** the members' existing Safe (decision 5). The app shows the owner address, and the Safe's current owners add it in Safe's app (Settings, Owners). The owner contract is deployed with the first certificate, paid by the gas account.
 4. **Enrol:** a key tree per Safe and chain, prompted when it's missing or running out.
 5. **Transactions:** a queue from Safe's service, decoded; confirm; propose a transfer; execute once confirmed.
 6. **Dapps over WalletConnect** (Reown's wallet SDK): sign-in, transactions, permits, with the rules of walletconnect.md, "Which path a message takes".
-7. **Revoke a device** from the board (or with the phrase, without a board).
+7. **Revoke a device** with the phrase (later, from the board).
 
-**Not in the first round:** moves (device keys never move), several chains at once. A lost board is replaced by typing the phrase into the app once, which loads it onto a new board; the browser sees the phrase then.
+**Not in the first round:** moves (device keys never move), several chains at once, the board.
 
 **Phones and WalletConnect:** a web app can't receive a dapp's deep link on a phone. The user copies the pairing link into the app, or scans the QR code from another screen. Requests wait at the relay while the app is closed; iOS doesn't run web apps in the background.
 
@@ -114,8 +114,8 @@ TypeScript, Vite, Preact (small enough for phones), viem for RPC, ABI and EIP-71
 ## Decisions
 
 Decided on 2026-11-06:
-1. **Arbitrum One with play money; Arbitrum Sepolia for development.**
-2. **The board makes the phrase, shows it once, and keeps the member key;** it pairs and revokes devices. The phrase is typed again only for a recovery. This keeps the phrase out of browsers: a leaked phrase would make revoking devices pointless (owner-v2.md, "The question behind several devices"). It suits a slow board: certificates are rare. If the timings rule it out, or for a member without a board, the app makes the phrase and forgets it, and it's typed into the app to pair or revoke.
+1. **Arbitrum One with play money; Ethereum Sepolia for development.** (Changed on 2026-11-07 from Arbitrum Sepolia, where Safe's service doesn't run.)
+2. **The board makes the phrase, shows it once, and keeps the member key;** it pairs and revokes devices. The phrase is typed again only for a recovery. This keeps the phrase out of browsers: a leaked phrase would make revoking devices pointless (owner-v2.md, "The question behind several devices"). It suits a slow board: certificates are rare. **The app comes first without a board** (decided 2026-11-07): it makes the phrase and forgets it, and the phrase is typed into the app to pair or revoke a device. The board joins later, after its timings.
 3. **No unlock in the first round.** The device's screen lock protects the device key. A passkey unlock waits until the round asks for it.
 4. **Its own name, `app.winterlock.eth`,** so changes to the landing page can never touch the app's storage. Served through eth.limo, pinned on IPFS. The user creates the subname and sets its content hash.
 5. **No Safe creation:** the members join their existing Safe.
@@ -123,12 +123,12 @@ Decided on 2026-11-06:
 
 ## Order
 
-1. **Checks:** the ESP32 timings (running); posting to Safe's service without an API key; owner v2 on Arbitrum Sepolia (the testnet deployer has funds there).
+1. **Checks:** the ESP32 timings (2026-11-09); posting to Safe's service without an API key.
 2. **The core,** with the Python vectors, building for native, WebAssembly and the ESP32. **Built on 2026-11-07** (`core/`, decisions.md, "2026-11-07: Rust core"):
    - everything under "The core" above, `no_std` with `alloc`; the key log's rules over a two-method storage trait, and a WOTS key signs only from the record its append returns
    - vectors from `signer/tools/core_vectors.py`; the tests pass natively with both keccak backends and in WebAssembly under Node, and the crate builds for `xtensa-esp32-none-elf` (`core/check.sh`)
    - natively about 3 to 4 times as fast as the Python signer
    - `hardware/esp32-core-check/` checks the core on the board and times the real operations with both backends: all 54 checks pass in QEMU; the user flashes it on 2026-11-09
-3. **The app and the board's firmware, on Arbitrum Sepolia:** create, add a device, join a Safe, enrol, transfer, confirm, execute, dapps, revoke. A fresh-eyes run by an agent through the app's screens; the board's screens on the user's board.
-4. **Arbitrum One:** deploy (user-funded), the user and one other person end to end, then the rest of the round.
+3. **The app, on Ethereum Sepolia,** without a board: create, add a device, join a Safe, enrol, transfer, confirm, execute, dapps, revoke. A fresh-eyes run by an agent through the app's screens. Then the board's firmware, with the board's screens on the user's board.
+4. **Arbitrum One:** deploy (user-funded; a first measurement of Arbitrum's fees), the user and one other person end to end, then the rest of the round.
 5. **The normative spec,** after the round, from this note, owner-v2.md and the code.
