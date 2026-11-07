@@ -200,12 +200,37 @@ impl Keccak256 {
     }
 }
 
-/// keccak256 of `data`.
+/// keccak256 of `data`. Inputs shorter than a block (the chain steps, tree nodes and digests)
+/// go straight into the state.
 #[inline]
 pub fn keccak256(data: &[u8]) -> [u8; 32] {
+    if data.len() < RATE {
+        return one_block(data);
+    }
     let mut h = Keccak256::new();
     h.update(data);
     h.finalize()
+}
+
+#[inline(always)]
+fn one_block(data: &[u8]) -> [u8; 32] {
+    let mut st = [0u64; 25];
+    let full = data.len() / 8;
+    for (lane, b) in st.iter_mut().zip(data.chunks_exact(8)) {
+        *lane = u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]);
+    }
+    let rest = &data[8 * full..];
+    let mut last = [0u8; 8];
+    last[..rest.len()].copy_from_slice(rest);
+    last[rest.len()] = 0x01;
+    st[full] ^= u64::from_le_bytes(last);
+    st[RATE / 8 - 1] ^= 0x80 << 56;
+    permute(&mut st);
+    let mut out = [0u8; 32];
+    for (o, lane) in out.chunks_exact_mut(8).zip(st.iter()) {
+        o.copy_from_slice(&lane.to_le_bytes());
+    }
+    out
 }
 
 /// keccak256 of the concatenation of `parts`.
@@ -236,6 +261,11 @@ mod tests {
             let mut h = Keccak256::new();
             h.update(&data[..cut]).update(&data[cut..]);
             assert_eq!(h.finalize(), one, "cut at {cut}");
+        }
+        for n in 0..=RATE + 1 {
+            let mut h = Keccak256::new();
+            h.update(&data[..n]);
+            assert_eq!(keccak256(&data[..n]), h.finalize(), "length {n}");
         }
         let mut z = Keccak256::new();
         z.update(&data[..10]).zeros(200);
