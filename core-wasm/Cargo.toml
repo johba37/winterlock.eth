@@ -1,0 +1,26 @@
+[package]
+name         = "winterlock-core-wasm"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.88"
+description  = "WebAssembly bindings of winterlock-core for the signer app (app/): thin wrappers, no logic of their own."
+license      = "MIT"
+publish      = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["tiny-keccak"]
+tiny-keccak = ["winterlock-core/tiny-keccak"]
+sha3        = ["winterlock-core/sha3"]
+
+[dependencies]
+winterlock-core = { path = "../core", default-features = false }
+# the same version as the wasm-bindgen CLI that generates the JavaScript glue (app/scripts/build-wasm.sh)
+wasm-bindgen    = "=0.2.130"
+
+[profile.release]
+codegen-units = 1
+lto           = "fat"
+opt-level     = 3

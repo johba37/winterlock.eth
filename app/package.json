@@ -1,0 +1,32 @@
+{
+  "name": "winterlock-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Winterlock's signer app: a member of a Safe with Winterlock owners signs from a browser, on the Rust core in WebAssembly.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "wasm": "scripts/build-wasm.sh",
+    "dev": "vite",
+    "build": "scripts/build-wasm.sh && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "e2e": "playwright test",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "preact": "10.29.8",
+    "qrcode-generator": "2.0.4",
+    "viem": "2.57.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@preact/preset-vite": "2.10.6",
+    "@types/node": "24.19.0",
+    "fake-indexeddb": "6.2.5",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12"
+  }
+}
