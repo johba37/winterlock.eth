@@ -1,0 +1,39 @@
+[package]
+name         = "winterlock-esp32-bench"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.95"
+description  = "keccak256 speed on a classic ESP32, to size hash-based hardware signers for Winterlock"
+publish      = false
+
+[[bin]]
+name = "winterlock-esp32-bench"
+path = "src/main.rs"
+test = false
+bench = false
+
+[dependencies]
+esp-hal                = { version = "~1.2.2", features = ["esp32", "unstable"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32"] }
+esp-backtrace          = { version = "0.20.0", features = ["esp32", "panic-handler", "println"] }
+esp-println            = { version = "0.18.0", features = ["esp32"] }
+
+# The hashes under test: RustCrypto (sha3 on top of keccak) and tiny-keccak.
+sha3        = { version = "0.12", default-features = false }
+keccak      = "0.2"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
+
+# The optional OLED.
+ssd1306           = "0.10"
+embedded-graphics = "0.8"
+
+[profile.dev]
+# The default debug profile is too slow and too big for the chip.
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+debug         = 2
+lto           = "fat"
+# Speed over size: the image has 4 MB of flash and the point is to measure speed.
+opt-level     = 3
