@@ -1308,6 +1308,33 @@ Tiny-keccak stays the default. In Chromium the core takes about 1.1 to 1.4 times
 - **Signatures the service won't keep:** held on the device that made them for now. Links or QR codes between members would let any member execute.
 - **The member key's budget across devices:** not counted, since the member key exists only while the phrase is typed. At about 210,000 signatures it is far away for certificates and revocations.
 
+**2026-11-07: the app published at app.winterlock.eth** (decision 4 of [notes/signer-app.md](notes/signer-app.md))
+
+The Sepolia build is live at `https://app.winterlock.eth.limo`.
+
+**A record, not a subname.** winterlock.eth is an ENSv2 name, and a subname needs a registry of its own under it.
+- **No registry possible yet:** on 2026-11-07, ENS Explorer accepts none of ENS's UserRegistry implementations on mainnet. It marks two as untrusted, and of the other two it says "This registry has to be upgraded before a name can use it". Its own button for deploying one says "temporarily disabled". ENS's contracts repository had just merged its post-audit changes.
+- **A registry deployed earlier that day isn't used:** it was built on `0xFAA2…8d72`, then the listed implementation, and Explorer marks it untrusted.
+- **How it resolves instead:** ENS's PermissionedResolver is an extended resolver (ENSIP-10) and keys its records by the full name's namehash. When no registry exists for `app`, the Universal Resolver falls back to winterlock.eth's resolver. So a content hash set for `app.winterlock.eth` on that resolver resolves.
+- **Tested** on a mainnet fork first, then live: `setContenthash(bytes name, bytes hash)` with the DNS-encoded name, 137,283 gas (`0xabc021036e6e557aa7429a55821e1e2de8c37493ec9e33ae09deeff49f52b0ec`). winterlock.eth's own content hash is unchanged, and other names under it resolve to nothing.
+- **Later:** once ENS ships an implementation Explorer accepts, a real subname that uses the same resolver keeps the same record. The origin then stays the same, and so does every device's storage.
+- **No ENS app can edit the record:** the ENS App and ENS Explorer both say the name doesn't exist, and Etherscan has no ABI for the resolver. The transaction was sent with abi.ninja and a one-function ABI.
+- **Who can change the app:** the content-hash role on that resolver is root-wide. Whoever can change the app's content hash can change the landing page's too. Today one account holds it, the name's owner.
+
+**The build:** main at `a20d51c`, Sepolia only. IPFS hash `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`, 19 files, 2.7 MB.
+- **Reproducing the hash:** `ipfs add -r --cid-version=1 app/dist` (kubo 0.43.1) gives it, and a second build on the same machine gave the same hash. Built with rustc 1.98.1, wasm-bindgen 0.2.130 and Node 24.14.0. A build on another machine hasn't been compared.
+- **No keys in it:** the build contains none of the keys in the bench `.env` (searched for each).
+- **Pinning:** on Pinata only, uploaded as a folder with CID version 1, so Pinata's CID is the local one. Pinata's free plan refuses CAR uploads. Pinata announces the CID to the network indexer (cid.contact), not the DHT: a fresh kubo node found no providers. The README's advice of two pinning services stands.
+- **Gateways:** ipfs.io and dweb.link now answer 429 and point to a service-worker gateway, and Pinata's free gateway refuses HTML. eth.limo is the only way in that was checked.
+
+**Checked on eth.limo:**
+- all 19 files are identical to the build
+- the WebAssembly comes as `application/wasm`
+- from a local gateway, the page, both workers and the WebAssembly ran in Chromium with no Content Security Policy errors
+- an IndexedDB entry survived reloads
+
+**eth.limo clears cookies.** Every response carries `Clear-Site-Data: "cookies"`. The app keeps nothing in cookies. If eth.limo ever sent `"storage"` or `"*"`, the browser would erase every device key and key log at that origin, and members would have to revoke their devices and pair them again. This is another case of "whoever serves the code holds the keys" (notes/signer-app.md, "Risks a browser adds").
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.

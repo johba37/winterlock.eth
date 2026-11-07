@@ -58,6 +58,21 @@ npm run build       # WebAssembly, type check, then dist/
 
 `dist/` is a static site. Its Content Security Policy allows scripts only from the app itself; nothing loads from another server at run time, and there is no analytics. RPC endpoints and Safe's service are the only network peers.
 
+## Published
+
+**`https://app.winterlock.eth.limo`** serves the build of commit `a20d51c`, IPFS hash `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth".
+
+To check that the hash comes from this code, build that commit and hash `dist/` with [kubo](https://docs.ipfs.tech/install/command-line/):
+
+```sh
+git checkout a20d51c && cd app && npm ci && npm run build
+ipfs add -r -n -Q --cid-version=1 dist
+```
+
+A second build on the same machine gave the same hash; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130 and Node 24.14.0.
+
+The site's storage belongs to its origin. Serving the app from another address gives an empty app, without the device keys stored at `app.winterlock.eth.limo`.
+
 ## Rules it keeps (docs/notes/signer-app.md, "Risks a browser adds")
 
 - **Storage:** the device key, its key log and the gas key live in IndexedDB, unencrypted in this round. The app asks for persistent storage.
