@@ -5,8 +5,9 @@
 This folder sends frame transactions from native accounts that Winterlock keys guard:
 - **v0** (`frame/WinterlockFrameAccount.yul`): the member key signs every transaction.
 - **v1** (`frame/WinterlockFrameAccountV1.yul`): the member key enrols a tree of one-time WOTS keys, bound to the nonce, and those sign the transactions.
+- **v2** (`frame/WinterlockFrameAccountV2.yul`): device keys, as in owner v2. The member key adds and revokes devices 1–3, and each device enrols and signs from its own tree (`devices.py`).
 
-Results: decisions.md, the two 2026-11-08 entries on Daisugi.
+Results: decisions.md, the 2026-11-08 entries on Daisugi.
 
 Test network only. The contracts are not audited.
 
@@ -24,9 +25,12 @@ $PY bench/daisugi/daisugi.py enroll           # a tree of height 10 (512 nonces)
 $PY bench/daisugi/daisugi.py send             # a one-time key while the tree covers the nonce, else the member key
 $PY bench/daisugi/daisugi.py attacks          # signatures the account must refuse
 $PY bench/daisugi/daisugi.py replace          # slot 1 for a replacement; the key log refuses a third version
+$PY bench/daisugi/devices.py demo             # v2: add devices, enrol, sign, same nonce, revoke, re-add (checked)
+$PY bench/daisugi/devices.py status           # v2: devices, generations, trees
+$PY bench/daisugi/devices.py send --as 2      # v2: a transfer signed by device 2
 ```
 
-- **`--account v0`** runs `member`, `fund` and `send` against the v0 account.
+- **`--account v0`** runs `member`, `fund` and `send` against the v0 account. `devices.py` works on the v2 account. Each device has a home in `$DAISUGI_DIR/device-N/` with its own seed (no phrase), trees and key log.
 - **`send --member`** forces the member key.
 - **`deploy`** signs with `DAISUGI_DEPLOYER_KEY` from `bench/bundlers/.env`. That's an ordinary key, whose frame transactions pass through EIP-8141's default code with a SECP256K1 signature entry. The faucet funds it.
 - **The tool reuses the signer's Python** for the member key (`member.stateless_key`), leanSphincs, WOTS (`wots.Tree`, `wots.sign`) and secp256k1.

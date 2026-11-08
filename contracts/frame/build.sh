@@ -10,7 +10,8 @@ python3 - "$SOLC" "${1:-}" <<'PY'
 import json, subprocess, sys
 solc, mode = sys.argv[1], sys.argv[2]
 out = {}
-for version, name in (("v0", "WinterlockFrameAccount"), ("v1", "WinterlockFrameAccountV1")):
+for version, name in (("v0", "WinterlockFrameAccount"), ("v1", "WinterlockFrameAccountV1"),
+                      ("v2", "WinterlockFrameAccountV2")):
     r = subprocess.run([solc, "--strict-assembly", "--evm-version", "prague", "--optimize", "--optimize-runs", "200",
                         "--bin", f"{name}.yul"], capture_output=True, text=True, check=True).stdout.splitlines()
     code = "0x" + r[r.index("Binary representation:") + 1].strip()

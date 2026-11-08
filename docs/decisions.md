@@ -1429,6 +1429,59 @@ v1 keeps v0's clone and member-key path. It adds a tree of one-time WOTS keys (D
 - **Smaller one-time keys:** a 16-byte WOTS, at the member key's security level.
 - **EIP-8288 dependencies:** not possible with our key (open questions, "A stateless key for EIP-8288").
 
+**2026-11-08, later still: device keys in the frame account (v2)** (`contracts/frame/WinterlockFrameAccountV2.yul`, `contracts/bench/daisugi/devices.py`)
+
+v2 brings owner v2's device model ([notes/owner-v2.md](notes/owner-v2.md)) to the native account. The implementation is 1,256 bytes at `0x8506f29d294a2d0e6e6d6d47352ce02f92ec4492`.
+
+**Devices:**
+- **Device 0 is the member key,** from the phrase, in the clone's code.
+- **Devices 1–3 hold device keys:** leanSphincs-keccak keys made from each device's own random seed, without the phrase.
+- **Only the member key adds and revokes devices,** and each add starts a new generation of that device.
+- **Each device enrols its own tree** of one-time keys, with its own key. A tree verifies only while its device is active at the tree's generation.
+
+**Signatures** (one ARBITRARY entry over the signature hash):
+- `[2][device][leanSphincs: 5,684]`: the device's key (device 0: the member key)
+- `[slot][device][WOTS: 1,176][path: 24 × height]`: a one-time key of the device's tree, bound to the nonce as in v1
+
+Two devices never share a one-time key, even at the same nonce, because each signs from its own tree.
+
+**Management:** `addDevice`, `revokeDevice` and `enroll` are SENDER frames from the account to itself.
+- **What authorises them** is the transaction's own signature, which covers the frames and the nonce. Owner v2 needs separate certificates because anyone may submit them to it; here none are needed, and none can be replayed.
+- **Who may call what:** `addDevice` and `revokeDevice` take the member key, and `enroll` the device's own key. A one-time key can't manage anything.
+
+**Storage:**
+- the tree of device d at slot d, packed as in owner v2: root ‖ generation ‖ start ‖ height
+- the key of device d at `0x10 + d`
+- the generation and active flag at `0x20 + d`
+
+`read(slot)` returns a slot, because Daisugi's public RPC has no `eth_getStorageAt`. The tree seed adds the device and its generation to v1's.
+
+**Live:** account `0xeba35563e11d705d4a2068cf24b6ff5dd452e236`, the same throwaway member. Devices 1 and 2 are throwaway device homes in the session's scratch directory. 17 transactions, every check as expected:
+
+| Step | Gas used | Notes |
+| --- | --- | --- |
+| the member key adds devices 1 and 2 (the transaction also deploys the account) | 317,502 | each `addDevice` 46,513 (two new storage words) |
+| a device enrols its own tree, with its key | 242,170 | VERIFY 64,341; `enroll` 25,230 |
+| a device signs a transfer with a one-time key | 104,372 | VERIFY 66,082 |
+| a device signs with its key | 240,130 | VERIFY 64,399 |
+| the member key signs a transfer | 240,070 | VERIFY 60,004 |
+| the member key revokes a device | 240,250 | `revokeDevice` 7,010 |
+| the member key adds a device again, with a new key | 241,470 | `addDevice` 12,313 |
+
+- **What devices cost:** a device's key costs about 4.3k more in VERIFY than the member key, for two cold storage reads: its state and its key. A device's one-time key costs 2.3k more than v1's, for the state read.
+- **The same nonce from two devices:** devices 1 and 2 each signed a different transfer at nonce 6. The node took device 1's and refused device 2's as "replacement transaction underpriced". Nonce 6 on chain is device 1's (`0x224b9e32…`). Device 2's signature used its own key for nonce 6, which can never be included now.
+- **Device 2, signing with its own key, tried to revoke device 1, add device 3, and enrol a tree for device 1.** Each transaction was included, since its VERIFY is valid, and each management frame reverted. Device 2 also tried to enrol its own tree in a transaction signed by one of its one-time keys: reverted.
+- **After the member key revoked device 1:** its one-time keys and its device key were refused before inclusion, and device 2 kept working.
+- **After the member key added device 1 again with a new key (generation 2):**
+  - the generation-1 tree, still in device 1's slot, was refused, and so was the old device key
+  - the new device 1 enrolled a tree and signed with it
+- **The demo script's own bugs,** fixed on the way: a check for the step at nonce 6 read the pending nonce, and a fresh device home was written to before it existed. Neither touched the chain.
+
+**Not done yet:**
+- **Smaller one-time keys:** a 16-byte WOTS.
+- **Device keys from hardware:** a device key is a leanSphincs-keccak key, which a Ledger-class device signs in 1.5–2.5 min (open questions). That's fine for a phrase kept on a hardware wallet, which only adds and revokes devices.
+- **EIP-8288 dependencies:** not possible with our keys yet.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.

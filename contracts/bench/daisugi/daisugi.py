@@ -308,6 +308,7 @@ def cmd_deploy():
          6_000_000),
         ("frame account v0", account_salt("v0"), account_init("v0"), 300_000),
         ("frame account v1", account_salt("v1"), account_init("v1"), 600_000),
+        ("frame account v2", account_salt("v2"), account_init("v2"), 1_000_000),
     )
     for name, salt, init, gas in items:
         addr = create2(salt, init)
