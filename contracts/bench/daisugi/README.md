@@ -18,7 +18,7 @@ frame/build.sh --check                        # the frame accounts' pinned creat
 PY="../signer/.venv/bin/python -I"
 $PY bench/daisugi/daisugi.py vector           # the encoder against Daisugi transactions (vectors.json); offline
 export DAISUGI_DIR=/some/scratch/dir          # throwaway phrase, tree secrets, key log: keep it out of the repository
-$PY bench/daisugi/daisugi.py deploy           # both verifiers, v0 and v1 (CREATE2; skips what exists)
+$PY bench/daisugi/daisugi.py deploy           # both verifiers and v0–v2 (CREATE2; skips what exists)
 $PY bench/daisugi/daisugi.py member           # make the throwaway member, print its v1 account and tree
 $PY bench/daisugi/daisugi.py fund             # 1 test ETH from the faucet, to the account's address
 $PY bench/daisugi/daisugi.py enroll           # a tree of height 10 (512 nonces); deploys the account too
