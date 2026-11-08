@@ -83,14 +83,14 @@ These are v1's numbers. **Owner v2** costs about 7k more per 2-of-3 transaction 
 - **A hardware signer.** Hashing speed on secure elements needs measuring first.
 - **An audit.**
 - **Frame transactions (EIP-8141).** The same keys and signer would fit a native account. Not built yet.
-- **EIP-8288's 3,000-gas check** covers leanSPHINCS with a ZK-friendly hash, not our keccak key. A second stateless key with that hash, derived from the same recovery phrase and certified by today's key, would let members move without a new backup. Nothing to build until EIP-8288 settles its hash.
+- **A key that EIP-8288 can check.** EIP-8288 would check a leanSPHINCS signature off-chain for about 33,000 gas: 3,000 for its frame and 30,000 for its share of the block's proof. It checks leanVM's version of leanSPHINCS, not ours. leanVM runs on keccak too, but with other parameters (three layers, FIPS 205 addresses, another target sum), so the same seed gives another public key. leanVM calls its hash a placeholder; SHA2, BLAKE2s and BLAKE3 are being considered. A second stateless key in leanVM's version, derived from the same recovery phrase and certified by today's key, would let members move without a new backup. Nothing to build until leanVM fixes its hash and parameters.
 
 ## Terms
 
 - **Member:** a person on the team.
 - **Signer:** the Winterlock program on the member's device.
 - **Owner:** the member's owner contract, the address listed in the Safe.
-- **Stateless key:** a leanSphincs-keccak key: the keccak version of leanSPHINCS, since keccak is the hash the EVM computes cheaply. It certifies key trees and signs messages. "leanSPHINCS" on its own, as in EIP-8288, means the version with a hash that's cheap to prove in zero knowledge.
+- **Stateless key:** a leanSphincs-keccak key: the keccak version of leanSPHINCS, since keccak is the hash the EVM computes cheaply. It certifies key trees and signs messages. "leanSPHINCS" on its own, as in EIP-8288, means leanVM's version, which also runs on keccak for now but has other parameters and other public keys.
 - **Member key:** the member's stateless key from the recovery phrase, fixed in the owner contract (device 0). It is the way back after a lost device, and in owner v2 it certifies and revokes device keys.
 - **Device key (owner v2):** a stateless key that one of the member's devices makes from its own random seed, without the phrase, certified on-chain by the member key on each chain. It certifies that device's key trees and signs messages, until it is revoked. A member has at most three.
 - **Device home:** the signer's directory on such a device: its device key, its own key log, no phrase.
