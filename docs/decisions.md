@@ -1336,6 +1336,47 @@ The Sepolia build is live at `https://app.winterlock.eth.limo`.
 
 **eth.limo clears cookies.** Every response carries `Clear-Site-Data: "cookies"`. The app keeps nothing in cookies. If eth.limo ever sent `"storage"` or `"*"`, the browser would erase every device key and key log at that origin, and members would have to revoke their devices and pair them again. This is another case of "whoever serves the code holds the keys" (notes/signer-app.md, "Risks a browser adds").
 
+**2026-11-08: a member key guards a native frame-transaction account on Daisugi** (`contracts/src/frame/WinterlockFrameAccount.yul`, `contracts/bench/daisugi/`)
+
+Daisugi (`https://daisugi.fyi`, chain 1337) is a public test network for post-quantum accounts. It runs Nethermind's EIP-8141 prototype (branch `daisugi/devnet-handoff`, `ff0d878`) with a simple version of EIP-8288. Its public RPC accepts frame transactions (type 0x06) only, so even the deployments below were frame transactions, from an ordinary key through EIP-8141's default code.
+
+**The account (v0):** a 109-byte clone, EIP-1167's 45 bytes pointing at a 206-byte implementation, then the member's leanSphincs-keccak key (64 bytes). The implementation is Yul, since solc has no names for the frame opcodes. In a VERIFY frame it requires:
+- that the transaction's sender is this account, and that the current frame is VERIFY
+- exactly one signature: scheme ARBITRARY, empty msg (so it signs the transaction's signature hash), 5,684 bytes
+
+It reads the signature with `SIGDATACOPY`, has the vendored stateless verifier check it against the key and `TXPARAM_SIG_HASH`, and calls `APPROVE(execution and payment)`. Any other call is a plain value transfer or reverts. The shape follows Daisugi's own account.
+
+**Deployed, CREATE2 through the deterministic deployment proxy:**
+- the stateless verifier, at its Sepolia address, `0x6Dc4…c254`
+- the implementation, `0x55Bd8b3a9d61e5652EB566d7ae7844db224F276c` (salt `keccak256("Winterlock.frame-account.v0")`)
+
+**Live, a throwaway member (phrase in the session's scratch directory):** account `0xcb8e2480805ba3d6ee1e9ad1c7eedc6c6b04f5a5`, funded by the faucet before it had code.
+
+| Transaction | Frames | Gas used | VERIFY | Bytes |
+| --- | --- | --- | --- | --- |
+| first, deploys the account (`0xfc5c115d…2f54ffe`) | DEFAULT (CREATE2 of the clone) 56,580; VERIFY 59,875; SENDER 2,600 | 244,165 | 59,875 | 6,002 |
+| later (`0xf883fbd9…86812461`) | VERIFY 59,909; SENDER 2,600 | 239,570 | 59,909 | 5,814 |
+| Daisugi's own SPHINCS account, later (`0x4576e4d3…1a06ddf`) | VERIFY 353,919; SENDER 2,600 | 468,001 | 353,919 | 6,176-byte signature |
+| the same account, first (`0xffa4e8c4…92741473`) | factory 60,547; VERIFY 344,349; SENDER 2,600 | 520,333 | 344,349 | |
+
+- **Where the gas goes:** of the 239,570, VERIFY takes 60k and the transfer 2.6k. Most of the remaining 177k is the 5.7 KB signature's calldata. That's the part the WOTS fast path would shrink.
+- **The public mempool's cap:** EIP-8141 lets a node refuse a transaction whose frames up to and including VERIFY reserve more than 100,000 execution gas, counting the signatures' intrinsic cost (100 for ARBITRARY). Ours reserves 75,100. Daisugi's own account reserves 450,000, and Daisugi accepts it all the same. A transaction that also deploys the account reserves at least 135,100 (60,000 for the deployment frame), so it is over the cap too.
+- **Refused before inclusion:** a signature of another message, a signature with one bit flipped, and a transaction whose value changed after signing. Daisugi answers "validation-prefix simulation failed" for each, and the nonce doesn't move.
+
+**The encoding, checked twice before sending:** our encoder reproduces the hashes of Daisugi transactions from their fields. For the signature hash, Daisugi's own verifier accepts one of its accounts' signatures over the hash we compute, and ecrecover over our hash gives a key-signed transaction's sender. Both transactions are in `bench/daisugi/vectors.json`.
+- **Payload:** `[chain_id, nonce, sender, frames, signatures, [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas], blob_versioned_hashes]`. The EIP now has a single `max_fee`; the prototype keeps per-gas fees.
+- **Frame:** `[mode, flags, target, [execution, state], value, data]`.
+- **Signature entry:** `[scheme, signer, msg, signature]`.
+- **The signature hash** replaces the signature bytes of empty-msg entries with empty bytes. The EIP commits to their length instead.
+- **SECP256K1 signatures** are `v ‖ r ‖ s`, with v as 0 or 1.
+
+**What this shows:** the same member key that guards a Safe owner or a Kernel validator guards a native EIP-8141 account, with the signer's own key derivation and leanSphincs code. Nothing changed in the key, the verifier or the derivation.
+
+**Not done yet:**
+- **The WOTS fast path in a frame account:** the member key certifies a key tree in a member-key-signed transaction, and later transactions carry a 1.2–1.7 KB one-time signature. The protocol's nonce is the key index, and each nonce is used once. Replacing a pending transaction at the same nonce would sign twice with one key, so two keys per nonce, as in the Safe owner.
+- **Device keys,** as in owner v2.
+- **EIP-8288 dependencies:** our key isn't leanVM's leanSPHINCS (open questions, "A stateless key for EIP-8288").
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.

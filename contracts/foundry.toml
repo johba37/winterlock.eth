@@ -33,3 +33,7 @@ fs_permissions = [
 ]
 additional_compiler_profiles = [{ name = "via-ir", via_ir = true }]
 compilation_restrictions = [{ paths = "src/vendor/sphincs-minus/LeanSphincsAsm.sol", via_ir = true }]
+
+[lint]
+# forge's linter parses Solidity only; the frame account is a Yul object (it needs `verbatim` for the frame opcodes)
+ignore = ["src/frame/WinterlockFrameAccount.yul"]
