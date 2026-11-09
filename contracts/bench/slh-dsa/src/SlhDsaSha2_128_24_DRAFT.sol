@@ -14,7 +14,7 @@ pragma solidity ^0.8.24;
 /// @dev    A benchmark, not audited. Malformed input (lengths, a context over 255 bytes) returns false, never reverts.
 ///         Memory is laid out by hand (below) and every entry point ends with RETURN, so no Solidity code runs after
 ///         the assembly. Precompile calls are not checked for success: SHA-256 can only fail by running out of gas,
-///         and the 63/64 rule then leaves at most 4 gas, too little to reach a RETURN (bench/slh-dsa/README.md).
+///         and the 63/64 rule then leaves about 1/63 of the call's price, too little to reach RETURN (README.md).
 contract SlhDsaSha2_128_24_DRAFT {
     // --- parameters (FIPS 205 Table 2 and the formulas of sections 5, 9 and 10, computed by tools/gen.py) ---
     uint256 private constant SIG_BYTES = 3856;      // signature: R | SIG_FORS | SIG_HT
