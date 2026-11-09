@@ -117,7 +117,7 @@ class Bip39(unittest.TestCase):
     def test_nfkd(self):
         """Python normalises (NFKD) as BIP-39 says; the Rust core refuses anything but ASCII
         (core/tests/vectors/hbkd.json, "non_ascii")"""
-        composed, decomposed = "pässphräse", "pässphräse"
+        composed, decomposed = "p\xe4ssphr\xe4se", "pa\u0308ssphra\u0308se"
         self.assertNotEqual(composed, decomposed)
         s = hbkd.bip39_seed(ABANDON, composed)
         self.assertEqual(s, hbkd.bip39_seed(ABANDON, decomposed))
@@ -125,8 +125,8 @@ class Bip39(unittest.TestCase):
         self.assertEqual(s, hashlib.pbkdf2_hmac("sha512", ABANDON.encode(), ("mnemonic" + decomposed).encode(), 2048))
         self.assertNotEqual(s, hbkd.bip39_seed(ABANDON, "passphrase"))
         # an ideographic space (BIP-39's Japanese separator) and a no-break space are a space after NFKD
-        self.assertEqual(hbkd.bip39_seed(ABANDON.replace(" ", "　")), hbkd.bip39_seed(ABANDON))
-        self.assertEqual(hbkd.bip39_seed(ABANDON.replace(" ", " ")), hbkd.bip39_seed(ABANDON))
+        self.assertEqual(hbkd.bip39_seed(ABANDON.replace(" ", "\u3000")), hbkd.bip39_seed(ABANDON))
+        self.assertEqual(hbkd.bip39_seed(ABANDON.replace(" ", "\xa0")), hbkd.bip39_seed(ABANDON))
 
     def test_sentence_as_given(self):
         """No word list and no checksum: the seed is of the sentence as given, so a typed phrase is another seed until
@@ -180,7 +180,7 @@ class InputChecks(unittest.TestCase):
                 self.assertTrue(hbkd.is_key_type(good))
                 self.assertEqual(hbkd.stateless_seed(self.R, good),
                                  hbkd.tagged_hash("HBKD/stateless/v1", self.R + bytes(4) + keccak256(good.encode())))
-        for bad in ("", "\n", "a\tb", "\x00", "\x1f", "\x7f", "é", " ", "　", "ḱ", b"x", None, 1):
+        for bad in ("", "\n", "a\tb", "\x00", "\x1f", "\x7f", "\xe9", "\xa0", "\u3000", "k\u0301", b"x", None, 1):
             with self.subTest(key_type=bad):
                 self.assertFalse(hbkd.is_key_type(bad))
                 with self.assertRaises(ValueError):
@@ -212,10 +212,10 @@ class InputChecks(unittest.TestCase):
 
     def test_labels_and_phrases(self):
         self.assertNotEqual(hbkd.app_secret(self.R, ""), hbkd.app_secret(self.R, LABEL))
-        self.assertEqual(hbkd.app_secret(self.R, "é"), hbkd.tagged_hash(
-            "HBKD/app/v1", self.R + bytes(4) + keccak256("é".encode())))
+        self.assertEqual(hbkd.app_secret(self.R, "\xe9"), hbkd.tagged_hash(
+            "HBKD/app/v1", self.R + bytes(4) + keccak256("\xe9".encode())))
         # labels are UTF-8 as given, not normalised
-        self.assertNotEqual(hbkd.app_secret(self.R, "é"), hbkd.app_secret(self.R, unicodedata.normalize("NFD", "é")))
+        self.assertNotEqual(hbkd.app_secret(self.R, "\xe9"), hbkd.app_secret(self.R, unicodedata.normalize("NFD", "\xe9")))
         for bad in (b"label", None, "\ud800"):  # bytes, nothing, a lone surrogate (not UTF-8)
             with self.assertRaises(ValueError):
                 hbkd.app_secret(self.R, bad)
