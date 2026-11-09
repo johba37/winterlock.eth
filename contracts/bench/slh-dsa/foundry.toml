@@ -20,4 +20,5 @@ additional_compiler_profiles = [{ name = "via-ir", via_ir = true }]
 compilation_restrictions = [
   { paths = "src/SlhDsaSha2_128s.sol", via_ir = true },
   { paths = "src/SlhDsaSha2_128_24_DRAFT.sol", via_ir = true },
+  { paths = "test/utils/Sha256Evm.sol", via_ir = true },
 ]
