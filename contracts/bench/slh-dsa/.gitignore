@@ -1,0 +1,4 @@
+tools/noble/node_modules/
+tools/rust/target/
+tools/rust/pkg/
+foundry.lock

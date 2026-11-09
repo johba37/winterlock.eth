@@ -1,0 +1,22 @@
+[package]
+name = "slh-dsa-bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "SLH-DSA-SHA2-128s known answers and signing times from RustCrypto slh-dsa, natively and in WebAssembly"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+slh-dsa = "=0.2.0-rc.5"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+getrandom = "0.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# the same version as the wasm-bindgen CLI that generates the JavaScript glue (as in core-wasm/)
+wasm-bindgen = "=0.2.130"
+
+[profile.release]
+debug = false

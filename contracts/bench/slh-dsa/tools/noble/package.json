@@ -1,0 +1,13 @@
+{
+  "name": "winterlock-bench-slh-dsa-noble",
+  "private": true,
+  "type": "module",
+  "description": "SLH-DSA-SHA2-128s known answers and signing times from noble post-quantum",
+  "scripts": {
+    "vectors": "node gen.mjs > ../../fixtures/noble-sha2-128s.json",
+    "bench": "node bench.mjs"
+  },
+  "dependencies": {
+    "@noble/post-quantum": "0.7.1"
+  }
+}
