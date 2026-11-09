@@ -3,6 +3,7 @@
 reference fips205.py: fixtures/draft-sha2-128-24.json.
 
     python3 tools/draft.py > fixtures/draft-sha2-128-24.json    # about 1.5 billion hashes; JOBS=<n> sets the workers
+    python3 tools/draft.py sphincs-minus                        # re-create SPHINCs-' known answers (below)
 
 NOT INDEPENDENT. No independent implementation of this draft set exists to compare with (noble 0.7.1, RustCrypto
 slh-dsa and ACVP cover FIPS 205's twelve sets only), so these vectors only show that the Solidity verifier and this
@@ -11,6 +12,10 @@ noble and RustCrypto on SLH-DSA-SHA2-128s (check_reference.py).
 
 The key's single XMSS tree (2^22 leaves) is computed once and kept, so each signature only recomputes its six FORS
 trees (2^24 leaves each). Every signature is checked with the reference's verifier before it is written.
+
+`sphincs-minus` recomputes the public key of fixtures/sphincs-minus-sha2-128-24.json from its seeds and re-signs its
+two messages: Nicolas Consigny's signers for this draft set (adaptations of the sphincsplus C reference and of noble)
+against this reference, byte for byte. Another implementation, not an independent standard source.
 """
 import hashlib
 import json
@@ -119,5 +124,26 @@ def main():
     print()
 
 
+def sphincs_minus():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "fixtures", "sphincs-minus-sha2-128-24.json")
+    vs = json.load(open(path))["vectors"]
+    h = lambda x: bytes.fromhex(x[2:])  # noqa: E731
+    sd = h(vs[0]["seed"])
+    t = time.time()
+    levels = xmss_levels(sd[32:], sd[:16])
+    pk = sd[32:] + levels[-1]
+    assert all(h(v["pk"]) == pk for v in vs), "public key"
+    print(f"public key recomputed from the seeds ({time.time() - t:.0f} s)")
+    for v in vs:
+        t = time.time()
+        sig, _ = sign(f.wrap(h(v["message"]), h(v["context"])), sd + levels[-1], levels, h(v["addrnd"]))
+        assert sig == h(v["signature"]), v["reason"]
+        assert f.verify(P, h(v["message"]), sig, h(v["context"]), pk)
+        print(f"re-signed byte for byte ({time.time() - t:.0f} s): {v['reason']}")
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["sphincs-minus"]:
+        sphincs_minus()
+    else:
+        main()

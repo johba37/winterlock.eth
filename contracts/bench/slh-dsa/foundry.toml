@@ -1,0 +1,23 @@
+# A Foundry project of its own, so the benchmark's contracts stay out of contracts/src and the main suite:
+#   cd contracts/bench/slh-dsa && forge test
+# Compiler settings as in contracts/foundry.toml.
+[profile.default]
+src = "src"
+test = "test"
+out = "out"
+libs = ["../../lib"]
+remappings = ["forge-std/=../../lib/forge-std/src/"]
+solc_version = "0.8.28"
+evm_version = "prague"
+optimizer = true
+optimizer_runs = 1000000
+bytecode_hash = "none"
+gas_limit = "max"
+fs_permissions = [{ access = "read", path = "./fixtures" }]
+# The verifiers compile with via-IR, as the repository's vendored stateless verifier does: 1.4% less gas for 128s,
+# 3.4% for the draft set. Nothing imports them; the tests deploy them from their artifacts, so each compiles once.
+additional_compiler_profiles = [{ name = "via-ir", via_ir = true }]
+compilation_restrictions = [
+  { paths = "src/SlhDsaSha2_128s.sol", via_ir = true },
+  { paths = "src/SlhDsaSha2_128_24_DRAFT.sol", via_ir = true },
+]
