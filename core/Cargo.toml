@@ -27,7 +27,7 @@ hbkd        = ["dep:hmac"]
 tiny-keccak = { version = "2.0.2", features = ["keccak"], optional = true }
 keccak      = { version = "0.2.2", optional = true }
 sha2        = { version = "0.10.9", default-features = false }
-# HMAC-SHA512 for BIP-39's PBKDF2 (hbkd): RustCrypto, no_std, on the same digest 0.10 as sha2.
+# HMAC-SHA512 for BIP-39's PBKDF2 and HKDF (hbkd): RustCrypto, no_std, on the same digest 0.10 as sha2.
 hmac        = { version = "0.12.1", default-features = false, optional = true }
 
 [dev-dependencies]

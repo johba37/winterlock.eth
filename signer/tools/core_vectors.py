@@ -10,6 +10,7 @@ is a fixed public test value: no randomness, so the files only change when the s
 
 usage: signer/.venv/bin/python signer/tools/core_vectors.py [OUT_DIR]
 """
+import hashlib
 import json
 import os
 import re
@@ -479,11 +480,21 @@ HBKD_BAD_MNEMONICS = [  # refused on both sides: not canonical, a word outside t
     _ABANDON[:-1] + ["art "], _ABANDON[:-1] + [""], ["abandon abandon"] + _ABANDON[2:],  # spacing
     _ABANDON[:-1] + ["\xe1rt"], ["\u3042\u3044\u3053\u304f\u3057\u3093"] * 24,  # not words of the English list
 ]
+HBKD_RANDOM_IKM = [  # random input key material of 32, 64 and 100 bytes; the first is the ERC's
+    bytes(range(0x20, 0x40)),
+    k("winterlock core vectors hbkd ikm a") + k("winterlock core vectors hbkd ikm b"),
+    b"".join(k(f"winterlock core vectors hbkd ikm {i}") for i in range(4))[:100],
+]
 HBKD_KEY_TYPES = ["leanSphincs-keccak/wambsgans-keccak/b10",
-                  "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~", "!", "k" * 200]
+                  "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
+                  "!",  # 1 byte
+                  "".join(chr(0x21 + i % 94) for i in range(255))]  # 255 bytes: every printable character but space
 HBKD_ACCOUNTS = [0, 1, 1 << 31, (1 << 32) - 1]
-HBKD_LABELS = ["example.app.gas", "", "winterlock.app.gas.v1", "a label with spaces", "app.\xfcn\xefc\xf8d\xe9.\u4f8b",
-               "u\u0308", "l" * 200]
+HBKD_SHORT = [32, 48, 64, 65]  # L across the cross products below
+HBKD_LONG = [1000, 16320]  # L in a few more vectors each; 16320 = 255 blocks, RFC 5869's limit
+HBKD_FULL = 1000  # values up to this many bytes are written out, longer ones as their SHA-256
+HBKD_LABELS = ["example.app.gas", "a", "winterlock.app.gas.v1", "a label with spaces", "app.\xfcn\xefc\xf8d\xe9.\u4f8b",
+               "u\u0308", "\U0001f511", "l" * 255, "\u4f8b" * 85, "\xe9" * 127 + "!"]  # 1 and 255 bytes, non-ASCII
 HBKD_STATEFUL = [  # (context, instance)
     (bytes(range(32)), bytes([0xA5] * 32)),
     (bytes(32), bytes(32)),
@@ -491,7 +502,10 @@ HBKD_STATEFUL = [  # (context, instance)
     (bytes([0xFF] * 32), bytes(range(32, 64))),
 ]
 HBKD_BAD_KEY_TYPES = ["", " ", "leanSphincs keccak", "leanSphincs-keccak/wambsgans-keccak/b10 ", "\t", "line\nbreak",
-                      "\x00", "\x1f", "\x7f", "caf\xe9", "no\xa0break", "\u3000"]
+                      "\x00", "\x1f", "\x7f", "caf\xe9", "no\xa0break", "\u3000", "k" * 256]
+HBKD_BAD_LABELS = ["", "l" * 256, "\u4f8b" * 85 + "a", "\xe9" * 128]  # 0 and 256 bytes
+HBKD_BAD_LENGTHS = [0, 1, 31, 16321, 65535, 65536, 100000]
+HBKD_BAD_IKM = [0, 1, 31]  # lengths of input key material
 HBKD_NON_ASCII = [  # (words, passphrase): Python normalises the passphrase (NFKD); the core refuses it
     (_ABANDON, "p\xe4ssphr\xe4se"),
     (_ABANDON, "pa\u0308ssphra\u0308se"),
@@ -500,51 +514,107 @@ HBKD_NON_ASCII = [  # (words, passphrase): Python normalises the passphrase (NFK
 ]
 
 
+def _hbkd_value(entry: dict, value: bytes) -> dict:
+    entry["length"] = len(value)
+    if len(value) <= HBKD_FULL:
+        entry["value"] = b2h(value)
+    else:
+        entry["value_sha256"] = b2h(hashlib.sha256(value).digest())
+    return entry
+
+
+def _hbkd_refused(f, what):
+    try:
+        f()
+    except ValueError:
+        return
+    raise AssertionError(f"accepted {what}")
+
+
 def hbkd_vectors():
     phrases = []
     for ws, p in HBKD_PHRASES:
         s = hbkd.bip39_seed(ws, p)
-        phrases.append({"words": ws, "passphrase": p, "bip39_seed": b2h(s), "root": b2h(hbkd.root_from_seed(s))})
+        phrases.append({"words": ws, "passphrase": p, "bip39_seed": b2h(s), "root": b2h(hbkd.root(s))})
     assert sorted({len(c["words"]) for c in phrases}) == list(hbkd.WORD_COUNTS)
     for ws in HBKD_BAD_MNEMONICS:
-        try:
-            hbkd.bip39_seed(ws)
-        except ValueError:
-            continue
-        raise AssertionError(f"accepted mnemonic {ws!r}")
+        _hbkd_refused(lambda: hbkd.bip39_seed(ws), f"mnemonic {ws!r}")
     winterlock = []
     for s in SEEDS:
         for p in ("", "TREZOR"):
             winterlock.append({"seed": b2h(s), "passphrase": p, "words": " ".join(phrase.to_phrase(s)),
                                "root": b2h(hbkd.winterlock_root(s, p))})
-    roots = [h2b(phrases[0]["root"]), h2b(phrases[2]["root"]), hbkd.winterlock_root(SEED),
-             k("winterlock core vectors hbkd random root"), bytes(range(0x20, 0x40))]
+    randoms = [{"ikm": b2h(ikm), "root": b2h(hbkd.root(ikm))} for ikm in HBKD_RANDOM_IKM]
+    roots = [h2b(phrases[0]["root"]), h2b(phrases[2]["root"]), hbkd.winterlock_root(SEED)]
+    roots += [h2b(c["root"]) for c in randoms]
     stateless, stateful, apps = [], [], []
-    for r in roots:
-        for t in HBKD_KEY_TYPES:
-            for a in HBKD_ACCOUNTS:
-                stateless.append({"root": b2h(r), "key_type": t, "account": a,
-                                  "seed": b2h(hbkd.stateless_seed(r, t, a))})
-        for i, (c, n) in enumerate(HBKD_STATEFUL):
-            t, a = HBKD_KEY_TYPES[i % len(HBKD_KEY_TYPES)], HBKD_ACCOUNTS[(i + 1) % len(HBKD_ACCOUNTS)]
-            stateful.append({"root": b2h(r), "key_type": t, "account": a, "context": b2h(c), "instance": b2h(n),
-                             "seed": b2h(hbkd.stateful_seed(r, t, c, n, a))})
-        for lb in HBKD_LABELS:
-            for a in (0, (1 << 32) - 1):
-                apps.append({"root": b2h(r), "label": lb, "account": a, "secret": b2h(hbkd.app_secret(r, lb, a))})
+    for ri, r in enumerate(roots):
+        for ti, t in enumerate(HBKD_KEY_TYPES):
+            for ai, a in enumerate(HBKD_ACCOUNTS):
+                n = HBKD_SHORT[(ri + ti + ai) % len(HBKD_SHORT)]
+                stateless.append(_hbkd_value({"root": b2h(r), "key_type": t, "account": a},
+                                             hbkd.stateless_seed(r, t, n, a)))
+        for ci, (c, i) in enumerate(HBKD_STATEFUL):
+            t, a = HBKD_KEY_TYPES[(ri + ci) % len(HBKD_KEY_TYPES)], HBKD_ACCOUNTS[(ri + ci + 1) % len(HBKD_ACCOUNTS)]
+            n = HBKD_SHORT[(ri + ci) % len(HBKD_SHORT)]
+            stateful.append(_hbkd_value({"root": b2h(r), "key_type": t, "account": a, "context": b2h(c),
+                                         "instance": b2h(i)}, hbkd.stateful_seed(r, t, n, c, i, a)))
+        for li, lb in enumerate(HBKD_LABELS):
+            for ai, a in enumerate((0, (1 << 32) - 1)):
+                n = HBKD_SHORT[(ri + li + ai) % len(HBKD_SHORT)]
+                apps.append(_hbkd_value({"root": b2h(r), "label": lb, "account": a}, hbkd.app_secret(r, lb, n, a)))
+    for ri, r in ((0, roots[0]), (3, roots[3])):  # the long values, from a phrase's root and a random one
+        for n in HBKD_LONG:
+            t, a = HBKD_KEY_TYPES[ri % len(HBKD_KEY_TYPES)], HBKD_ACCOUNTS[-1 if n > HBKD_FULL else ri]
+            c, i = HBKD_STATEFUL[2]
+            stateless.append(_hbkd_value({"root": b2h(r), "key_type": t, "account": a},
+                                         hbkd.stateless_seed(r, t, n, a)))
+            stateful.append(_hbkd_value({"root": b2h(r), "key_type": t, "account": a, "context": b2h(c),
+                                         "instance": b2h(i)}, hbkd.stateful_seed(r, t, n, c, i, a)))
+            apps.append(_hbkd_value({"root": b2h(r), "label": HBKD_LABELS[4], "account": a},
+                                    hbkd.app_secret(r, HBKD_LABELS[4], n, a)))
+    for kind in (stateless, stateful, apps):
+        assert {c["length"] for c in kind} == set(HBKD_SHORT + HBKD_LONG)
+        assert {c["account"] for c in kind} == set(HBKD_ACCOUNTS) or kind is apps
+    slh_dsa = []
+    for t, n in hbkd.SLH_DSA_N.items():
+        for r, a in ((roots[0], 0), (roots[4], (1 << 32) - 1)):  # the ERC's phrase, and a 64-byte random input
+            sk_seed, sk_prf, pk_seed = hbkd.slh_dsa_seeds(r, t, a)
+            assert sk_seed + sk_prf + pk_seed == hbkd.stateless_seed(r, t, 3 * n, a)
+            slh_dsa.append({"root": b2h(r), "key_type": t, "account": a, "n": n,
+                            "seed": b2h(sk_seed + sk_prf + pk_seed), "sk_seed": b2h(sk_seed), "sk_prf": b2h(sk_prf),
+                            "pk_seed": b2h(pk_seed)})
+        for bad in (32, 3 * n - 1, 3 * n + 1):
+            _hbkd_refused(lambda: hbkd.stateless_seed(roots[0], t, bad), f"{t} of {bad} bytes")
+        _hbkd_refused(lambda: hbkd.stateful_seed(roots[0], t, 3 * n, bytes(32), bytes(32)), f"stateful {t}")
+    infos = []
+    for purpose, a, n, name, tail in (
+            (hbkd.STATELESS, 0, 32, HBKD_KEY_TYPES[0].encode(), b""),  # the ERC's 47 bytes
+            (hbkd.STATEFUL, 1, 48, HBKD_KEY_TYPES[1].encode(), b"".join(HBKD_STATEFUL[2])),
+            (hbkd.APPLICATION, 1 << 31, 1000, HBKD_LABELS[4].encode(), b""),
+            (hbkd.STATELESS, (1 << 32) - 1, 16320, HBKD_KEY_TYPES[3].encode(), b"")):
+        infos.append({"purpose": purpose, "account": a, "length": n, "name": b2h(name), "tail": b2h(tail),
+                      "info": b2h(hbkd.info(purpose, a, n, name, tail))})
+    assert len(h2b(infos[0]["info"])) == 47
     for t in HBKD_BAD_KEY_TYPES:
-        try:
-            hbkd.stateless_seed(roots[0], t)
-        except ValueError:
-            continue
-        raise AssertionError(f"accepted key type {t!r}")
+        _hbkd_refused(lambda: hbkd.stateless_seed(roots[0], t, 32), f"key type {t!r}")
+        _hbkd_refused(lambda: hbkd.stateful_seed(roots[0], t, 32, bytes(32), bytes(32)), f"key type {t!r}")
+    for lb in HBKD_BAD_LABELS:
+        _hbkd_refused(lambda: hbkd.app_secret(roots[0], lb), f"label {lb!r}")
+    for n in HBKD_BAD_LENGTHS:
+        _hbkd_refused(lambda: hbkd.stateless_seed(roots[0], HBKD_KEY_TYPES[0], n), f"length {n}")
+        _hbkd_refused(lambda: hbkd.stateful_seed(roots[0], HBKD_KEY_TYPES[0], n, bytes(32), bytes(32)), f"length {n}")
+        _hbkd_refused(lambda: hbkd.app_secret(roots[0], HBKD_LABELS[0], n), f"length {n}")
+    for n in HBKD_BAD_IKM:
+        _hbkd_refused(lambda: hbkd.root(bytes(n)), f"input key material of {n} bytes")
     non_ascii = []
     for ws, p in HBKD_NON_ASCII:
         non_ascii.append({"words": ws, "passphrase": p, "nfkd_passphrase": unicodedata.normalize("NFKD", p),
                           "bip39_seed": b2h(hbkd.bip39_seed(ws, p))})
-    return {"phrases": phrases, "bad_mnemonics": HBKD_BAD_MNEMONICS, "winterlock": winterlock,
-            "stateless": stateless, "stateful": stateful, "app_secrets": apps, "bad_key_types": HBKD_BAD_KEY_TYPES,
-            "non_ascii": non_ascii}
+    return {"phrases": phrases, "bad_mnemonics": HBKD_BAD_MNEMONICS, "winterlock": winterlock, "random": randoms,
+            "stateless": stateless, "stateful": stateful, "app_secrets": apps, "slh_dsa": slh_dsa, "infos": infos,
+            "bad_key_types": HBKD_BAD_KEY_TYPES, "bad_labels": HBKD_BAD_LABELS, "bad_lengths": HBKD_BAD_LENGTHS,
+            "bad_ikm_lengths": HBKD_BAD_IKM, "non_ascii": non_ascii}
 
 
 # --- the board's subset ---

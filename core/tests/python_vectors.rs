@@ -660,9 +660,20 @@ fn word_list(v: &serde_json::Value) -> Vec<&str> {
     v.as_array().unwrap().iter().map(str_).collect()
 }
 
+/// A derived value against its vector: written out ("value"), or as its SHA-256 when long.
+#[cfg(feature = "hbkd")]
+fn check_value(c: &serde_json::Value, got: &[u8]) {
+    use sha2::{Digest, Sha256};
+    assert_eq!(got.len() as u64, uint(&c["length"]), "{c}");
+    match c.get("value") {
+        Some(v) => assert_eq!(got, bytes(v), "{c}"),
+        None => assert_eq!(Sha256::digest(got)[..], arr::<32>(&c["value_sha256"]), "{c}"),
+    }
+}
+
 #[cfg(feature = "hbkd")]
 #[test]
-fn hbkd_derivations() {
+fn hbkd_roots() {
     use winterlock_core::hbkd;
     let v = load(HBKD);
     let mut lengths = Vec::new();
@@ -670,7 +681,7 @@ fn hbkd_derivations() {
         let words = word_list(&c["words"]);
         let s = hbkd::bip39_seed(&words, str_(&c["passphrase"])).unwrap();
         assert_eq!(s, arr::<64>(&c["bip39_seed"]), "{c}");
-        assert_eq!(hbkd::root_from_seed(&s), arr::<32>(&c["root"]), "{c}");
+        assert_eq!(hbkd::root(&s), Ok(arr::<64>(&c["root"])), "{c}");
         lengths.push(words.len());
     }
     lengths.sort();
@@ -681,38 +692,111 @@ fn hbkd_derivations() {
         assert_eq!(phrase::to_phrase(&seed).join(" "), str_(&c["words"]));
         assert_eq!(hbkd::winterlock_root(&seed, str_(&c["passphrase"])), Ok(arr(&c["root"])), "{c}");
     }
-    let mut top = 0;
-    for c in v["stateless"].as_array().unwrap() {
-        let got = hbkd::stateless_seed(&arr(&c["root"]), str_(&c["key_type"]), account(&c["account"]));
-        assert_eq!(got, Ok(arr(&c["seed"])), "{c}");
-        top += (account(&c["account"]) == u32::MAX) as u32;
+    let mut ikm_lengths = Vec::new();
+    for c in v["random"].as_array().unwrap() {
+        let ikm = bytes(&c["ikm"]);
+        assert_eq!(hbkd::root(&ikm), Ok(arr(&c["root"])), "{c}");
+        ikm_lengths.push(ikm.len());
     }
-    for c in v["stateful"].as_array().unwrap() {
-        let got = hbkd::stateful_seed(
-            &arr(&c["root"]),
-            str_(&c["key_type"]),
-            &arr(&c["context"]),
-            &arr(&c["instance"]),
-            account(&c["account"]),
-        );
-        assert_eq!(got, Ok(arr(&c["seed"])), "{c}");
-        top += (account(&c["account"]) == u32::MAX) as u32;
-    }
-    for c in v["app_secrets"].as_array().unwrap() {
-        let got = hbkd::app_secret(&arr(&c["root"]), str_(&c["label"]), account(&c["account"]));
-        assert_eq!(got, arr::<32>(&c["secret"]), "{c}");
-        top += (account(&c["account"]) == u32::MAX) as u32;
-    }
-    assert!(top > 0, "no vector at account 2^32 - 1");
+    assert_eq!(ikm_lengths, [32, 64, 100]);
 }
 
-/// What Python normalises (NFKD), the core refuses; where the normalised text is ASCII, the core
-/// gets Python's seed from it.
+#[cfg(feature = "hbkd")]
+#[test]
+fn hbkd_derivations() {
+    use winterlock_core::hbkd;
+    let v = load(HBKD);
+    let (mut lengths, mut accounts) = (Vec::new(), Vec::new());
+    for c in v["stateless"].as_array().unwrap() {
+        let (root, t, a, n) = (arr(&c["root"]), str_(&c["key_type"]), account(&c["account"]), uint(&c["length"]));
+        let got = hbkd::stateless_seed(&root, t, n as usize, a).unwrap();
+        check_value(c, &got);
+        let mut out = vec![0u8; n as usize];
+        hbkd::stateless_seed_into(&root, t, a, &mut out).unwrap();
+        assert_eq!(out, got);
+        lengths.push(n);
+        accounts.push(a);
+    }
+    for c in v["stateful"].as_array().unwrap() {
+        let (root, t, a, n) = (arr(&c["root"]), str_(&c["key_type"]), account(&c["account"]), uint(&c["length"]));
+        let (ctx, inst) = (arr(&c["context"]), arr(&c["instance"]));
+        let got = hbkd::stateful_seed(&root, t, n as usize, &ctx, &inst, a).unwrap();
+        check_value(c, &got);
+        let mut out = vec![0u8; n as usize];
+        hbkd::stateful_seed_into(&root, t, &ctx, &inst, a, &mut out).unwrap();
+        assert_eq!(out, got);
+        lengths.push(n);
+        accounts.push(a);
+    }
+    let mut labels = Vec::new();
+    for c in v["app_secrets"].as_array().unwrap() {
+        let (root, lb, a, n) = (arr(&c["root"]), str_(&c["label"]), account(&c["account"]), uint(&c["length"]));
+        let got = hbkd::app_secret(&root, lb, n as usize, a).unwrap();
+        check_value(c, &got);
+        let mut out = vec![0u8; n as usize];
+        hbkd::app_secret_into(&root, lb, a, &mut out).unwrap();
+        assert_eq!(out, got);
+        labels.push(lb.len());
+        lengths.push(n);
+    }
+    lengths.sort();
+    lengths.dedup();
+    assert_eq!(lengths, [32, 48, 64, 65, 1000, 16320]);
+    accounts.sort();
+    accounts.dedup();
+    assert_eq!(accounts, [0, 1, 1 << 31, u32::MAX]);
+    assert!(labels.contains(&1) && labels.contains(&255));
+    for c in v["infos"].as_array().unwrap() {
+        let got = hbkd::info(
+            uint(&c["purpose"]) as u8,
+            account(&c["account"]),
+            uint(&c["length"]) as usize,
+            &bytes(&c["name"]),
+            &bytes(&c["tail"]),
+        );
+        assert_eq!(got, Ok(bytes(&c["info"])), "{c}");
+    }
+}
+
+#[cfg(feature = "hbkd")]
+#[test]
+fn hbkd_slh_dsa() {
+    use winterlock_core::hbkd;
+    let v = load(HBKD);
+    let mut names = Vec::new();
+    for c in v["slh_dsa"].as_array().unwrap() {
+        let (root, t, a) = (arr(&c["root"]), str_(&c["key_type"]), account(&c["account"]));
+        let n = uint(&c["n"]) as usize;
+        assert_eq!(hbkd::slh_dsa_n(t), Some(n));
+        let s = hbkd::slh_dsa_seeds(&root, t, a).unwrap();
+        assert_eq!(s.n(), n);
+        assert_eq!(s.seed(), bytes(&c["seed"]), "{c}");
+        assert_eq!(s.sk_seed(), bytes(&c["sk_seed"]), "{c}");
+        assert_eq!(s.sk_prf(), bytes(&c["sk_prf"]), "{c}");
+        assert_eq!(s.pk_seed(), bytes(&c["pk_seed"]), "{c}");
+        assert_eq!(hbkd::stateless_seed(&root, t, 3 * n, a).unwrap(), bytes(&c["seed"]));
+        for bad in [32, 3 * n - 1, 3 * n + 1] {
+            assert!(hbkd::stateless_seed(&root, t, bad, a).is_err(), "{t} of {bad} bytes");
+        }
+        assert!(hbkd::stateful_seed(&root, t, 3 * n, &[0; 32], &[0; 32], a).is_err(), "{t}");
+        names.push(t);
+    }
+    names.sort();
+    names.dedup();
+    let mut all: Vec<&str> = hbkd::SLH_DSA.iter().map(|&(t, _)| t).collect();
+    all.sort();
+    assert_eq!(names, all);
+}
+
+/// What Python refuses, the core refuses; and what Python normalises (NFKD), the core refuses too,
+/// but where the normalised text is ASCII, the core gets Python's seed from it.
 #[cfg(feature = "hbkd")]
 #[test]
 fn hbkd_refusals() {
     use winterlock_core::hbkd;
     let v = load(HBKD);
+    let root = arr::<64>(&v["phrases"][0]["root"]);
+    let key_type = str_(&v["stateless"][0]["key_type"]);
     for m in v["bad_mnemonics"].as_array().unwrap() {
         let words = word_list(m);
         assert!(hbkd::check_mnemonic(&words).is_err(), "{m}");
@@ -721,8 +805,25 @@ fn hbkd_refusals() {
     for t in v["bad_key_types"].as_array().unwrap() {
         let t = str_(t);
         assert!(!hbkd::is_key_type(t), "{t:?}");
-        assert!(hbkd::stateless_seed(&[7; 32], t, 0).is_err(), "{t:?}");
-        assert!(hbkd::stateful_seed(&[7; 32], t, &[0; 32], &[0; 32], 0).is_err(), "{t:?}");
+        assert!(hbkd::stateless_seed(&root, t, 32, 0).is_err(), "{t:?}");
+        assert!(hbkd::stateful_seed(&root, t, 32, &[0; 32], &[0; 32], 0).is_err(), "{t:?}");
+    }
+    for lb in v["bad_labels"].as_array().unwrap() {
+        let lb = str_(lb);
+        assert!(hbkd::app_secret(&root, lb, 32, 0).is_err(), "{lb:?}");
+    }
+    for n in v["bad_lengths"].as_array().unwrap() {
+        let n = uint(n) as usize;
+        let mut out = vec![0u8; n];
+        assert!(hbkd::stateless_seed(&root, key_type, n, 0).is_err(), "{n}");
+        assert!(hbkd::stateless_seed_into(&root, key_type, 0, &mut out).is_err(), "{n}");
+        assert!(hbkd::stateful_seed(&root, key_type, n, &[0; 32], &[0; 32], 0).is_err(), "{n}");
+        assert!(hbkd::stateful_seed_into(&root, key_type, &[0; 32], &[0; 32], 0, &mut out).is_err(), "{n}");
+        assert!(hbkd::app_secret(&root, "example.app.gas", n, 0).is_err(), "{n}");
+        assert!(hbkd::app_secret_into(&root, "example.app.gas", 0, &mut out).is_err(), "{n}");
+    }
+    for n in v["bad_ikm_lengths"].as_array().unwrap() {
+        assert!(hbkd::root(&vec![7u8; uint(n) as usize]).is_err(), "{n}");
     }
     let mut ascii_after_nfkd = 0;
     for c in v["non_ascii"].as_array().unwrap() {
