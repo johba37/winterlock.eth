@@ -1,0 +1,962 @@
+{
+ "app_secrets": [
+  {
+   "account": 0,
+   "label": "example.app.gas",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0xfcec37951685415d996fb166633bce4891ffb650ef121354129c1fe8b6d850c7"
+  },
+  {
+   "account": 4294967295,
+   "label": "example.app.gas",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0x2e5ddee136b413a35933b5ae00d044343b446b6695012a0e54caba9719e67537"
+  },
+  {
+   "account": 0,
+   "label": "",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0x720e442cbcf7f98f630f7af5a8d2a38b79022c5fce059e533000a0e17a109f89"
+  },
+  {
+   "account": 4294967295,
+   "label": "",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0xcbd7cf880b606b91cf17a4cf9514e120135f295eaee9a72f49f98d4534324ae2"
+  },
+  {
+   "account": 0,
+   "label": "winterlock.app.gas.v1",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0x2736eb5c12193c0276ee0326dcf4aa2accbf859aab1b5fc88e8fe7b52aa9c582"
+  },
+  {
+   "account": 4294967295,
+   "label": "winterlock.app.gas.v1",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0xbe5d769b217cac1c761b8939fb4187360ccf903e742faa5e88fba3f280d63ff8"
+  },
+  {
+   "account": 0,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0xbc65e5949420d4fe2a3f1ffa6ecdfec186b0a4ee9e8a05e20cec0734b3b44dfd"
+  },
+  {
+   "account": 4294967295,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0x0a8729300191dc4767a59ec3e518ef89eea9ca7f202837734f73720d23026a01"
+  },
+  {
+   "account": 0,
+   "label": "u\u0308",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0x0119a7be8ae4970f7fa302a08a91e528797568d1757445730cc96fa98a7d8cf5"
+  },
+  {
+   "account": 4294967295,
+   "label": "u\u0308",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0xd37f5d432034a6c02e0e5646013cfce794c9b80ec48b1b6169ce0735dc0d923f"
+  },
+  {
+   "account": 0,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0x7cb0aadda1a6364fff7ad49c8daf5b25b39dfafcd947b9a15aadd99c934cd7df"
+  },
+  {
+   "account": 4294967295,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0xeb0bb66319f6ddce05906897cbae1f0710c3a27fd6600727961e5c14c5a63492"
+  },
+  {
+   "account": 0,
+   "label": "example.app.gas",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x85c53633bb07dddb69b8cabe0f883410574b5db9bf90775b93b45620120227b4"
+  },
+  {
+   "account": 4294967295,
+   "label": "example.app.gas",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x75c9fbbb571e3e9019e5c8f6dff6e346184e9014433327722e219d05b58054cb"
+  },
+  {
+   "account": 0,
+   "label": "",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x94485c7e69d9aaeb4d8860fa239c49de9e8b55f3b8011130365094fadb943603"
+  },
+  {
+   "account": 4294967295,
+   "label": "",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0xab14256844baf95300872daffaf823aaa0928f1c0b89140d995fdded15bb7492"
+  },
+  {
+   "account": 0,
+   "label": "winterlock.app.gas.v1",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x135ab3674f7e821d63073503da4cabae18ca706cd1a3bd6ee1e732af1249c0f6"
+  },
+  {
+   "account": 4294967295,
+   "label": "winterlock.app.gas.v1",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x58d049a3cab03b1da8a5cf56816c8fcd177d17c8c637bdcc34343f9e0d3a11e9"
+  },
+  {
+   "account": 0,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0xff51156a935eb80177c276720a0d3dde8a0492cb44c11af62209d5cf6db35432"
+  },
+  {
+   "account": 4294967295,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x81b1bad90759d3986894ebcb8a7073ce0abf5f25abafc28123ca17d60c86c926"
+  },
+  {
+   "account": 0,
+   "label": "u\u0308",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x9003ffd22e13983ec5c6d2df4c703ab5a0113f1028515b2686b6e4d6911fa852"
+  },
+  {
+   "account": 4294967295,
+   "label": "u\u0308",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0xebac784e38e43a370ce72c9da8f14ae28572d165aac993ca340ebf2a069bea23"
+  },
+  {
+   "account": 0,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0xa1f6f187155c8cc2caa494ed8548d653ff676fe2418c5fde36f0e8371181a1a2"
+  },
+  {
+   "account": 4294967295,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x0125b9156100362773875816526995d2c7b29697bc98e4199fecb185993b3f1b"
+  },
+  {
+   "account": 0,
+   "label": "example.app.gas",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0xf03f3998ea989125c185059fb819fc500b9d3f29b72306c118c4854d1a1c95f5"
+  },
+  {
+   "account": 4294967295,
+   "label": "example.app.gas",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0x8b025892c8182f715402ff1520a7f571da19b18164bb4c5a98ff322dc121290c"
+  },
+  {
+   "account": 0,
+   "label": "",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0x75d7da2b18a2021f1d453515925a89165237bfa38bb99995efd0fcddb4b71fdd"
+  },
+  {
+   "account": 4294967295,
+   "label": "",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0x809c75431040c40bd404df33f03f6adb57fa85b81fdc93d9425ee39523f74761"
+  },
+  {
+   "account": 0,
+   "label": "winterlock.app.gas.v1",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0xe15a1c57dcb5cda7e2308b247c3d4b4566a2b63d42229712bda7b1e44a7a346c"
+  },
+  {
+   "account": 4294967295,
+   "label": "winterlock.app.gas.v1",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0xbb666095e656516ef3780767879f27cadf611820bf1b8d3cff839ba8c214ae94"
+  },
+  {
+   "account": 0,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0x1dc189bc8b2d0c53bfdf16b988f0cb6f94a78ec2924478e93db9ef7b0dbdda1d"
+  },
+  {
+   "account": 4294967295,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0xaed36fed5d283f1002e800f9a1e8e6b5875966106f7e88a0d7f7c090098c9bd8"
+  },
+  {
+   "account": 0,
+   "label": "u\u0308",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0x2566a8a18a476a4d2465029835c64cffe49646c46817a316cc23bb6d2604e0c2"
+  },
+  {
+   "account": 4294967295,
+   "label": "u\u0308",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0x7b5e362c3b2f0df73c37e9735eae4737f673ffc206d95db0462dc45102e0ca5d"
+  },
+  {
+   "account": 0,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0xd70be8f92a3b47a60bc02f3b07c66ad4c0514a789ebd43b1d20770198b57a358"
+  },
+  {
+   "account": 4294967295,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0xb3af928f1a6c2e04689c121aec127cac202feacaf6f0c33c42f3cff4ce682f8a"
+  },
+  {
+   "account": 0,
+   "label": "example.app.gas",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0xffed39428c15a61babdf9c98a2ec80dd41b659cf49d0dc0711f41ad468f28e1d"
+  },
+  {
+   "account": 4294967295,
+   "label": "example.app.gas",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x6a62754f77071876e5f25aff88814c106462b72af76ea760c1fe0030358b3cae"
+  },
+  {
+   "account": 0,
+   "label": "",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x3884a1dd817cebf98ca21b5f7912fd9158f95043d4673014355965b214e0d45e"
+  },
+  {
+   "account": 4294967295,
+   "label": "",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0xa97807df1c68a472f03c4f6c9d3dd335637f0ef5f97f90bf6f0ed479ad25da21"
+  },
+  {
+   "account": 0,
+   "label": "winterlock.app.gas.v1",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x4b100b1042d9544990afeaeab42c30936480ae60719b6ec8467e7d3be55d4b08"
+  },
+  {
+   "account": 4294967295,
+   "label": "winterlock.app.gas.v1",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0xfe719a335fac18290cfec43f0b9d47200e2762ac30c43abd3021d082212ef3c6"
+  },
+  {
+   "account": 0,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x4edc0775876f910b630caa2bc2bdc21f9319d984e2e881222a0b69eea2d240ee"
+  },
+  {
+   "account": 4294967295,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x2929adf4b4704bf3d504f5aa3fd7d881515ae3d994cffc0602a986187cfdd660"
+  },
+  {
+   "account": 0,
+   "label": "u\u0308",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x596828fd478553eb44260c47581a0344cf038d1c5c37d989e7bbd3c11cb02d18"
+  },
+  {
+   "account": 4294967295,
+   "label": "u\u0308",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x57855bac7906dda6877d48336b8169aa613330f9c989820066d5c4f493e8a4ca"
+  },
+  {
+   "account": 0,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0xa989926e9be08b53cfb255ca4fe1c31bdf143d5bfad317f4205e02d7cf68c5f6"
+  },
+  {
+   "account": 4294967295,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0xdd4b5e56e760527c4df2753421e028e202f1ac854124028100fef5d46e73fe95"
+  }
+ ],
+ "bad_key_types": [
+  "",
+  "\t",
+  "line\nbreak",
+  "\u0000",
+  "\u001f",
+  "\u007f",
+  "caf\u00e9",
+  "no\u00a0break",
+  "\u3000"
+ ],
+ "non_ascii": [
+  {
+   "bip39_seed": "0x297074f783c532a663adbf73fcda896a5300688cd4759b8f155b8dc8b804cbbd79994c0748549c4d93979ebe78a26fa1e56df99731f44227820eb07cab1c81c9",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "nfkd_passphrase": "pa\u0308ssphra\u0308se",
+   "passphrase": "p\u00e4ssphr\u00e4se"
+  },
+  {
+   "bip39_seed": "0x297074f783c532a663adbf73fcda896a5300688cd4759b8f155b8dc8b804cbbd79994c0748549c4d93979ebe78a26fa1e56df99731f44227820eb07cab1c81c9",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "nfkd_passphrase": "pa\u0308ssphra\u0308se",
+   "passphrase": "pa\u0308ssphra\u0308se"
+  },
+  {
+   "bip39_seed": "0x408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf705489c6fc77dbd4e3dc1dd8cc6bc9f043db8ada1e243c4a0eafb290d399480840",
+   "mnemonic": "abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000art",
+   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "nfkd_passphrase": "",
+   "passphrase": ""
+  },
+  {
+   "bip39_seed": "0xbda85446c68413707090a52022edd26a1c9462295029f2e60cd7c4f2bbd3097170af7a4d73245cafa9c3cca8d561a7c3de6f5d4a10be8ed2a5e608d68f92fcc8",
+   "mnemonic": "abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0art",
+   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "nfkd_passphrase": "TREZOR",
+   "passphrase": "TREZOR"
+  },
+  {
+   "bip39_seed": "0x00b741364fb7a65be8a2d5f3e1844bf94c8fa35fef5b0d67d432351a7b468d827722306412fa1710316e5367054d59106b2da6ff4eeafb3ba9baa9e1fef55016",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "nfkd_passphrase": "fi",
+   "passphrase": "\ufb01"
+  }
+ ],
+ "phrases": [
+  {
+   "bip39_seed": "0x408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf705489c6fc77dbd4e3dc1dd8cc6bc9f043db8ada1e243c4a0eafb290d399480840",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "passphrase": "",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01"
+  },
+  {
+   "bip39_seed": "0xbda85446c68413707090a52022edd26a1c9462295029f2e60cd7c4f2bbd3097170af7a4d73245cafa9c3cca8d561a7c3de6f5d4a10be8ed2a5e608d68f92fcc8",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
+   "passphrase": "TREZOR",
+   "root": "0x04ed2bcdefde1aad10dc37dd64ef968d3229c9b468a8407d76b1f969a2d6b335"
+  },
+  {
+   "bip39_seed": "0x2e8905819b8723fe2c1d161860e5ee1830318dbf49a83bd451cfb8440c28bd6fa457fe1296106559a3c80937a1c1069be3a3a5bd381ee6260e8d9739fce1f607",
+   "mnemonic": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+   "passphrase": "TREZOR",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4"
+  },
+  {
+   "bip39_seed": "0x5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+   "passphrase": "",
+   "root": "0xe80e28d7bc0cf23b6edd2026eb4d55c3738e188683d54e4fb4dd950fd88bd5bf"
+  },
+  {
+   "bip39_seed": "0xdb83443078d7cd691a16c9d3cae34c1940c06bce79fb618b3ac19aa798873a809c8232c2aab2feea68b5553641eeb14c98fdb1b41dfa558e2ab57278d1643e06",
+   "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote",
+   "passphrase": "a passphrase, with spaces & punctuation!",
+   "root": "0x9454680e8ef37d1c219ef77595c32811cd59c68c07d5c3a3b33bc3fd29d597d2"
+  },
+  {
+   "bip39_seed": "0x9bcf00141a773b81f892fd3f5567e801d75d1bd0ca3ca90b665bfe447bdc0100640a6cbc14e45b57f7b8f3d8f52428c786868609ab5da82d16a1c10f199dcd67",
+   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon ",
+   "passphrase": "",
+   "root": "0xb25004121a1a183b1e523812bf01822903d48591eeec876035359562b16c6f96"
+  },
+  {
+   "bip39_seed": "0xf62800b09424a40b542efa201cbc5b7905bcae1c2c41c677d3584f4f25f9ae54797e8c8b6e2139bc427ad3301d66291fbb12729a223ec910846b1821775131cc",
+   "mnemonic": "Abandon  abandon\tabandon",
+   "passphrase": "\u0000",
+   "root": "0xcab4a5a6da8c41e2f570efcbef6e0e7835c3acd6775a1c6529eaf8ce5b28c826"
+  }
+ ],
+ "stateful": [
+  {
+   "account": 1,
+   "context": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "instance": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x32f2fcf9590fbfbefad50596227ecac09974ba34a20edaf5422b95b53f93ef75"
+  },
+  {
+   "account": 2147483648,
+   "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x0a75530b9eb2dea874a7ac633b59d91b8611cee2d77ea6e4a58e09dfdc3cf879"
+  },
+  {
+   "account": 4294967295,
+   "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
+   "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
+   "key_type": " ",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x7d9b0edfb986810ad59220b92c4bb2d8ee56c78d279062e23fbfeea1e8b986ef"
+  },
+  {
+   "account": 0,
+   "context": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "instance": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x6919056415e261a1f03c2b837aeb17534c3af4618b521c76683769d482e9c73a"
+  },
+  {
+   "account": 1,
+   "context": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "instance": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x8afcf9bd6eeafae4e520399c5dcc52277c130fb72b0c606cd72fff97353f666b"
+  },
+  {
+   "account": 2147483648,
+   "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x837aa1e6f527bc494676d93dde551153129ea829a21b45bfe8e73082d6f8925d"
+  },
+  {
+   "account": 4294967295,
+   "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
+   "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
+   "key_type": " ",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x02bcd1a844acf4d146ee2a1e47bd32b3558edd7f49e6a2dc0dc699ed493f85a3"
+  },
+  {
+   "account": 0,
+   "context": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "instance": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x4f885afccf80585d332ad1315faf49094de40733f07609f14f8fa6633b166af2"
+  },
+  {
+   "account": 1,
+   "context": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "instance": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x18e7749015dd089ab017f6a1d9deb211d9bad91e18511517599be6606c7ca7b1"
+  },
+  {
+   "account": 2147483648,
+   "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x4962a92224490fec8658b5455104c87efce9cbe53795cefd33eb87263c32c52c"
+  },
+  {
+   "account": 4294967295,
+   "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
+   "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
+   "key_type": " ",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x5bae1f8ad7eab0d1edf35c78e9733202b6d40c27405836f7551a533e363fccaf"
+  },
+  {
+   "account": 0,
+   "context": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "instance": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x8dcbd48ff58dc3ddca534525d899cbd3670e662653d147d8130a978d22991d16"
+  },
+  {
+   "account": 1,
+   "context": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "instance": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xc3e24317e848d5f2e236b8d7d16f0e5ae198f7fc6e793b8202b2e86c9b2f564d"
+  },
+  {
+   "account": 2147483648,
+   "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xbfb8dd2ae4db9d1e10e9a083e4656a58ecf3a853c7723ebc4c60fab22c5d63d0"
+  },
+  {
+   "account": 4294967295,
+   "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
+   "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
+   "key_type": " ",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x08de678386756d7aca4a8ad2f3a3874b2737fab72d1fe0a7d8b4f1b200d03a55"
+  },
+  {
+   "account": 0,
+   "context": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "instance": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xce9eb537226a7a8afbedbc5a7d4b432d1c93a1159111a9c49afcdaa93d43efb8"
+  }
+ ],
+ "stateless": [
+  {
+   "account": 0,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x373d01c6fca9738080cf1f4186fd517ad450d134d31bcb3aecb3bb4dd340d419"
+  },
+  {
+   "account": 1,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x8fc21bcff345bc88b412b2d4a3a8c2a0637d3ea05e187969d3ce0aa195ca2e7b"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0xa8230185bd34aa418a12564248ce29edfea67aee297540d964e8b682916fc636"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x99da1199f5bbb732abd3e092f543877bc07cb223105f12a97c4535aad010cd94"
+  },
+  {
+   "account": 0,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x0b26d7fce81caa8c9002ccca3ca93005bae62881a29cc085d75ef5cd70d26082"
+  },
+  {
+   "account": 1,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0xe92e3c408c220941f0f85a05bebe856a804de1a7d0fefc3aec547c3cb0b7c838"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0xbc97d1ae1f279a23b567d04c1349d2403654fde99704ce876e6b26293e7904f6"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0xa043fad13c4489c901e3605ad46a083f0821f3abe25652c14c00469b8a23dc2a"
+  },
+  {
+   "account": 0,
+   "key_type": " ",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x92b8178f939eaed1ae39cb09acbc1f72279ea130f017f325802424eb6ec2f39c"
+  },
+  {
+   "account": 1,
+   "key_type": " ",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0xc849997c32fc7ea7a26a09bbe4d91b7760ca08bacd3aa829117e071e55aaa978"
+  },
+  {
+   "account": 2147483648,
+   "key_type": " ",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0xa86cd9c642d2e3b372babd8ff6a6fefdea49ebfe894f5c779a0bbcf38e8dd33d"
+  },
+  {
+   "account": 4294967295,
+   "key_type": " ",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x53d1fc714abbddfe0cda767eba54c76a4eb798809c9c3dda2dae3fd1783aed5b"
+  },
+  {
+   "account": 0,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x29e851bd417ee8c05aa38cd1cba785f14c7402ab802e78927312ab03ee0ebba8"
+  },
+  {
+   "account": 1,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x61c8c7b891db2efeb0be2cf700aa25242fafd2d1c760082e09f0bf3236d35ead"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x13844bbcc055303e5fda552414557efbf80c28f26b88a796af2ae62615beadb7"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0xc8a38a0efcfcf1a08dc8d650d040d2d46e6c65aa14206b42320646d501b24ab9"
+  },
+  {
+   "account": 0,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x55b86642971ca5d137f1ce48ad68d0c79310aff96ae70b5b061dc696e5a7dd03"
+  },
+  {
+   "account": 1,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x3347fbb9f4f0adaf77a518ccd4ff34d47247120a8b32ecf7d13b5b5575170d7e"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x878f08190e7e166578ddf22a956067def6a24efaf904caa2fb20476d879381ea"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x66394dc159e6f34c194315cd27050942d3ae3d97a04d9c027afc513b9d4ce6aa"
+  },
+  {
+   "account": 0,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x90e171b07a7b8a425766b099bd6c9201ef61d278601baa31737cf881f09f53d2"
+  },
+  {
+   "account": 1,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0xdbe11ea3f889162180033382e53386e5174806247487f2a417fe3c771e7c2ed6"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0xdd01f2baedb220a0ba0c3d1c2666e6cf323274b4f00e80de1436c88f26ef8790"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x096b1bc811400412d3a361a309ee20f4b03e583ca168e56ac39ff4ad11d39777"
+  },
+  {
+   "account": 0,
+   "key_type": " ",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x60aaeb9bf84b62d8f3211b1a7134330610c5a909510001a1f499f0b46dc24f13"
+  },
+  {
+   "account": 1,
+   "key_type": " ",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0xd85459a9495e512e9e6b6cbf9eac65bb8c32ba2c1b32940a153ace8cb7f160ca"
+  },
+  {
+   "account": 2147483648,
+   "key_type": " ",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x2fee096393cc51b2dadce19579f2d7e886a61c6d128c1e08881ed9a5eda04b0a"
+  },
+  {
+   "account": 4294967295,
+   "key_type": " ",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0xad3cda184018b94ba884fae04be5ca21322a994f4a3df4a407e0a5f470dac0b0"
+  },
+  {
+   "account": 0,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x00cf7fc5b6d4aa298f742cd745881629603d26990e271112ae835dce0a07d708"
+  },
+  {
+   "account": 1,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x28151362fd87aac428c82c8cd4a8188bc3f6cf41f38d3fdaf45a2fd263a54e28"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0xc1d4d197b376f2c42e2276bba78b87cde937075aef2efb0975b5d1085f28d7fd"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "seed": "0x96c3c8df3e2f1b231da229ebb25e7f0f76697dd82b00f6aa6bb3bc4bc8ec7dab"
+  },
+  {
+   "account": 0,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x020940bf656728e1e6e57f3a3c0a0117dd80cdd893c1456ef8c89459186f669d"
+  },
+  {
+   "account": 1,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xd6dbb52226c3ae0a4514873d59735b9c396b402d2909c1388747ae82a8b4bca9"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xba500d92678d711193d46fa5f19cc7040aa29a7d014f24d2b9a3390891257a22"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x995a94def83f99dc0bbba5f8b7d6896c5f7539395cdba42562220bb885401fe1"
+  },
+  {
+   "account": 0,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x782d68653db8a683bdb315d548d6f88f574090f68d80a095d93ed2b9bf5c90e5"
+  },
+  {
+   "account": 1,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xeb63f10f1c5e252c74e274db30713a3c6a99029d67e8b91c14300a7b28fdd570"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xca89c9dd7b96545c8019a907e59fe65da745f17389a4fd491ce64cef643e48cb"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xe8fa3a6955c429f42266a8fcb51b7a5db03937ad144b18a7775e7cd2086edf58"
+  },
+  {
+   "account": 0,
+   "key_type": " ",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x327398f657f30a58620743a94e6670b6e66674c084eb27a80b92287af3bf0cd9"
+  },
+  {
+   "account": 1,
+   "key_type": " ",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xfe7d41e423ccde8bd5c53bfa19e6157864e03344b1a41ed85628daaec6dbd2fb"
+  },
+  {
+   "account": 2147483648,
+   "key_type": " ",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x865707917112e3cb3bc1bb14e6ae6aa6aae8330f228c0650f98c6bb99c2f55f5"
+  },
+  {
+   "account": 4294967295,
+   "key_type": " ",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xf1423152bd80336f11ca5b17aa3dcdbff7dd0e1623d1b585a3559502cf79bda7"
+  },
+  {
+   "account": 0,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xe8200fe728665399c691f2d7bdc66a67284659cc921e53f6cf3cba26cff1f93d"
+  },
+  {
+   "account": 1,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x6c84b16733f531d68685196c94ed0592f9b22db000d4ec77c000667fa49855df"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x4ccbee2f12f35caa0f511b8610c3cfceaead78802691b30c3a6545b9950e0b3a"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0x262a52d645f0ec68ea161edc7449a9a276515aaaab43bddda6590705ec9dcfb5"
+  },
+  {
+   "account": 0,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x08f39e15cabe00cb425c6122b5486e650245d0f9662fa56ec6321455f8f11213"
+  },
+  {
+   "account": 1,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x659ace28d803c6159bc6a597fc41cc47ca44763e14443d60526c241f1e1effbf"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x047b094f2f61b9311e629ec353881f661b470841f6c0acfbf606206612ebaaaf"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xa50e061f2fb92d54a6eaaae88a46d250acfed0a57bbe1e2f9c7595977f3376bd"
+  },
+  {
+   "account": 0,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xa2b5f7496649b113d4fb866e07b4ebc599f4f3165a04e188cffe218512f73495"
+  },
+  {
+   "account": 1,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xc72162f25117c3a244d06fd669e37d501415b513ef6b557e3da29caebad07045"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xdb11dcf7b0dceac5f2953e4ee01ba0d3396daa666ff2123daae23d5a2ee95ef7"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xa32d1365a62e1ece8b3ec8d8f165cccc549e87b33818014b70c934cfb18dae83"
+  },
+  {
+   "account": 0,
+   "key_type": " ",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x5c2a7842706513783912f5ca35e0363c7dc1a81395814d140ac203b1909f8645"
+  },
+  {
+   "account": 1,
+   "key_type": " ",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xe899ac278d7237950de1a45d8e91f5bef0c25d4a2b886993cf414e35ac216916"
+  },
+  {
+   "account": 2147483648,
+   "key_type": " ",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x43dbc07529a7426f3c114c4e21206e0403a3904e87cb2d5ab5a3b34edcbcba53"
+  },
+  {
+   "account": 4294967295,
+   "key_type": " ",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x8cd92900dde1ed9ec39294263105e7857bf82926a9b6d437245120cc695adcb5"
+  },
+  {
+   "account": 0,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xf702b3ccc84af43689d25ec3b477c7649482ab06702438c217e96eedd9b1a83a"
+  },
+  {
+   "account": 1,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x7eac6e156b020754750516df4f40826bc5f6f61f63a91547fd1a9f801c807837"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0x6161d77cd1bbca664ed253fd2db6659fcf19ef643b12a5f943a6202f7e36a03c"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "seed": "0xc5fd8d542dad3e7302eb8f292ec135274f35dcd56b140a347ec6e88bfe3c7498"
+  }
+ ],
+ "winterlock": [
+  {
+   "passphrase": "",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "seed": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "words": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+  },
+  {
+   "passphrase": "TREZOR",
+   "root": "0x04ed2bcdefde1aad10dc37dd64ef968d3229c9b468a8407d76b1f969a2d6b335",
+   "seed": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "words": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art"
+  },
+  {
+   "passphrase": "",
+   "root": "0x8730425f8f4f52a360ad979e542e96e4bf593c5aee699f365e739e84f658350d",
+   "seed": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "words": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote"
+  },
+  {
+   "passphrase": "TREZOR",
+   "root": "0x15ba65bb73eb99312c6d4241070e5ab00cb2bf8333dbaee88687dfdc09de2520",
+   "seed": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "words": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote"
+  },
+  {
+   "passphrase": "",
+   "root": "0xf0394bb854d40149fbbdad76f647a93a1ee15ff983cdabffce66c7711809df67",
+   "seed": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "words": "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch range attend journey unaware"
+  },
+  {
+   "passphrase": "TREZOR",
+   "root": "0xb63c8698cfdfc8a77319ba7b719dc020fb16ee89bbc58c566da6595618feee61",
+   "seed": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "words": "abandon amount liar amount expire adjust cage candy arch gather drum bullet absurd math era live bid rhythm alien crouch range attend journey unaware"
+  },
+  {
+   "passphrase": "",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "seed": "0xc58808780460990c5a5f2989894a58f0ee31d84bad3a5302d5720eb607675c19",
+   "words": "sheriff doctor bulk angle another mail harvest topple maze engage normal tide toast umbrella concert point fantasy birth frame buddy gather recipe idea current"
+  },
+  {
+   "passphrase": "TREZOR",
+   "root": "0x9b736d9bcda76560c742b16ecd80cc6b41a2ce43c9248126ee87f0adfab15944",
+   "seed": "0xc58808780460990c5a5f2989894a58f0ee31d84bad3a5302d5720eb607675c19",
+   "words": "sheriff doctor bulk angle another mail harvest topple maze engage normal tide toast umbrella concert point fantasy birth frame buddy gather recipe idea current"
+  },
+  {
+   "passphrase": "",
+   "root": "0xb35725ed4badc7abf8b2571fb7caa82322375fbe124e1c4fcb85950c81426037",
+   "seed": "0xef65c4cb5789695671b646a5e61314e9bf9b61f17409c1e5495ed9add261d5a8",
+   "words": "urge comfort crazy pyramid notable private short silver planet correct share square whale rail shift license sea clean fish rebuild tag couch find animal"
+  },
+  {
+   "passphrase": "TREZOR",
+   "root": "0x7a2bb6da5bddf9bc0862616c463c25c80b6771de959c08b202eeea25007de811",
+   "seed": "0xef65c4cb5789695671b646a5e61314e9bf9b61f17409c1e5495ed9add261d5a8",
+   "words": "urge comfort crazy pyramid notable private short silver planet correct share square whale rail shift license sea clean fish rebuild tag couch find animal"
+  }
+ ]
+}

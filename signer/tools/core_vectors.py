@@ -4,9 +4,9 @@
 Writes JSON to core/tests/vectors/: phrase.json (the word list and parser cases, check codes), keys.json (member,
 device and gas keys, tree secret seeds), leansphincs.json (signatures), wots.json (trees, signatures, paths),
 owner.json (v2 digests, key indices, layouts, addresses), safe.json (SafeTx and SafeMessage hashes, amounts),
-keylog.json (sign requests and what the key log answers), and board.json, the compact subset the ESP32 firmware
-embeds. Every input is a
-fixed public test value: no randomness, so the files only change when the signer does.
+keylog.json (sign requests and what the key log answers), board.json, the compact subset the ESP32 firmware
+embeds, and hbkd.json (hash-based key derivation from BIP-39, a draft ERC: library code nothing uses yet). Every input
+is a fixed public test value: no randomness, so the files only change when the signer does.
 
 usage: signer/.venv/bin/python signer/tools/core_vectors.py [OUT_DIR]
 """
@@ -18,7 +18,7 @@ import tempfile
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from winterlock_signer import abi, eip712, leansphincs, member, messages, owner, phrase, safe, wots  # noqa: E402
+from winterlock_signer import abi, eip712, hbkd, leansphincs, member, messages, owner, phrase, safe, wots  # noqa: E402
 from winterlock_signer.abi import b2h, checksum, h2b  # noqa: E402
 from winterlock_signer.ethtx import Account  # noqa: E402
 from winterlock_signer.keccak import keccak256  # noqa: E402
@@ -451,6 +451,78 @@ def keylog_vectors():
     return {"trees": trees, "scenarios": out}
 
 
+# --- HBKD (draft ERC: Hash-Based Key Derivation from BIP-39) ---
+
+HBKD_PHRASES = [
+    ("abandon " * 23 + "art", ""),  # the ERC's test cases
+    ("abandon " * 23 + "art", "TREZOR"),
+    ("legal winner thank year wave sausage worth useful legal winner thank yellow", "TREZOR"),
+    ("abandon " * 11 + "about", ""),
+    ("zoo " * 23 + "vote", "a passphrase, with spaces & punctuation!"),
+    ("abandon " * 24, ""),  # a bad checksum: the seed is of the sentence as given
+    ("Abandon  abandon\tabandon", "\x00"),  # not canonical, and control characters: hashed as given
+]
+HBKD_KEY_TYPES = ["leanSphincs-keccak/wambsgans-keccak/b10",
+                  "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", " ", "k" * 200]
+HBKD_ACCOUNTS = [0, 1, 1 << 31, (1 << 32) - 1]
+HBKD_LABELS = ["example.app.gas", "", "winterlock.app.gas.v1", "app.\xfcn\xefc\xf8d\xe9.\u4f8b",
+               "u\u0308", "l" * 200]
+HBKD_STATEFUL = [  # (context, instance)
+    (bytes(range(32)), bytes([0xA5] * 32)),
+    (bytes(32), bytes(32)),
+    (k("winterlock core vectors hbkd context"), k("winterlock core vectors hbkd instance")),
+    (bytes([0xFF] * 32), bytes(range(32, 64))),
+]
+HBKD_BAD_KEY_TYPES = ["", "\t", "line\nbreak", "\x00", "\x1f", "\x7f", "caf\xe9", "no\xa0break", "\u3000"]
+HBKD_NON_ASCII = [  # (mnemonic, passphrase): Python normalises (NFKD); the core refuses them
+    ("abandon " * 23 + "art", "p\xe4ssphr\xe4se"),
+    ("abandon " * 23 + "art", "pa\u0308ssphra\u0308se"),
+    ("\u3000".join(["abandon"] * 23 + ["art"]), ""),  # BIP-39's Japanese separator, a space after NFKD
+    ("\xa0".join(["abandon"] * 23 + ["art"]), "TREZOR"),
+    ("abandon " * 23 + "art", "\ufb01"),  # the ligature fi: "fi" after NFKD
+]
+
+
+def hbkd_vectors():
+    phrases = []
+    for m, p in HBKD_PHRASES:
+        s = hbkd.bip39_seed(m, p)
+        phrases.append({"mnemonic": m, "passphrase": p, "bip39_seed": b2h(s), "root": b2h(hbkd.root_from_seed(s))})
+    winterlock = []
+    for s in SEEDS:
+        for p in ("", "TREZOR"):
+            winterlock.append({"seed": b2h(s), "passphrase": p, "words": " ".join(phrase.to_phrase(s)),
+                               "root": b2h(hbkd.winterlock_root(s, p))})
+    roots = [h2b(phrases[0]["root"]), h2b(phrases[2]["root"]), hbkd.winterlock_root(SEED),
+             k("winterlock core vectors hbkd random root")]
+    stateless, stateful, apps = [], [], []
+    for r in roots:
+        for t in HBKD_KEY_TYPES:
+            for a in HBKD_ACCOUNTS:
+                stateless.append({"root": b2h(r), "key_type": t, "account": a,
+                                  "seed": b2h(hbkd.stateless_seed(r, t, a))})
+        for i, (c, n) in enumerate(HBKD_STATEFUL):
+            t, a = HBKD_KEY_TYPES[i % len(HBKD_KEY_TYPES)], HBKD_ACCOUNTS[(i + 1) % len(HBKD_ACCOUNTS)]
+            stateful.append({"root": b2h(r), "key_type": t, "account": a, "context": b2h(c), "instance": b2h(n),
+                             "seed": b2h(hbkd.stateful_seed(r, t, c, n, a))})
+        for lb in HBKD_LABELS:
+            for a in (0, (1 << 32) - 1):
+                apps.append({"root": b2h(r), "label": lb, "account": a, "secret": b2h(hbkd.app_secret(r, lb, a))})
+    for t in HBKD_BAD_KEY_TYPES:
+        try:
+            hbkd.stateless_seed(roots[0], t)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted key type {t!r}")
+    non_ascii = []
+    for m, p in HBKD_NON_ASCII:
+        nm, np = unicodedata.normalize("NFKD", m), unicodedata.normalize("NFKD", p)
+        non_ascii.append({"mnemonic": m, "passphrase": p, "nfkd_mnemonic": nm, "nfkd_passphrase": np,
+                          "bip39_seed": b2h(hbkd.bip39_seed(m, p))})
+    return {"phrases": phrases, "winterlock": winterlock, "stateless": stateless, "stateful": stateful,
+            "app_secrets": apps, "bad_key_types": HBKD_BAD_KEY_TYPES, "non_ascii": non_ascii}
+
+
 # --- the board's subset ---
 
 def board_vectors(ph, keys, ls, wv, sv, ov, kl):
@@ -494,6 +566,7 @@ def main():
     kl = keylog_vectors()
     write("keylog.json", kl)
     write("board.json", board_vectors(ph, keys, ls, wv, sv, ov, kl))
+    write("hbkd.json", hbkd_vectors())
     print(f"Python {sys.version.split()[0]}, Unicode {unicodedata.unidata_version}")
 
 

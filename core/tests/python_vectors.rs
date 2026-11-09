@@ -647,3 +647,79 @@ fn keylog_store_failure_refuses() {
     let tr = TreeRef { chain: 1, safe: [1; 20], root: [2; 24], start: 0, height: 6 };
     assert!(matches!(keylog::record(&mut Broken, &tr, 0, &[3; 32]), Err(Refused::Store("disk full"))));
 }
+
+// --- HBKD (draft ERC: Hash-Based Key Derivation from BIP-39) ---
+
+#[cfg(feature = "hbkd")]
+fn account(v: &serde_json::Value) -> u32 {
+    u32::try_from(uint(v)).expect("an account fits in 32 bits")
+}
+
+#[cfg(feature = "hbkd")]
+#[test]
+fn hbkd_derivations() {
+    use winterlock_core::hbkd;
+    let v = load(HBKD);
+    for c in v["phrases"].as_array().unwrap() {
+        let s = hbkd::bip39_seed(str_(&c["mnemonic"]), str_(&c["passphrase"])).unwrap();
+        assert_eq!(s, arr::<64>(&c["bip39_seed"]), "{c}");
+        assert_eq!(hbkd::root_from_seed(&s), arr::<32>(&c["root"]), "{c}");
+    }
+    for c in v["winterlock"].as_array().unwrap() {
+        let seed: [u8; 32] = arr(&c["seed"]);
+        assert_eq!(phrase::to_phrase(&seed).join(" "), str_(&c["words"]));
+        assert_eq!(hbkd::winterlock_root(&seed, str_(&c["passphrase"])), Ok(arr(&c["root"])), "{c}");
+    }
+    let mut top = 0;
+    for c in v["stateless"].as_array().unwrap() {
+        let got = hbkd::stateless_seed(&arr(&c["root"]), str_(&c["key_type"]), account(&c["account"]));
+        assert_eq!(got, Ok(arr(&c["seed"])), "{c}");
+        top += (account(&c["account"]) == u32::MAX) as u32;
+    }
+    for c in v["stateful"].as_array().unwrap() {
+        let got = hbkd::stateful_seed(
+            &arr(&c["root"]),
+            str_(&c["key_type"]),
+            &arr(&c["context"]),
+            &arr(&c["instance"]),
+            account(&c["account"]),
+        );
+        assert_eq!(got, Ok(arr(&c["seed"])), "{c}");
+        top += (account(&c["account"]) == u32::MAX) as u32;
+    }
+    for c in v["app_secrets"].as_array().unwrap() {
+        let got = hbkd::app_secret(&arr(&c["root"]), str_(&c["label"]), account(&c["account"]));
+        assert_eq!(got, arr::<32>(&c["secret"]), "{c}");
+        top += (account(&c["account"]) == u32::MAX) as u32;
+    }
+    assert!(top > 0, "no vector at account 2^32 - 1");
+}
+
+/// What Python normalises (NFKD), the core refuses; where the normalised text is ASCII, the core
+/// gets Python's seed from it.
+#[cfg(feature = "hbkd")]
+#[test]
+fn hbkd_refusals() {
+    use winterlock_core::hbkd;
+    let v = load(HBKD);
+    for t in v["bad_key_types"].as_array().unwrap() {
+        let t = str_(t);
+        assert!(!hbkd::is_key_type(t), "{t:?}");
+        assert!(hbkd::stateless_seed(&[7; 32], t, 0).is_err(), "{t:?}");
+        assert!(hbkd::stateful_seed(&[7; 32], t, &[0; 32], &[0; 32], 0).is_err(), "{t:?}");
+    }
+    let mut ascii_after_nfkd = 0;
+    for c in v["non_ascii"].as_array().unwrap() {
+        let (m, p) = (str_(&c["mnemonic"]), str_(&c["passphrase"]));
+        assert!(!(m.is_ascii() && p.is_ascii()));
+        assert!(hbkd::bip39_seed(m, p).is_err(), "{c}");
+        let (nm, np) = (str_(&c["nfkd_mnemonic"]), str_(&c["nfkd_passphrase"]));
+        if nm.is_ascii() && np.is_ascii() {
+            assert_eq!(hbkd::bip39_seed(nm, np), Ok(arr(&c["bip39_seed"])), "{c}");
+            ascii_after_nfkd += 1;
+        } else {
+            assert!(hbkd::bip39_seed(nm, np).is_err(), "{c}");
+        }
+    }
+    assert!(ascii_after_nfkd > 0);
+}
