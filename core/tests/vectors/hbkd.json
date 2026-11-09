@@ -38,6 +38,18 @@
   },
   {
    "account": 0,
+   "label": "a label with spaces",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0x4e0c85bec58f501ae87793063786918be6e488dbc16319a4355911cd46ea48af"
+  },
+  {
+   "account": 4294967295,
+   "label": "a label with spaces",
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "secret": "0xb65846acac3d2758dee292c282b6b45d27c9e64aacf66c5e490d624249f4099d"
+  },
+  {
+   "account": 0,
    "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
    "secret": "0xbc65e5949420d4fe2a3f1ffa6ecdfec186b0a4ee9e8a05e20cec0734b3b44dfd"
@@ -107,6 +119,18 @@
    "label": "winterlock.app.gas.v1",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
    "secret": "0x58d049a3cab03b1da8a5cf56816c8fcd177d17c8c637bdcc34343f9e0d3a11e9"
+  },
+  {
+   "account": 0,
+   "label": "a label with spaces",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x1d31cb54aaebe3e3f83462916e97212dd0113e8f7825cf1961e9bc571d4707a4"
+  },
+  {
+   "account": 4294967295,
+   "label": "a label with spaces",
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "secret": "0x3569eb979aafe173d169bd3590a29bb5eaf76c2b694d8bb91d632d1eb044b72c"
   },
   {
    "account": 0,
@@ -182,6 +206,18 @@
   },
   {
    "account": 0,
+   "label": "a label with spaces",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0x34bf2d353dba298a67707a1fd1ffc406ce4824b10bdba1cb8e48b88de9ae5080"
+  },
+  {
+   "account": 4294967295,
+   "label": "a label with spaces",
+   "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
+   "secret": "0x168654d244c636d8cef9248dcfd4f732ae0b94a9c892019d5fc4504e59c2669b"
+  },
+  {
+   "account": 0,
    "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
    "secret": "0x1dc189bc8b2d0c53bfdf16b988f0cb6f94a78ec2924478e93db9ef7b0dbdda1d"
@@ -254,6 +290,18 @@
   },
   {
    "account": 0,
+   "label": "a label with spaces",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x7e65998267f6928f0388e863d18db6e6da16fa585f16477be678eead49677f0f"
+  },
+  {
+   "account": 4294967295,
+   "label": "a label with spaces",
+   "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
+   "secret": "0x94b74b2ad28c0c5e70c539026717b8c09beb03f49315b4a554076fb781a55704"
+  },
+  {
+   "account": 0,
    "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
    "secret": "0x4edc0775876f910b630caa2bc2bdc21f9319d984e2e881222a0b69eea2d240ee"
@@ -287,10 +335,97 @@
    "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
    "secret": "0xdd4b5e56e760527c4df2753421e028e202f1ac854124028100fef5d46e73fe95"
+  },
+  {
+   "account": 0,
+   "label": "example.app.gas",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0x04239323745e06f136e5d38453256e6b5610bcca24aa0bce0cad616d6df877d1"
+  },
+  {
+   "account": 4294967295,
+   "label": "example.app.gas",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0x3f19d5ebb8a58e748762da7038cf705835fd88b62b7c2b93aa9cacb3e3223529"
+  },
+  {
+   "account": 0,
+   "label": "",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0x1dbe32cfe53c6bfc0684d83794a37c0a21e76988b232809bd19bd7bc94a5ab62"
+  },
+  {
+   "account": 4294967295,
+   "label": "",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0x6edf6d715e3310ab08e83ff568afe2c07ced953bb633fa4c6e5595c8c3009c96"
+  },
+  {
+   "account": 0,
+   "label": "winterlock.app.gas.v1",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0x74becbfd8dafa8e9fc88c11141b36a7f3e0dd31919eeec26a4a901aa3d6cd3d9"
+  },
+  {
+   "account": 4294967295,
+   "label": "winterlock.app.gas.v1",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0xf6ca6046fc90798e5f5e63bb2a913e25a941499a68a203e75a9769bb04c6a387"
+  },
+  {
+   "account": 0,
+   "label": "a label with spaces",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0xf5691e3f449c19d8cb353a7de48bad98de4e73b103586e70a872da1093556cb1"
+  },
+  {
+   "account": 4294967295,
+   "label": "a label with spaces",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0xe726c6def0bbd988c3587271992c493fd8e7942f138ae61b8367a0de988ff924"
+  },
+  {
+   "account": 0,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0xebfc5498f8f6ee9608d38b4910742f5acb190e9ea5ea14c4c035b5cb40eb8d62"
+  },
+  {
+   "account": 4294967295,
+   "label": "app.\u00fcn\u00efc\u00f8d\u00e9.\u4f8b",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0xfc701581dbfdbf0dbeee0fea770cbac9cf76d7790793f7c6ec01313d332c5c09"
+  },
+  {
+   "account": 0,
+   "label": "u\u0308",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0x06909022dfe01902fa03828e8cf87413c42cf191058e736d5c5efbe290ea7434"
+  },
+  {
+   "account": 4294967295,
+   "label": "u\u0308",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0xe99a6d65370d6c8093fd999599728d8b538c6d3f563f284352615eead69de1e5"
+  },
+  {
+   "account": 0,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0xe4cd225e39903223890a1422f0a7db8d79a12a3c38282a22d6fecf1bbe4f04ed"
+  },
+  {
+   "account": 4294967295,
+   "label": "llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllll",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "secret": "0xfc73027640cb1632fffef07f2b8ff22631a762311e18ee23c08251391c34460d"
   }
  ],
  "bad_key_types": [
   "",
+  " ",
+  "leanSphincs keccak",
+  "leanSphincs-keccak/wambsgans-keccak/b10 ",
   "\t",
   "line\nbreak",
   "\u0000",
@@ -300,85 +435,674 @@
   "no\u00a0break",
   "\u3000"
  ],
+ "bad_mnemonics": [
+  [
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon"
+  ],
+  [
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "art",
+   "abandon"
+  ],
+  [
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon"
+  ],
+  [
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "art",
+   "abandon"
+  ],
+  [],
+  [
+   "legal",
+   "winner",
+   "thank",
+   "year",
+   "wave",
+   "sausage",
+   "worth",
+   "useful",
+   "legal",
+   "winner",
+   "thank",
+   "yellow",
+   "abandon"
+  ],
+  [
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ABANDON",
+   "ART"
+  ],
+  [
+   "Abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "art"
+  ],
+  [
+   "aban",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "art"
+  ],
+  [
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "art "
+  ],
+  [
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   ""
+  ],
+  [
+   "abandon abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "art"
+  ],
+  [
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "abandon",
+   "\u00e1rt"
+  ],
+  [
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093",
+   "\u3042\u3044\u3053\u304f\u3057\u3093"
+  ]
+ ],
  "non_ascii": [
   {
    "bip39_seed": "0x297074f783c532a663adbf73fcda896a5300688cd4759b8f155b8dc8b804cbbd79994c0748549c4d93979ebe78a26fa1e56df99731f44227820eb07cab1c81c9",
-   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
-   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
    "nfkd_passphrase": "pa\u0308ssphra\u0308se",
-   "passphrase": "p\u00e4ssphr\u00e4se"
+   "passphrase": "p\u00e4ssphr\u00e4se",
+   "words": [
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "art"
+   ]
   },
   {
    "bip39_seed": "0x297074f783c532a663adbf73fcda896a5300688cd4759b8f155b8dc8b804cbbd79994c0748549c4d93979ebe78a26fa1e56df99731f44227820eb07cab1c81c9",
-   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
-   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
    "nfkd_passphrase": "pa\u0308ssphra\u0308se",
-   "passphrase": "pa\u0308ssphra\u0308se"
-  },
-  {
-   "bip39_seed": "0x408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf705489c6fc77dbd4e3dc1dd8cc6bc9f043db8ada1e243c4a0eafb290d399480840",
-   "mnemonic": "abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000abandon\u3000art",
-   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
-   "nfkd_passphrase": "",
-   "passphrase": ""
-  },
-  {
-   "bip39_seed": "0xbda85446c68413707090a52022edd26a1c9462295029f2e60cd7c4f2bbd3097170af7a4d73245cafa9c3cca8d561a7c3de6f5d4a10be8ed2a5e608d68f92fcc8",
-   "mnemonic": "abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0abandon\u00a0art",
-   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
-   "nfkd_passphrase": "TREZOR",
-   "passphrase": "TREZOR"
+   "passphrase": "pa\u0308ssphra\u0308se",
+   "words": [
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "art"
+   ]
   },
   {
    "bip39_seed": "0x00b741364fb7a65be8a2d5f3e1844bf94c8fa35fef5b0d67d432351a7b468d827722306412fa1710316e5367054d59106b2da6ff4eeafb3ba9baa9e1fef55016",
-   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
-   "nfkd_mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
    "nfkd_passphrase": "fi",
-   "passphrase": "\ufb01"
+   "passphrase": "\ufb01",
+   "words": [
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "art"
+   ]
+  },
+  {
+   "bip39_seed": "0x89be0678d1155eb273cefb71ed55a0af0acdaecb6e08fff993eb51802e27200801c58950eb1516f0e060f33295b93954f0127c04451414f27a67389e9e131964",
+   "nfkd_passphrase": "TREZOR ",
+   "passphrase": "TREZOR\u3000",
+   "words": [
+    "legal",
+    "winner",
+    "thank",
+    "year",
+    "wave",
+    "sausage",
+    "worth",
+    "useful",
+    "legal",
+    "winner",
+    "thank",
+    "yellow"
+   ]
   }
  ],
  "phrases": [
   {
    "bip39_seed": "0x408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf705489c6fc77dbd4e3dc1dd8cc6bc9f043db8ada1e243c4a0eafb290d399480840",
-   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
    "passphrase": "",
-   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01"
+   "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
+   "words": [
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "art"
+   ]
   },
   {
    "bip39_seed": "0xbda85446c68413707090a52022edd26a1c9462295029f2e60cd7c4f2bbd3097170af7a4d73245cafa9c3cca8d561a7c3de6f5d4a10be8ed2a5e608d68f92fcc8",
-   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art",
    "passphrase": "TREZOR",
-   "root": "0x04ed2bcdefde1aad10dc37dd64ef968d3229c9b468a8407d76b1f969a2d6b335"
+   "root": "0x04ed2bcdefde1aad10dc37dd64ef968d3229c9b468a8407d76b1f969a2d6b335",
+   "words": [
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "art"
+   ]
   },
   {
    "bip39_seed": "0x2e8905819b8723fe2c1d161860e5ee1830318dbf49a83bd451cfb8440c28bd6fa457fe1296106559a3c80937a1c1069be3a3a5bd381ee6260e8d9739fce1f607",
-   "mnemonic": "legal winner thank year wave sausage worth useful legal winner thank yellow",
    "passphrase": "TREZOR",
-   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4"
+   "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
+   "words": [
+    "legal",
+    "winner",
+    "thank",
+    "year",
+    "wave",
+    "sausage",
+    "worth",
+    "useful",
+    "legal",
+    "winner",
+    "thank",
+    "yellow"
+   ]
   },
   {
    "bip39_seed": "0x5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4",
-   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
    "passphrase": "",
-   "root": "0xe80e28d7bc0cf23b6edd2026eb4d55c3738e188683d54e4fb4dd950fd88bd5bf"
+   "root": "0xe80e28d7bc0cf23b6edd2026eb4d55c3738e188683d54e4fb4dd950fd88bd5bf",
+   "words": [
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "about"
+   ]
+  },
+  {
+   "bip39_seed": "0x5209304ce2d940a27ad833aa3f2b093dbf42cee11f88111ab8492109a8e6da910fe23bec12f7f80b9d31c0cdce0d8a2b1e2218ead6aa4d2c417468900cffad6f",
+   "passphrase": "x",
+   "root": "0xd27d925089b9ddbcb96b873e0c50219202415485fe5a24ddf72a686b399a5630",
+   "words": [
+    "abandon",
+    "amount",
+    "liar",
+    "amount",
+    "expire",
+    "adjust",
+    "cage",
+    "candy",
+    "arch",
+    "gather",
+    "drum",
+    "bullet",
+    "absurd",
+    "math",
+    "exhibit"
+   ]
+  },
+  {
+   "bip39_seed": "0xd2911131a6dda23ac4441d1b66e2113ec6324354523acfa20899a2dcb3087849264e91f8ec5d75355f0f617be15369ffa13c3d18c8156b97cd2618ac693f759f",
+   "passphrase": "",
+   "root": "0xad1c2171ddd2a0437758ea04d3cffa1f0bc1ba11fc883634389bac9327426d34",
+   "words": [
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "when"
+   ]
+  },
+  {
+   "bip39_seed": "0x27ae813165c3ac6da6fad80594b8dd9ecd0dca07e5a00a704d219c701e2fd9ea49b5968d9e40ab85208d3e1dbe9b56258d5ce77a9e4eda45af74ec4076f0137a",
+   "passphrase": "TREZOR",
+   "root": "0x14633b85aa2a2b7d7ea7bd333fa45ebae7a6ddce73fdf4e370b7ae81275b5ae2",
+   "words": [
+    "thrive",
+    "powder",
+    "depth",
+    "baby",
+    "crack",
+    "finish",
+    "flee",
+    "rebel",
+    "credit",
+    "index",
+    "ask",
+    "chuckle",
+    "thumb",
+    "slice",
+    "window",
+    "twenty",
+    "polar",
+    "load",
+    "spider",
+    "luggage",
+    "because"
+   ]
   },
   {
    "bip39_seed": "0xdb83443078d7cd691a16c9d3cae34c1940c06bce79fb618b3ac19aa798873a809c8232c2aab2feea68b5553641eeb14c98fdb1b41dfa558e2ab57278d1643e06",
-   "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote",
    "passphrase": "a passphrase, with spaces & punctuation!",
-   "root": "0x9454680e8ef37d1c219ef77595c32811cd59c68c07d5c3a3b33bc3fd29d597d2"
+   "root": "0x9454680e8ef37d1c219ef77595c32811cd59c68c07d5c3a3b33bc3fd29d597d2",
+   "words": [
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "zoo",
+    "vote"
+   ]
   },
   {
-   "bip39_seed": "0x9bcf00141a773b81f892fd3f5567e801d75d1bd0ca3ca90b665bfe447bdc0100640a6cbc14e45b57f7b8f3d8f52428c786868609ab5da82d16a1c10f199dcd67",
-   "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon ",
-   "passphrase": "",
-   "root": "0xb25004121a1a183b1e523812bf01822903d48591eeec876035359562b16c6f96"
-  },
-  {
-   "bip39_seed": "0xf62800b09424a40b542efa201cbc5b7905bcae1c2c41c677d3584f4f25f9ae54797e8c8b6e2139bc427ad3301d66291fbb12729a223ec910846b1821775131cc",
-   "mnemonic": "Abandon  abandon\tabandon",
-   "passphrase": "\u0000",
-   "root": "0xcab4a5a6da8c41e2f570efcbef6e0e7835c3acd6775a1c6529eaf8ce5b28c826"
+   "bip39_seed": "0xebb582a10d6f1a3b25cb8723d30836ee5aaefa2592d9c2832e134cb19c4d200debff9598b07862152e30db3f65fa23af702c414b4bfe66b15e277a395ba117f5",
+   "passphrase": "\u0000\t\u007f",
+   "root": "0x675f0911566e087a01a40679b95868f45828b997f8a6e5516b95a9eee8f3f41d",
+   "words": [
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "abandon",
+    "art"
+   ]
   }
  ],
  "stateful": [
@@ -394,17 +1118,17 @@
    "account": 2147483648,
    "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
    "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0x0a75530b9eb2dea874a7ac633b59d91b8611cee2d77ea6e4a58e09dfdc3cf879"
+   "seed": "0xdb742f0f8ca7721e68224b768db269079a3082f0b3327b3dfe1c2920ae1f71a4"
   },
   {
    "account": 4294967295,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0x7d9b0edfb986810ad59220b92c4bb2d8ee56c78d279062e23fbfeea1e8b986ef"
+   "seed": "0xb33f072ddfbdd1f48fd1dfbfea8b38d5a75d998796a06c01e7f1d1b67f87282b"
   },
   {
    "account": 0,
@@ -426,17 +1150,17 @@
    "account": 2147483648,
    "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
    "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0x837aa1e6f527bc494676d93dde551153129ea829a21b45bfe8e73082d6f8925d"
+   "seed": "0xa0de3460f2af7f32c94a7793da5ffb54e4b9dd55298f946d69f6af91b1c2bb3c"
   },
   {
    "account": 4294967295,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": " ",
+   "key_type": "!",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0x02bcd1a844acf4d146ee2a1e47bd32b3558edd7f49e6a2dc0dc699ed493f85a3"
+   "seed": "0x1bd5522fe81a20678daf12fb6aaaca1afb20c05269087db5ee721291620d9a64"
   },
   {
    "account": 0,
@@ -458,17 +1182,17 @@
    "account": 2147483648,
    "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
    "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0x4962a92224490fec8658b5455104c87efce9cbe53795cefd33eb87263c32c52c"
+   "seed": "0x77a3a8eecbff15506bb56be2cab23d450cf5d7d3756bdd53e431956a8ac26d15"
   },
   {
    "account": 4294967295,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0x5bae1f8ad7eab0d1edf35c78e9733202b6d40c27405836f7551a533e363fccaf"
+   "seed": "0x9e39c1fedbec1a92985d6bb84b63377e4d1250ebd2bda5c0d7510f108b6e6b02"
   },
   {
    "account": 0,
@@ -490,17 +1214,17 @@
    "account": 2147483648,
    "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
    "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0xbfb8dd2ae4db9d1e10e9a083e4656a58ecf3a853c7723ebc4c60fab22c5d63d0"
+   "seed": "0x8e2e463e4866feb14f1af3078bac6b61219f83c16b2f6298d9a1db695cb41f0b"
   },
   {
    "account": 4294967295,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0x08de678386756d7aca4a8ad2f3a3874b2737fab72d1fe0a7d8b4f1b200d03a55"
+   "seed": "0xc951f101bfc376f03b7388fc0d07a83b3ac43a4224773622cc6d94ad224ce348"
   },
   {
    "account": 0,
@@ -509,6 +1233,38 @@
    "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
    "seed": "0xce9eb537226a7a8afbedbc5a7d4b432d1c93a1159111a9c49afcdaa93d43efb8"
+  },
+  {
+   "account": 1,
+   "context": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+   "instance": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0xd77700542dbf47a3349b1ad34626b9c868298df28b5924c8d29a335e8f175ee7"
+  },
+  {
+   "account": 2147483648,
+   "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x494fa5c2ba367b17b4f06704108c45d7b3afed54b9b64ec8313787bc29f01e8b"
+  },
+  {
+   "account": 4294967295,
+   "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
+   "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
+   "key_type": "!",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x09f67cb70614cb9f6b0a12d9b9f42e92605c00005c13772b7e15549bacfe97b4"
+  },
+  {
+   "account": 0,
+   "context": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+   "instance": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x74a56bb532d4640b2593cff2c059573d3b9a885c461b6e625d8fb4994444fdc6"
   }
  ],
  "stateless": [
@@ -538,51 +1294,51 @@
   },
   {
    "account": 0,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0x0b26d7fce81caa8c9002ccca3ca93005bae62881a29cc085d75ef5cd70d26082"
+   "seed": "0xd8478cc98acdb3255c0f03beeb56c15144c79e11f19aee1796330530853b3eac"
   },
   {
    "account": 1,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0xe92e3c408c220941f0f85a05bebe856a804de1a7d0fefc3aec547c3cb0b7c838"
+   "seed": "0x10f2d720501809986ee6486f7a2738a2f0d47292fdbef96395288d421d840576"
   },
   {
    "account": 2147483648,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0xbc97d1ae1f279a23b567d04c1349d2403654fde99704ce876e6b26293e7904f6"
+   "seed": "0xbd5a893925fc30278e11ad09206021ba0b7e58185a53ec01e6a6a60a21fdc4dc"
   },
   {
    "account": 4294967295,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0xa043fad13c4489c901e3605ad46a083f0821f3abe25652c14c00469b8a23dc2a"
+   "seed": "0xd943903f7c0d124a6236cbbdf9d66f86f79a5c95d0aaae5a2fa1aa1e754d2b26"
   },
   {
    "account": 0,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0x92b8178f939eaed1ae39cb09acbc1f72279ea130f017f325802424eb6ec2f39c"
+   "seed": "0x10cabbb9fb1093203116dec435b05919255726f03ee77151a16e3161e04a83ad"
   },
   {
    "account": 1,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0xc849997c32fc7ea7a26a09bbe4d91b7760ca08bacd3aa829117e071e55aaa978"
+   "seed": "0x0a60ba9ce1ca7d461a8382c8da0c126cb0be599845beeae5984bb73fc026fe13"
   },
   {
    "account": 2147483648,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0xa86cd9c642d2e3b372babd8ff6a6fefdea49ebfe894f5c779a0bbcf38e8dd33d"
+   "seed": "0x396531b9356719772eecbfa591c1aae8352193c89c4cd44721728fa93d5efead"
   },
   {
    "account": 4294967295,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x3e6cf3c3a1af758759e9337eed8a7d4723e23a378c1e471a28baf4db10569e01",
-   "seed": "0x53d1fc714abbddfe0cda767eba54c76a4eb798809c9c3dda2dae3fd1783aed5b"
+   "seed": "0x7122114394d608f5f606fd2307f1bb051f5ba4e48b5f48146c5802d95acc3d72"
   },
   {
    "account": 0,
@@ -634,51 +1390,51 @@
   },
   {
    "account": 0,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0x90e171b07a7b8a425766b099bd6c9201ef61d278601baa31737cf881f09f53d2"
+   "seed": "0x215686b6bbf31b9e14b1f0b69982d86241f1e5cd7f512223a66e3110c573bafd"
   },
   {
    "account": 1,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0xdbe11ea3f889162180033382e53386e5174806247487f2a417fe3c771e7c2ed6"
+   "seed": "0x01a35507d8b940b6e11ca14b4f2c3577a82935828f051c967a42a5181c7b10f0"
   },
   {
    "account": 2147483648,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0xdd01f2baedb220a0ba0c3d1c2666e6cf323274b4f00e80de1436c88f26ef8790"
+   "seed": "0x5e8c27632fa50ec6f6f4cd26b4bf676ded74bbe9190b78489dd6db8a1d186e7e"
   },
   {
    "account": 4294967295,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0x096b1bc811400412d3a361a309ee20f4b03e583ca168e56ac39ff4ad11d39777"
+   "seed": "0xb422c469004087550cdbb869b6b47302faa282878ef4ca5554c12d3c91f365e8"
   },
   {
    "account": 0,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0x60aaeb9bf84b62d8f3211b1a7134330610c5a909510001a1f499f0b46dc24f13"
+   "seed": "0x2f54588c03ebbb9b07f333b40ac9aac584af56bf091c115bde6bd21e4e918295"
   },
   {
    "account": 1,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0xd85459a9495e512e9e6b6cbf9eac65bb8c32ba2c1b32940a153ace8cb7f160ca"
+   "seed": "0xab4eb4380449a2fea6c28b4dc75303c6b17a34fa67964a4194593a5386e133b0"
   },
   {
    "account": 2147483648,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0x2fee096393cc51b2dadce19579f2d7e886a61c6d128c1e08881ed9a5eda04b0a"
+   "seed": "0xfefae7a30ce9d72535ca8dc94bef0c5da8170677774677e82ffb004f70568f94"
   },
   {
    "account": 4294967295,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0xfed41ed04e47cf6b7cebabb5fce9f214fc6a5e5b8ddddb38c50cbc7feaa7dee4",
-   "seed": "0xad3cda184018b94ba884fae04be5ca21322a994f4a3df4a407e0a5f470dac0b0"
+   "seed": "0xfb5882a1088b068dcf825a82ac7f1032db90b56dc8b76c4f437e19989f8a6831"
   },
   {
    "account": 0,
@@ -730,51 +1486,51 @@
   },
   {
    "account": 0,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0x782d68653db8a683bdb315d548d6f88f574090f68d80a095d93ed2b9bf5c90e5"
+   "seed": "0xb814daa86ba030be5eb88b67eaf901fd62a40b8ac0d3969df73cd002fef9a9fc"
   },
   {
    "account": 1,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0xeb63f10f1c5e252c74e274db30713a3c6a99029d67e8b91c14300a7b28fdd570"
+   "seed": "0x6590a9686d83f4e07fa47dfb22a8cb44e54d122cab8d6ae863c37529aa8f89d4"
   },
   {
    "account": 2147483648,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0xca89c9dd7b96545c8019a907e59fe65da745f17389a4fd491ce64cef643e48cb"
+   "seed": "0x27e0572a481759d38f96624fdefaaa0a01109b0253c8690d3a3632529cc4cf9d"
   },
   {
    "account": 4294967295,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0xe8fa3a6955c429f42266a8fcb51b7a5db03937ad144b18a7775e7cd2086edf58"
+   "seed": "0xd4d37f721203ec3747942192127f02afad4be0e7c8b3da69b875ae6b7165d23a"
   },
   {
    "account": 0,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0x327398f657f30a58620743a94e6670b6e66674c084eb27a80b92287af3bf0cd9"
+   "seed": "0xc2c8127691b45abc2581335a6c9ae851563d3e9e327eb808fc0de007aa333ff1"
   },
   {
    "account": 1,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0xfe7d41e423ccde8bd5c53bfa19e6157864e03344b1a41ed85628daaec6dbd2fb"
+   "seed": "0xa60cf1955e2be416e92a8d6186ba069c5253fb78310208a7797b7d665459555a"
   },
   {
    "account": 2147483648,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0x865707917112e3cb3bc1bb14e6ae6aa6aae8330f228c0650f98c6bb99c2f55f5"
+   "seed": "0x73d95f822fcf70cd5faa54f68a0b21b81792fc89787c3faa81049a9a61901c96"
   },
   {
    "account": 4294967295,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x2154fcc23f729ca4ab71a0e305c73287774cdab94c358b7814d01d236e6d9817",
-   "seed": "0xf1423152bd80336f11ca5b17aa3dcdbff7dd0e1623d1b585a3559502cf79bda7"
+   "seed": "0x33918046795aa8e193640330dc3117bab5eb09c770d19b8f5625fa1e9ba01ab5"
   },
   {
    "account": 0,
@@ -826,51 +1582,51 @@
   },
   {
    "account": 0,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0xa2b5f7496649b113d4fb866e07b4ebc599f4f3165a04e188cffe218512f73495"
+   "seed": "0xc0507edc74a3f3422259cff464ff4b68a7a7ae597c18c054fc75cb5f1c8ea05b"
   },
   {
    "account": 1,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0xc72162f25117c3a244d06fd669e37d501415b513ef6b557e3da29caebad07045"
+   "seed": "0x91a007d00e658a91a28bc8d2461ceee59629e3dba0a2ba55f0a575cea7a5d082"
   },
   {
    "account": 2147483648,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0xdb11dcf7b0dceac5f2953e4ee01ba0d3396daa666ff2123daae23d5a2ee95ef7"
+   "seed": "0xcf2d839af7a59c309740f1a92926a6ef45964c6cd80df23116ec7f9f5b7d1efd"
   },
   {
    "account": 4294967295,
-   "key_type": "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0xa32d1365a62e1ece8b3ec8d8f165cccc549e87b33818014b70c934cfb18dae83"
+   "seed": "0x1a128f3643b1494a163508573ecfc631e8b50ffdbc500e7f68592d5ec17f876d"
   },
   {
    "account": 0,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0x5c2a7842706513783912f5ca35e0363c7dc1a81395814d140ac203b1909f8645"
+   "seed": "0xaf13e74618685886c5a35f484341ab6bd774292f2cbb2863321d3d73ed707e3b"
   },
   {
    "account": 1,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0xe899ac278d7237950de1a45d8e91f5bef0c25d4a2b886993cf414e35ac216916"
+   "seed": "0x9d72b9de9d248a6b2a3d47118c3b3970889ddaa81626f814042bc17c4ed3cf07"
   },
   {
    "account": 2147483648,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0x43dbc07529a7426f3c114c4e21206e0403a3904e87cb2d5ab5a3b34edcbcba53"
+   "seed": "0x8305f7e5d7a206097120db9ed5aeedf21615155f00b06ec9d131b8ac06dd335e"
   },
   {
    "account": 4294967295,
-   "key_type": " ",
+   "key_type": "!",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
-   "seed": "0x8cd92900dde1ed9ec39294263105e7857bf82926a9b6d437245120cc695adcb5"
+   "seed": "0xeab622dd000d2ef47fb4edc6cb58fd9e795c3f8bcfcd757f478902c2a6999dfd"
   },
   {
    "account": 0,
@@ -895,6 +1651,102 @@
    "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
    "root": "0x21f79df15b5f9de507c3f56d15d1ba7bfda4e6977792f9a8ac3ad04b856f389d",
    "seed": "0xc5fd8d542dad3e7302eb8f292ec135274f35dcd56b140a347ec6e88bfe3c7498"
+  },
+  {
+   "account": 0,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x8604e1625bf27bc7861fbf7191f0d7786ccd3bfc5957b33e4d05b04478f40dec"
+  },
+  {
+   "account": 1,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x055484a7e457b733f8d2d1bd425d9efcc3cdabb9ac1520de4be84db336822ca2"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x92abe7be58e65d42fd349af7a5e7d64221f9ce0863bdcc265c73e706ab04e4d7"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x08ab99f47191e6cda022959b2081b705c6c8ad7c621bbf5dc2dc3eb25d1f8618"
+  },
+  {
+   "account": 0,
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0xc4580d57b9863832af01c76c1d496196f5497f0364e5bde3aac3b3ce648d0c54"
+  },
+  {
+   "account": 1,
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x69604e499ee3468898420817924ec3ef2c371876a8d9769d749ac7e2d4050bfd"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0xf29f3983369d1c4140b750b48c46a56bcb7cbb5342c5f3a6a5402e3d18243820"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x9510a685dc94890c8a8b3c016a4f29b2199a52332bdf2b8fb89859d80ef37e0f"
+  },
+  {
+   "account": 0,
+   "key_type": "!",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x01e6a654946e189d1279b07cd8f6f1030feb87814c9d5066030966bd520381df"
+  },
+  {
+   "account": 1,
+   "key_type": "!",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x69df8453eeef969734c0fe5adaa50f1c667a4b7dcc979e97dd66cfd4cc8b4823"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "!",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0xc2ee70e9ef55f76909ccd3ad2b3ef251e45c2dcd46b85437da7d00c1ae253f6f"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "!",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0xcfec6780c0b8defbc04547f711da230b96e25f838e2ff8900a8504107d086ed0"
+  },
+  {
+   "account": 0,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x3c269847c88a028ba716a51242a1c6f59d48203efd0ae8e93e27a987ce75ba08"
+  },
+  {
+   "account": 1,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0xa44a826b414b58fb631b787cc96a14103eef6e7ae74322eaf13cd24ca58ee08c"
+  },
+  {
+   "account": 2147483648,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x20ba640d36f3e3109fbbc7421048080a23eb6d8fce82b265216078d874f9f8c2"
+  },
+  {
+   "account": 4294967295,
+   "key_type": "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk",
+   "root": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+   "seed": "0x72873899bb172a2fc0fdf90377156c1a4f12144d6e69bb3b362156757f8343d5"
   }
  ],
  "winterlock": [

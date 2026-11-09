@@ -453,19 +453,36 @@ def keylog_vectors():
 
 # --- HBKD (draft ERC: Hash-Based Key Derivation from BIP-39) ---
 
-HBKD_PHRASES = [
-    ("abandon " * 23 + "art", ""),  # the ERC's test cases
-    ("abandon " * 23 + "art", "TREZOR"),
-    ("legal winner thank year wave sausage worth useful legal winner thank yellow", "TREZOR"),
-    ("abandon " * 11 + "about", ""),
-    ("zoo " * 23 + "vote", "a passphrase, with spaces & punctuation!"),
-    ("abandon " * 24, ""),  # a bad checksum: the seed is of the sentence as given
-    ("Abandon  abandon\tabandon", "\x00"),  # not canonical, and control characters: hashed as given
+def _hbkd_words(entropy: bytes) -> list:
+    return phrase._M.to_mnemonic(entropy).split()
+
+
+HBKD_PHRASES = [  # (words, passphrase): every length BIP-39 has, each with a checksum that holds
+    (("abandon " * 23 + "art").split(), ""),  # the ERC's test cases
+    (("abandon " * 23 + "art").split(), "TREZOR"),
+    ("legal winner thank year wave sausage worth useful legal winner thank yellow".split(), "TREZOR"),
+    (("abandon " * 11 + "about").split(), ""),
+    (_hbkd_words(bytes(range(20))), "x"),  # 15 words
+    (_hbkd_words(bytes([0xFF] * 24)), ""),  # 18 words
+    (_hbkd_words(k("winterlock core vectors hbkd 21 words")[:28]), "TREZOR"),  # 21 words
+    (("zoo " * 23 + "vote").split(), "a passphrase, with spaces & punctuation!"),
+    (("abandon " * 23 + "art").split(), "\x00\t\x7f"),  # ASCII control characters in a passphrase are hashed
+]
+_ABANDON = ("abandon " * 23 + "art").split()
+HBKD_BAD_MNEMONICS = [  # refused on both sides: not canonical, a word outside the list, or a failed checksum
+    ["abandon"] * 24,  # the ERC's: the checksum fails
+    _ABANDON[:22] + ["art", "abandon"],  # two words swapped
+    _ABANDON[:11], _ABANDON + ["abandon"], [],  # 11, 25 and 0 words
+    "legal winner thank year wave sausage worth useful legal winner thank yellow abandon".split(),  # 13
+    [w.upper() for w in _ABANDON], ["Abandon"] + _ABANDON[1:],  # case
+    ["aban"] + _ABANDON[1:],  # an abbreviation
+    _ABANDON[:-1] + ["art "], _ABANDON[:-1] + [""], ["abandon abandon"] + _ABANDON[2:],  # spacing
+    _ABANDON[:-1] + ["\xe1rt"], ["\u3042\u3044\u3053\u304f\u3057\u3093"] * 24,  # not words of the English list
 ]
 HBKD_KEY_TYPES = ["leanSphincs-keccak/wambsgans-keccak/b10",
-                  "a key type, with spaces & punctuation: !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", " ", "k" * 200]
+                  "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~", "!", "k" * 200]
 HBKD_ACCOUNTS = [0, 1, 1 << 31, (1 << 32) - 1]
-HBKD_LABELS = ["example.app.gas", "", "winterlock.app.gas.v1", "app.\xfcn\xefc\xf8d\xe9.\u4f8b",
+HBKD_LABELS = ["example.app.gas", "", "winterlock.app.gas.v1", "a label with spaces", "app.\xfcn\xefc\xf8d\xe9.\u4f8b",
                "u\u0308", "l" * 200]
 HBKD_STATEFUL = [  # (context, instance)
     (bytes(range(32)), bytes([0xA5] * 32)),
@@ -473,28 +490,35 @@ HBKD_STATEFUL = [  # (context, instance)
     (k("winterlock core vectors hbkd context"), k("winterlock core vectors hbkd instance")),
     (bytes([0xFF] * 32), bytes(range(32, 64))),
 ]
-HBKD_BAD_KEY_TYPES = ["", "\t", "line\nbreak", "\x00", "\x1f", "\x7f", "caf\xe9", "no\xa0break", "\u3000"]
-HBKD_NON_ASCII = [  # (mnemonic, passphrase): Python normalises (NFKD); the core refuses them
-    ("abandon " * 23 + "art", "p\xe4ssphr\xe4se"),
-    ("abandon " * 23 + "art", "pa\u0308ssphra\u0308se"),
-    ("\u3000".join(["abandon"] * 23 + ["art"]), ""),  # BIP-39's Japanese separator, a space after NFKD
-    ("\xa0".join(["abandon"] * 23 + ["art"]), "TREZOR"),
-    ("abandon " * 23 + "art", "\ufb01"),  # the ligature fi: "fi" after NFKD
+HBKD_BAD_KEY_TYPES = ["", " ", "leanSphincs keccak", "leanSphincs-keccak/wambsgans-keccak/b10 ", "\t", "line\nbreak",
+                      "\x00", "\x1f", "\x7f", "caf\xe9", "no\xa0break", "\u3000"]
+HBKD_NON_ASCII = [  # (words, passphrase): Python normalises the passphrase (NFKD); the core refuses it
+    (_ABANDON, "p\xe4ssphr\xe4se"),
+    (_ABANDON, "pa\u0308ssphra\u0308se"),
+    (_ABANDON, "\ufb01"),  # the ligature fi: "fi" after NFKD
+    ("legal winner thank year wave sausage worth useful legal winner thank yellow".split(), "TREZOR\u3000"),
 ]
 
 
 def hbkd_vectors():
     phrases = []
-    for m, p in HBKD_PHRASES:
-        s = hbkd.bip39_seed(m, p)
-        phrases.append({"mnemonic": m, "passphrase": p, "bip39_seed": b2h(s), "root": b2h(hbkd.root_from_seed(s))})
+    for ws, p in HBKD_PHRASES:
+        s = hbkd.bip39_seed(ws, p)
+        phrases.append({"words": ws, "passphrase": p, "bip39_seed": b2h(s), "root": b2h(hbkd.root_from_seed(s))})
+    assert sorted({len(c["words"]) for c in phrases}) == list(hbkd.WORD_COUNTS)
+    for ws in HBKD_BAD_MNEMONICS:
+        try:
+            hbkd.bip39_seed(ws)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted mnemonic {ws!r}")
     winterlock = []
     for s in SEEDS:
         for p in ("", "TREZOR"):
             winterlock.append({"seed": b2h(s), "passphrase": p, "words": " ".join(phrase.to_phrase(s)),
                                "root": b2h(hbkd.winterlock_root(s, p))})
     roots = [h2b(phrases[0]["root"]), h2b(phrases[2]["root"]), hbkd.winterlock_root(SEED),
-             k("winterlock core vectors hbkd random root")]
+             k("winterlock core vectors hbkd random root"), bytes(range(0x20, 0x40))]
     stateless, stateful, apps = [], [], []
     for r in roots:
         for t in HBKD_KEY_TYPES:
@@ -515,12 +539,12 @@ def hbkd_vectors():
             continue
         raise AssertionError(f"accepted key type {t!r}")
     non_ascii = []
-    for m, p in HBKD_NON_ASCII:
-        nm, np = unicodedata.normalize("NFKD", m), unicodedata.normalize("NFKD", p)
-        non_ascii.append({"mnemonic": m, "passphrase": p, "nfkd_mnemonic": nm, "nfkd_passphrase": np,
-                          "bip39_seed": b2h(hbkd.bip39_seed(m, p))})
-    return {"phrases": phrases, "winterlock": winterlock, "stateless": stateless, "stateful": stateful,
-            "app_secrets": apps, "bad_key_types": HBKD_BAD_KEY_TYPES, "non_ascii": non_ascii}
+    for ws, p in HBKD_NON_ASCII:
+        non_ascii.append({"words": ws, "passphrase": p, "nfkd_passphrase": unicodedata.normalize("NFKD", p),
+                          "bip39_seed": b2h(hbkd.bip39_seed(ws, p))})
+    return {"phrases": phrases, "bad_mnemonics": HBKD_BAD_MNEMONICS, "winterlock": winterlock,
+            "stateless": stateless, "stateful": stateful, "app_secrets": apps, "bad_key_types": HBKD_BAD_KEY_TYPES,
+            "non_ascii": non_ascii}
 
 
 # --- the board's subset ---

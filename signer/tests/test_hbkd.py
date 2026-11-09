@@ -9,14 +9,16 @@ from mnemonic import Mnemonic
 from winterlock_signer import hbkd, leansphincs, phrase
 from winterlock_signer.keccak import keccak256
 
-# The ERC's Test Cases (draft, commit 6a5dbdca): shared inputs, then per phrase and passphrase S, R, the stateless
-# seeds of accounts 0 and 1, the stateful seed of account 0 and the application secret.
+# The ERC's Test Cases (draft, commit 5184e272): shared inputs, then per phrase and passphrase S, R, the stateless
+# seeds of accounts 0 and 1, the stateful seed of account 0 and the application secret; then a random root at account
+# 2^32 - 1, and the inputs an implementation must reject.
 KEY_TYPE = "leanSphincs-keccak/wambsgans-keccak/b10"
 CONTEXT = bytes(range(32))
 INSTANCE = bytes([0xA5] * 32)
 LABEL = "example.app.gas"
 ABANDON = "abandon " * 23 + "art"
 LEGAL = "legal winner thank year wave sausage worth useful legal winner thank yellow"
+TOP = (1 << 32) - 1
 ERC = [
     (ABANDON, "",
      "408b285c123836004f4b8842c89324c1f01382450c0d439af345ba7fc49acf70"
@@ -43,8 +45,13 @@ ERC = [
      "37306d29c12f6f5490989ce516eada140d00038ec48979584aaec7a42c00b37a",
      "85c53633bb07dddb69b8cabe0f883410574b5db9bf90775b93b45620120227b4"),
 ]
-# Informative: the public key (root || public parameter) of the first case's account-0 stateless key under KEY_TYPE
-ERC_PUBLIC_KEY = "14ea1515b0bb93f5bf7151fbad2800ca37389f2020209a2d0e55ed7fd6b2977e"
+ERC_RANDOM_ROOT = bytes(range(0x20, 0x40))  # (R, then the stateless and stateful seeds and app secret at account TOP)
+ERC_RANDOM = ("08ab99f47191e6cda022959b2081b705c6c8ad7c621bbf5dc2dc3eb25d1f8618",
+              "6f7916cfa6ddcc290922eb98746847c8b9b3eb863df42715a28e5e0432371ef4",
+              "3f19d5ebb8a58e748762da7038cf705835fd88b62b7c2b93aa9cacb3e3223529")
+# Winterlock only (the ERC dropped it, since the pruned key generation isn't specified elsewhere): the public key
+# (root || public parameter) of the first case's account-0 stateless key through Winterlock's leanSphincs at b = 10
+WINTERLOCK_PUBLIC_KEY = "14ea1515b0bb93f5bf7151fbad2800ca37389f2020209a2d0e55ed7fd6b2977e"
 
 # BIP-39's published seeds for these two phrases with passphrase "TREZOR" (trezor/python-mnemonic, vectors.json), which
 # the ERC says its two TREZOR values of S are
@@ -64,7 +71,7 @@ class ErcVectors(unittest.TestCase):
     def test_every_value(self):
         for m, p, s, r, sl0, sl1, sf0, app in ERC:
             with self.subTest(mnemonic=m[:20], passphrase=p):
-                self.assertEqual(hbkd.bip39_seed(m, p), h(s))
+                self.assertEqual(hbkd.bip39_seed(m.split(" "), p), h(s))
                 self.assertEqual(hbkd.root_from_seed(h(s)), h(r))
                 self.assertEqual(hbkd.stateless_seed(h(r), KEY_TYPE), h(sl0))
                 self.assertEqual(hbkd.stateless_seed(h(r), KEY_TYPE, 0), h(sl0))
@@ -74,6 +81,27 @@ class ErcVectors(unittest.TestCase):
                 self.assertEqual(hbkd.app_secret(h(r), LABEL), h(app))
                 self.assertEqual(hbkd.app_secret(h(r), LABEL, 0), h(app))
 
+    def test_random_root_at_the_top_account(self):
+        self.assertEqual(ERC_RANDOM_ROOT.hex(), "".join(f"{i:02x}" for i in range(0x20, 0x40)))
+        sl, sf, app = map(h, ERC_RANDOM)
+        self.assertEqual(hbkd.stateless_seed(ERC_RANDOM_ROOT, KEY_TYPE, TOP), sl)
+        self.assertEqual(hbkd.stateful_seed(ERC_RANDOM_ROOT, KEY_TYPE, CONTEXT, INSTANCE, TOP), sf)
+        self.assertEqual(hbkd.app_secret(ERC_RANDOM_ROOT, LABEL, TOP), app)
+
+    def test_rejections(self):
+        """"An implementation rejects each of these inputs": 24 x abandon, key types "" and "leanSphincs keccak", and
+        account 2^32"""
+        with self.assertRaises(ValueError):
+            hbkd.bip39_seed(["abandon"] * 24)
+        for bad in ("", "leanSphincs keccak"):
+            with self.assertRaises(ValueError):
+                hbkd.stateless_seed(ERC_RANDOM_ROOT, bad)
+        for f in (lambda: hbkd.stateless_seed(ERC_RANDOM_ROOT, KEY_TYPE, 1 << 32),
+                  lambda: hbkd.stateful_seed(ERC_RANDOM_ROOT, KEY_TYPE, CONTEXT, INSTANCE, 1 << 32),
+                  lambda: hbkd.app_secret(ERC_RANDOM_ROOT, LABEL, 1 << 32)):
+            with self.assertRaises(ValueError):
+                f()
+
     def test_shared_inputs(self):
         # "context is the bytes 0x00 to 0x1f, and instance is 32 bytes of 0xa5"
         self.assertEqual(CONTEXT.hex(), "".join(f"{i:02x}" for i in range(0x20)))
@@ -82,10 +110,10 @@ class ErcVectors(unittest.TestCase):
         self.assertEqual(len(LEGAL.split()), 12)
 
     def test_b10_public_key(self):
-        """The account-0 stateless seed through Winterlock's leanSphincs key at b = 10: its public key is root || P,
-        16 bytes each, the layout the ERC states"""
+        """Winterlock only: the account-0 stateless seed through Winterlock's leanSphincs key at b = 10. Its public key
+        is root || P, 16 bytes each, EIP-8288's layout"""
         key = leansphincs.Key(h(ERC[0][4]), 10)
-        self.assertEqual(key.public_key, h(ERC_PUBLIC_KEY))
+        self.assertEqual(key.public_key, h(WINTERLOCK_PUBLIC_KEY))
         self.assertEqual(key.public_key, key.root + key.p)
         self.assertEqual(key.b, leansphincs.DEFAULT_B)
 
@@ -99,9 +127,41 @@ class Bip39(unittest.TestCase):
     def test_trezor_seeds_are_bip39s(self):
         for m, want in BIP39_TREZOR.items():
             self.assertEqual(Mnemonic.to_seed(m, "TREZOR"), h(want))
-            self.assertEqual(hbkd.bip39_seed(m, "TREZOR"), h(want))
+            self.assertEqual(hbkd.bip39_seed(m.split(), "TREZOR"), h(want))
+            self.assertEqual(hbkd.bip39_seed(tuple(m.split()), "TREZOR"), h(want))
         self.assertEqual({(m, s) for m, p, s, *_ in ERC if p == "TREZOR"}, set(BIP39_TREZOR.items()))
-        self.assertEqual(hbkd.bip39_seed(ABANDON), Mnemonic.to_seed(ABANDON, ""))
+        self.assertEqual(hbkd.bip39_seed(ABANDON.split()), Mnemonic.to_seed(ABANDON, ""))
+
+    def test_every_length(self):
+        """12 to 24 words, each with a checksum that holds, give BIP-39's seed"""
+        m = Mnemonic("english")
+        for n in hbkd.WORD_COUNTS:
+            for entropy in (bytes(n * 4 // 3), bytes([0xFF] * (n * 4 // 3)), bytes(range(n * 4 // 3))):
+                words = m.to_mnemonic(entropy).split()
+                self.assertEqual(len(words), n)
+                self.assertEqual(hbkd.bip39_seed(words, "x"), Mnemonic.to_seed(" ".join(words), "x"))
+
+    def test_mnemonic_refusals(self):
+        """The ERC: a word outside the wordlist, a failed checksum (BIP-39 asks only for a warning), or a phrase not in
+        canonical form is refused, never hashed as given"""
+        words = ABANDON.split()
+        bad = {
+            "24 x abandon (checksum)": ["abandon"] * 24,
+            "a word swapped (checksum)": words[:22] + ["art", "abandon"],
+            "11 words": words[:11], "13 words": LEGAL.split() + ["abandon"], "25 words": words + ["abandon"],
+            "no words": [],
+            "uppercase": [w.upper() for w in words], "capitalised": ["Abandon"] + words[1:],
+            "abbreviated": ["aban"] + words[1:], "a trailing space": words[:-1] + ["art "],
+            "two words in one": ["abandon abandon"] + words[2:], "an empty word": words[:-1] + [""],
+            "an accent": words[:-1] + ["\xe1rt"], "not English": ["\u3042\u3044\u3053\u304f\u3057\u3093"] * 24,
+        }
+        for what, ws in bad.items():
+            with self.subTest(what):
+                with self.assertRaises(ValueError):
+                    hbkd.bip39_seed(ws)
+        for not_a_list in (ABANDON, ABANDON.encode(), None, [b"abandon"] * 24, iter(words)):
+            with self.assertRaises(ValueError):
+                hbkd.bip39_seed(not_a_list)
 
     def test_pbkdf2_by_hand(self):
         # one 64-byte block: U1 xor ... xor U2048, U1 = HMAC(m, salt || be32(1))
@@ -112,29 +172,31 @@ class Bip39(unittest.TestCase):
         for _ in range(2047):
             u = hmac.new(m, u, hashlib.sha512).digest()
             t = bytearray(a ^ b for a, b in zip(t, u))
-        self.assertEqual(bytes(t), hbkd.bip39_seed(LEGAL, "TREZOR"))
+        self.assertEqual(bytes(t), hbkd.bip39_seed(LEGAL.split(), "TREZOR"))
+        self.assertEqual(bytes(t), hbkd.bip39_seed_unchecked(LEGAL, "TREZOR"))
 
     def test_nfkd(self):
         """Python normalises (NFKD) as BIP-39 says; the Rust core refuses anything but ASCII
         (core/tests/vectors/hbkd.json, "non_ascii")"""
         composed, decomposed = "p\xe4ssphr\xe4se", "pa\u0308ssphra\u0308se"
         self.assertNotEqual(composed, decomposed)
-        s = hbkd.bip39_seed(ABANDON, composed)
-        self.assertEqual(s, hbkd.bip39_seed(ABANDON, decomposed))
+        s = hbkd.bip39_seed(ABANDON.split(), composed)
+        self.assertEqual(s, hbkd.bip39_seed(ABANDON.split(), decomposed))
         self.assertEqual(s, Mnemonic.to_seed(ABANDON, composed))
         self.assertEqual(s, hashlib.pbkdf2_hmac("sha512", ABANDON.encode(), ("mnemonic" + decomposed).encode(), 2048))
-        self.assertNotEqual(s, hbkd.bip39_seed(ABANDON, "passphrase"))
-        # an ideographic space (BIP-39's Japanese separator) and a no-break space are a space after NFKD
-        self.assertEqual(hbkd.bip39_seed(ABANDON.replace(" ", "\u3000")), hbkd.bip39_seed(ABANDON))
-        self.assertEqual(hbkd.bip39_seed(ABANDON.replace(" ", "\xa0")), hbkd.bip39_seed(ABANDON))
+        self.assertNotEqual(s, hbkd.bip39_seed(ABANDON.split(), "passphrase"))
+        # the unchecked step normalises the sentence too: an ideographic space (BIP-39's Japanese separator) and a
+        # no-break space are a space after NFKD
+        self.assertEqual(hbkd.bip39_seed_unchecked(ABANDON.replace(" ", "\u3000")), hbkd.bip39_seed(ABANDON.split()))
+        self.assertEqual(hbkd.bip39_seed_unchecked(ABANDON.replace(" ", "\xa0")), hbkd.bip39_seed(ABANDON.split()))
 
-    def test_sentence_as_given(self):
-        """No word list and no checksum: the seed is of the sentence as given, so a typed phrase is another seed until
-        it is made canonical"""
-        bad = "abandon " * 24  # 24 words, checksum wrong
-        self.assertEqual(hbkd.bip39_seed(bad.strip()), Mnemonic.to_seed(bad.strip(), ""))
-        self.assertNotEqual(hbkd.bip39_seed(ABANDON.upper()), hbkd.bip39_seed(ABANDON))
-        self.assertNotEqual(hbkd.bip39_seed(ABANDON + " "), hbkd.bip39_seed(ABANDON))
+    def test_unchecked_sentence_as_given(self):
+        """bip39_seed_unchecked has no word list and no checksum: the seed is of the sentence as given, which is why
+        the conforming entry point is bip39_seed"""
+        bad = " ".join(["abandon"] * 24)  # checksum wrong
+        self.assertEqual(hbkd.bip39_seed_unchecked(bad), Mnemonic.to_seed(bad, ""))
+        self.assertNotEqual(hbkd.bip39_seed_unchecked(ABANDON.upper()), hbkd.bip39_seed_unchecked(ABANDON))
+        self.assertNotEqual(hbkd.bip39_seed_unchecked(ABANDON + " "), hbkd.bip39_seed_unchecked(ABANDON))
 
 
 class WinterlockRoot(unittest.TestCase):
@@ -149,6 +211,7 @@ class WinterlockRoot(unittest.TestCase):
         seed = os.urandom(32)
         words = phrase.to_phrase(seed)
         self.assertEqual(hbkd.winterlock_root(seed, "x"), hbkd.root_from_seed(Mnemonic.to_seed(" ".join(words), "x")))
+        self.assertEqual(hbkd.winterlock_root(seed, "x"), hbkd.root_from_seed(hbkd.bip39_seed(words, "x")))
         # the phrase as a member may type it decodes to the same seed, so to the same root
         typed = ", ".join(f"{i}. {w[:4].upper()}" for i, w in enumerate(words, 1))
         self.assertEqual(hbkd.winterlock_root(phrase.to_seed(typed)), hbkd.winterlock_root(seed))
@@ -160,7 +223,7 @@ class InputChecks(unittest.TestCase):
     R = h(ERC[0][3])
 
     def test_accounts(self):
-        top = (1 << 32) - 1
+        top = TOP
         self.assertNotEqual(hbkd.stateless_seed(self.R, KEY_TYPE, top), hbkd.stateless_seed(self.R, KEY_TYPE, 0))
         hbkd.stateful_seed(self.R, KEY_TYPE, CONTEXT, INSTANCE, top)
         hbkd.app_secret(self.R, LABEL, top)
@@ -174,13 +237,14 @@ class InputChecks(unittest.TestCase):
                     hbkd.app_secret(self.R, LABEL, bad)
 
     def test_key_types(self):
-        punctuated = "a key type, with spaces & punctuation: !\"#$%'()*+-./;<=>?@[\\]^_`{|}~"
-        for good in (" ", "~", "x", punctuated, "k" * 300):
+        punctuated = "a-key-type,with_punctuation:!\"#$%&'()*+-./;<=>?@[\\]^_`{|}~"
+        for good in ("!", "~", "x", punctuated, "k" * 300):
             with self.subTest(key_type=good):
                 self.assertTrue(hbkd.is_key_type(good))
                 self.assertEqual(hbkd.stateless_seed(self.R, good),
                                  hbkd.tagged_hash("HBKD/stateless/v1", self.R + bytes(4) + keccak256(good.encode())))
-        for bad in ("", "\n", "a\tb", "\x00", "\x1f", "\x7f", "\xe9", "\xa0", "\u3000", "k\u0301", b"x", None, 1):
+        for bad in ("", " ", "leanSphincs keccak", KEY_TYPE + " ", " " + KEY_TYPE, "\n", "a\tb", "\x00", "\x1f", "\x7f",
+                    "\xe9", "\xa0", "\u3000", "k\u0301", b"x", None, 1):
             with self.subTest(key_type=bad):
                 self.assertFalse(hbkd.is_key_type(bad))
                 with self.assertRaises(ValueError):
@@ -189,9 +253,10 @@ class InputChecks(unittest.TestCase):
                     hbkd.stateful_seed(self.R, bad, CONTEXT, INSTANCE)
 
     def test_key_types_match_the_reference_predicate(self):
-        """The ERC's reference code: key_type and key_type.isascii() and key_type.isprintable()"""
+        """The ERC's reference code: all("!" <= c <= "~" for c in key_type), non-empty: printable ASCII without the
+        space"""
         for c in map(chr, range(0x3000)):
-            self.assertEqual(hbkd.is_key_type(c), c.isascii() and c.isprintable(), hex(ord(c)))
+            self.assertEqual(hbkd.is_key_type(c), c.isascii() and c.isprintable() and c != " ", hex(ord(c)))
 
     def test_lengths(self):
         for bad in (bytes(31), bytes(33), b"", "00" * 32, None):
@@ -219,15 +284,18 @@ class InputChecks(unittest.TestCase):
         for bad in (b"label", None, "\ud800"):  # bytes, nothing, a lone surrogate (not UTF-8)
             with self.assertRaises(ValueError):
                 hbkd.app_secret(self.R, bad)
-        for m, p in ((b"abandon", ""), (ABANDON, b"x"), (None, "")):
+        for m, p in ((b"abandon", ""), (ABANDON.split(), b"x"), (ABANDON.split(), None), (None, ""), (ABANDON, "")):
             with self.assertRaises(ValueError):
                 hbkd.bip39_seed(m, p)
+        for m, p in ((b"abandon", ""), (ABANDON, b"x"), (None, ""), (ABANDON.split(), "")):
+            with self.assertRaises(ValueError):
+                hbkd.bip39_seed_unchecked(m, p)
 
     def test_inputs_separate(self):
         r = self.R
         seeds = {
             hbkd.stateless_seed(r, KEY_TYPE), hbkd.stateless_seed(r, KEY_TYPE, 1),
-            hbkd.stateless_seed(r, KEY_TYPE + " "), hbkd.stateless_seed(h(ERC[1][3]), KEY_TYPE),
+            hbkd.stateless_seed(r, KEY_TYPE + "!"), hbkd.stateless_seed(h(ERC[1][3]), KEY_TYPE),
             hbkd.stateful_seed(r, KEY_TYPE, CONTEXT, INSTANCE), hbkd.stateful_seed(r, KEY_TYPE, INSTANCE, CONTEXT),
             hbkd.stateful_seed(r, KEY_TYPE, CONTEXT, bytes(32)),
             hbkd.app_secret(r, LABEL), hbkd.app_secret(r, KEY_TYPE),

@@ -656,15 +656,26 @@ fn account(v: &serde_json::Value) -> u32 {
 }
 
 #[cfg(feature = "hbkd")]
+fn word_list(v: &serde_json::Value) -> Vec<&str> {
+    v.as_array().unwrap().iter().map(str_).collect()
+}
+
+#[cfg(feature = "hbkd")]
 #[test]
 fn hbkd_derivations() {
     use winterlock_core::hbkd;
     let v = load(HBKD);
+    let mut lengths = Vec::new();
     for c in v["phrases"].as_array().unwrap() {
-        let s = hbkd::bip39_seed(str_(&c["mnemonic"]), str_(&c["passphrase"])).unwrap();
+        let words = word_list(&c["words"]);
+        let s = hbkd::bip39_seed(&words, str_(&c["passphrase"])).unwrap();
         assert_eq!(s, arr::<64>(&c["bip39_seed"]), "{c}");
         assert_eq!(hbkd::root_from_seed(&s), arr::<32>(&c["root"]), "{c}");
+        lengths.push(words.len());
     }
+    lengths.sort();
+    lengths.dedup();
+    assert_eq!(lengths, hbkd::WORD_COUNTS);
     for c in v["winterlock"].as_array().unwrap() {
         let seed: [u8; 32] = arr(&c["seed"]);
         assert_eq!(phrase::to_phrase(&seed).join(" "), str_(&c["words"]));
@@ -702,6 +713,11 @@ fn hbkd_derivations() {
 fn hbkd_refusals() {
     use winterlock_core::hbkd;
     let v = load(HBKD);
+    for m in v["bad_mnemonics"].as_array().unwrap() {
+        let words = word_list(m);
+        assert!(hbkd::check_mnemonic(&words).is_err(), "{m}");
+        assert!(hbkd::bip39_seed(&words, "").is_err(), "{m}");
+    }
     for t in v["bad_key_types"].as_array().unwrap() {
         let t = str_(t);
         assert!(!hbkd::is_key_type(t), "{t:?}");
@@ -710,15 +726,15 @@ fn hbkd_refusals() {
     }
     let mut ascii_after_nfkd = 0;
     for c in v["non_ascii"].as_array().unwrap() {
-        let (m, p) = (str_(&c["mnemonic"]), str_(&c["passphrase"]));
-        assert!(!(m.is_ascii() && p.is_ascii()));
-        assert!(hbkd::bip39_seed(m, p).is_err(), "{c}");
-        let (nm, np) = (str_(&c["nfkd_mnemonic"]), str_(&c["nfkd_passphrase"]));
-        if nm.is_ascii() && np.is_ascii() {
-            assert_eq!(hbkd::bip39_seed(nm, np), Ok(arr(&c["bip39_seed"])), "{c}");
+        let (words, p) = (word_list(&c["words"]), str_(&c["passphrase"]));
+        assert!(!p.is_ascii());
+        assert!(hbkd::bip39_seed(&words, p).is_err(), "{c}");
+        let np = str_(&c["nfkd_passphrase"]);
+        if np.is_ascii() {
+            assert_eq!(hbkd::bip39_seed(&words, np), Ok(arr(&c["bip39_seed"])), "{c}");
             ascii_after_nfkd += 1;
         } else {
-            assert!(hbkd::bip39_seed(nm, np).is_err(), "{c}");
+            assert!(hbkd::bip39_seed(&words, np).is_err(), "{c}");
         }
     }
     assert!(ascii_after_nfkd > 0);
