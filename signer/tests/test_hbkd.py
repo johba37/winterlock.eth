@@ -12,11 +12,12 @@ from mnemonic import Mnemonic
 
 from winterlock_signer import hbkd, leansphincs, phrase
 
-# The ERC's Test Cases (draft, commit 14708d88): shared inputs, then per phrase and passphrase S, R, the stateless
-# seeds of accounts 0 and 1, the stateful seed of account 0 and the application secret, all of L = 32; the first
-# phrase's stateless seed of L = 48; a random input's R and its values at account 2^32 - 1; the info bytes of the first
-# stateless seed; three SLH-DSA key types; and the inputs an implementation must reject.
+# The ERC's Test Cases (draft, commit aac2acae): shared inputs, then per phrase and passphrase S, R, the stateless
+# seeds of accounts 0 and 1, the stateful seed of account 0 (key type ONE_TIME) and the application secret, all of
+# L = 32; the first phrase's application secret of L = 48; a random input's R and its values at account 2^32 - 1; the
+# info bytes of the first stateless seed; three SLH-DSA key types; and the inputs an implementation must reject.
 KEY_TYPE = "leanSphincs-keccak/wambsgans-keccak/b10"
+ONE_TIME = "example/one-time/v1"  # the ERC's made-up stateful key type, 32-byte seed
 CONTEXT = bytes(range(32))
 INSTANCE = bytes([0xA5] * 32)
 LABEL = "example.app.gas"
@@ -31,7 +32,7 @@ ERC = [
      "e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
      "fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879",
      "dae839ce92eb35bdd99718114d73d0b1ef6a2c66ad0bdd41b1fc7e99ee36ff82",
-     "675a2390347bd7f57af7086cd3596929701d22f554100304555a946403542c9f",
+     "e09f687949d34fe3700c4cc043fe4bbb9cc1747df356030f1660628bd17e3c35",
      "4a50286a3a17be26017002484f0e99f10b6a19bc6202fbc3f079760fd9b1c000"),
     (ABANDON, "TREZOR",
      "bda85446c68413707090a52022edd26a1c9462295029f2e60cd7c4f2bbd30971"
@@ -40,7 +41,7 @@ ERC = [
      "edabf87db6ceaebf3684dbfaf5ea46ec34d2b91a0d7661310b03b4ec1b5202bf",
      "3d5ad9f82a782c1578db5b40443cfba75c151167312a133d4c90457f6a98179d",
      "e5fa8baf57d6a7fecf5cdd9b7e1d1714cfbbdd4c86e7de882d4494d02fe65433",
-     "20023fe84a406e7f050108053e586d5741db708b721554c6a9e1e1cb16bd6b6b",
+     "876af17dd4ee96eb01a062b1416ad826079c788902bab2a8f9a1dad694f70bf7",
      "63cf757802534428b39551535e5560831be70a5996f1eab6240d399a0798c151"),
     (LEGAL, "TREZOR",
      "2e8905819b8723fe2c1d161860e5ee1830318dbf49a83bd451cfb8440c28bd6f"
@@ -49,16 +50,16 @@ ERC = [
      "30dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
      "601ae30e33d5058eed33e0cc0ec25cb5bf8659481104a7bd0f10c0ebdd30b967",
      "7d3b358bf3d671dc6eb66dcfc58f7d91e6bb06bfe4cf92da9c19051a44516943",
-     "52f7f43010563686fa971066e92e0e389d1caddf2c14a1dbb27f589a5f90dfee",
+     "d3f9ac5b6a707b567dd6d3e4ceb54671e463f3a0b9a1419b6cfcb7ce715a0025",
      "27ed4acb2aed9f052692619b763f96da377a3f96f2b242d8d636d19e1d06a3be"),
 ]
-ERC_STATELESS_48 = ("da22b68be432f40bc516b7f4633ac9238970b93fe22e198438f32750cb42c45a"
-                    "7eaa9c32c1bc6a3fb120d9d3e3cd9d51")
+ERC_APP_48 = ("12e34297e10e77196669049b009d5979ea993bd5f5bbc94fcf3f1fc9ed5b82ee"
+              "625c3c751825ca788a9ccb7fc31422ea")
 ERC_RANDOM_IKM = bytes(range(0x20, 0x40))  # R, then the stateless and stateful seeds and app secret at account TOP
 ERC_RANDOM = ("719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5"
               "c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
               "6a0989ffde23947e80f0dfe22f5c9f7df46b79403db776b90fdd127b84f76ceb",
-              "0faee1dc2f4f8cdb4cd3fb634429c53d2305644fcc3903f5507ce05a64c6f5e8",
+              "428e830b9fe051934bdcb8d5f10d16e4bf48bc1b2d7bdfcf56094e97d1a5a374",
               "dadb75da4b8194cfac6575b65705b93e5343172e4c2ed271e2e3627ffadfa950")
 ERC_INFO = "01 00000000 0020 27 6c65616e537068696e63732d6b656363616b2f77616d627367616e732d6b656363616b2f623130"
 ERC_SLH_DSA = [  # (key type, seed, public key) for the first phrase, account 0
@@ -134,26 +135,27 @@ class ErcVectors(unittest.TestCase):
                 self.assertEqual(hbkd.stateless_seed(h(r), KEY_TYPE, 32), h(sl0))
                 self.assertEqual(hbkd.stateless_seed(h(r), KEY_TYPE, 32, 0), h(sl0))
                 self.assertEqual(hbkd.stateless_seed(h(r), KEY_TYPE, 32, 1), h(sl1))
-                self.assertEqual(hbkd.stateful_seed(h(r), KEY_TYPE, 32, CONTEXT, INSTANCE), h(sf0))
-                self.assertEqual(hbkd.stateful_seed(h(r), KEY_TYPE, 32, CONTEXT, INSTANCE, 0), h(sf0))
+                self.assertEqual(hbkd.stateful_seed(h(r), ONE_TIME, 32, CONTEXT, INSTANCE), h(sf0))
+                self.assertEqual(hbkd.stateful_seed(h(r), ONE_TIME, 32, CONTEXT, INSTANCE, 0), h(sf0))
                 self.assertEqual(hbkd.app_secret(h(r), LABEL), h(app))
                 self.assertEqual(hbkd.app_secret(h(r), LABEL, 32, 0), h(app))
 
-    def test_stateless_48(self):
-        """"The line with L = 48 shows that a longer seed does not start with the shorter one." HKDF alone would make
-        it a prefix: L in info is what separates them."""
-        r, sl0 = h(ERC[0][3]), h(ERC[0][4])
-        s48 = hbkd.stateless_seed(r, KEY_TYPE, 48)
-        self.assertEqual(s48, h(ERC_STATELESS_48))
-        self.assertNotEqual(s48[:32], sl0)
-        self.assertEqual(hbkd.hkdf_expand(r, hbkd.info(hbkd.STATELESS, 0, 32, KEY_TYPE.encode()), 48)[:32], sl0)
+    def test_app_secret_48(self):
+        """"The application secret with L = 48 shows that a longer output does not start with the shorter one." HKDF
+        alone would make it a prefix: L in info is what separates them."""
+        r, app0 = h(ERC[0][3]), h(ERC[0][7])
+        a48 = hbkd.app_secret(r, LABEL, 48)
+        self.assertEqual(a48, h(ERC_APP_48))
+        self.assertEqual(hbkd.app_secret(r, LABEL, 48, 0), h(ERC_APP_48))
+        self.assertNotEqual(a48[:32], app0)
+        self.assertEqual(hbkd.hkdf_expand(r, hbkd.info(hbkd.APPLICATION, 0, 32, LABEL.encode()), 48)[:32], app0)
 
     def test_random_input_at_the_top_account(self):
         self.assertEqual(ERC_RANDOM_IKM.hex(), "".join(f"{i:02x}" for i in range(0x20, 0x40)))
         r, sl, sf, app = map(h, ERC_RANDOM)
         self.assertEqual(hbkd.root(ERC_RANDOM_IKM), r)
         self.assertEqual(hbkd.stateless_seed(r, KEY_TYPE, 32, TOP), sl)
-        self.assertEqual(hbkd.stateful_seed(r, KEY_TYPE, 32, CONTEXT, INSTANCE, TOP), sf)
+        self.assertEqual(hbkd.stateful_seed(r, ONE_TIME, 32, CONTEXT, INSTANCE, TOP), sf)
         self.assertEqual(hbkd.app_secret(r, LABEL, 32, TOP), app)
 
     def test_info_bytes(self):
@@ -163,8 +165,8 @@ class ErcVectors(unittest.TestCase):
         r = h(ERC[0][3])
         self.assertEqual(hbkd.hkdf_expand(r, want, 32), h(ERC[0][4]))
         # the other two purposes, from the same layout
-        sf = hbkd.info(hbkd.STATEFUL, 0, 32, KEY_TYPE.encode(), CONTEXT + INSTANCE)
-        self.assertEqual(sf, b"\x02" + want[1:] + CONTEXT + INSTANCE)
+        sf = hbkd.info(hbkd.STATEFUL, 0, 32, ONE_TIME.encode(), CONTEXT + INSTANCE)
+        self.assertEqual(sf, b"\x02" + want[1:7] + bytes([len(ONE_TIME)]) + ONE_TIME.encode() + CONTEXT + INSTANCE)
         self.assertEqual(hbkd.hkdf_expand(r, sf, 32), h(ERC[0][6]))
         app = hbkd.info(hbkd.APPLICATION, 0, 32, LABEL.encode())
         self.assertEqual(app, bytes([3, 0, 0, 0, 0, 0, 32, 15]) + LABEL.encode())
@@ -197,7 +199,7 @@ class ErcVectors(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     hbkd.stateful_seed(r, bad, 32, CONTEXT, INSTANCE)
         for f in (lambda: hbkd.stateless_seed(r, KEY_TYPE, 32, 1 << 32),
-                  lambda: hbkd.stateful_seed(r, KEY_TYPE, 32, CONTEXT, INSTANCE, 1 << 32),
+                  lambda: hbkd.stateful_seed(r, ONE_TIME, 32, CONTEXT, INSTANCE, 1 << 32),
                   lambda: hbkd.app_secret(r, LABEL, 32, 1 << 32),
                   lambda: hbkd.slh_dsa_seeds(r, "SLH-DSA-SHA2-128s", 1 << 32)):
             with self.assertRaises(ValueError):
@@ -205,7 +207,7 @@ class ErcVectors(unittest.TestCase):
         for bad in (31, 16321):
             with self.subTest(length=bad):
                 for f in (lambda: hbkd.stateless_seed(r, KEY_TYPE, bad),
-                          lambda: hbkd.stateful_seed(r, KEY_TYPE, bad, CONTEXT, INSTANCE),
+                          lambda: hbkd.stateful_seed(r, ONE_TIME, bad, CONTEXT, INSTANCE),
                           lambda: hbkd.app_secret(r, LABEL, bad),
                           lambda: hbkd.info(hbkd.STATELESS, 0, bad, b"x")):
                     with self.assertRaises(ValueError):
@@ -449,14 +451,14 @@ class InputChecks(unittest.TestCase):
 
     def test_accounts(self):
         self.assertNotEqual(hbkd.stateless_seed(self.R, KEY_TYPE, 32, TOP), hbkd.stateless_seed(self.R, KEY_TYPE, 32))
-        hbkd.stateful_seed(self.R, KEY_TYPE, 32, CONTEXT, INSTANCE, TOP)
+        hbkd.stateful_seed(self.R, ONE_TIME, 32, CONTEXT, INSTANCE, TOP)
         hbkd.app_secret(self.R, LABEL, 32, TOP)
         for bad in (-1, 1 << 32, 1 << 64, True, False, 1.0, "0", None):
             with self.subTest(account=bad):
                 with self.assertRaises(ValueError):
                     hbkd.stateless_seed(self.R, KEY_TYPE, 32, bad)
                 with self.assertRaises(ValueError):
-                    hbkd.stateful_seed(self.R, KEY_TYPE, 32, CONTEXT, INSTANCE, bad)
+                    hbkd.stateful_seed(self.R, ONE_TIME, 32, CONTEXT, INSTANCE, bad)
                 with self.assertRaises(ValueError):
                     hbkd.app_secret(self.R, LABEL, 32, bad)
 
@@ -464,14 +466,14 @@ class InputChecks(unittest.TestCase):
         """L: 32 to 16320, an int"""
         for good in (32, 33, 64, 65, 16320):
             self.assertEqual(len(hbkd.stateless_seed(self.R, KEY_TYPE, good)), good)
-            self.assertEqual(len(hbkd.stateful_seed(self.R, KEY_TYPE, good, CONTEXT, INSTANCE)), good)
+            self.assertEqual(len(hbkd.stateful_seed(self.R, ONE_TIME, good, CONTEXT, INSTANCE)), good)
             self.assertEqual(len(hbkd.app_secret(self.R, LABEL, good)), good)
         for bad in (0, 31, 16321, 1 << 16, -32, True, 32.0, "32", None):
             with self.subTest(length=bad):
                 with self.assertRaises(ValueError):
                     hbkd.stateless_seed(self.R, KEY_TYPE, bad)
                 with self.assertRaises(ValueError):
-                    hbkd.stateful_seed(self.R, KEY_TYPE, bad, CONTEXT, INSTANCE)
+                    hbkd.stateful_seed(self.R, ONE_TIME, bad, CONTEXT, INSTANCE)
                 with self.assertRaises(ValueError):
                     hbkd.app_secret(self.R, LABEL, bad)
 
@@ -504,7 +506,7 @@ class InputChecks(unittest.TestCase):
         for bad in (bytes(32), bytes(63), bytes(65), b"", "00" * 64, None):
             with self.subTest(root=bad):
                 for f in (lambda v: hbkd.stateless_seed(v, KEY_TYPE, 32),
-                          lambda v: hbkd.stateful_seed(v, KEY_TYPE, 32, CONTEXT, INSTANCE),
+                          lambda v: hbkd.stateful_seed(v, ONE_TIME, 32, CONTEXT, INSTANCE),
                           lambda v: hbkd.app_secret(v, LABEL),
                           lambda v: hbkd.slh_dsa_seeds(v, "SLH-DSA-SHA2-128s")):
                     with self.assertRaises(ValueError):
@@ -512,12 +514,12 @@ class InputChecks(unittest.TestCase):
         for bad in (bytes(31), bytes(33), bytes(64), b"", "00" * 32, None):
             with self.subTest(context_or_instance=bad):
                 with self.assertRaises(ValueError):
-                    hbkd.stateful_seed(self.R, KEY_TYPE, 32, bad, INSTANCE)
+                    hbkd.stateful_seed(self.R, ONE_TIME, 32, bad, INSTANCE)
                 with self.assertRaises(ValueError):
-                    hbkd.stateful_seed(self.R, KEY_TYPE, 32, CONTEXT, bad)
+                    hbkd.stateful_seed(self.R, ONE_TIME, 32, CONTEXT, bad)
         # bytearray is bytes
         self.assertEqual(hbkd.stateless_seed(bytearray(self.R), KEY_TYPE, 32), h(ERC[0][4]))
-        self.assertEqual(hbkd.stateful_seed(self.R, KEY_TYPE, 32, bytearray(CONTEXT), bytearray(INSTANCE)), h(ERC[0][6]))
+        self.assertEqual(hbkd.stateful_seed(self.R, ONE_TIME, 32, bytearray(CONTEXT), bytearray(INSTANCE)), h(ERC[0][6]))
 
     def test_labels(self):
         """1 to 255 bytes of UTF-8 as given, counted in bytes, not normalised"""
@@ -550,8 +552,8 @@ class InputChecks(unittest.TestCase):
             hbkd.stateless_seed(r, KEY_TYPE, 32), hbkd.stateless_seed(r, KEY_TYPE, 32, 1),
             hbkd.stateless_seed(r, KEY_TYPE + "!", 32), hbkd.stateless_seed(h(ERC[1][3]), KEY_TYPE, 32),
             hbkd.stateless_seed(r, KEY_TYPE, 33)[:32],
-            hbkd.stateful_seed(r, KEY_TYPE, 32, CONTEXT, INSTANCE), hbkd.stateful_seed(r, KEY_TYPE, 32, INSTANCE, CONTEXT),
-            hbkd.stateful_seed(r, KEY_TYPE, 32, CONTEXT, bytes(32)),
+            hbkd.stateful_seed(r, ONE_TIME, 32, CONTEXT, INSTANCE), hbkd.stateful_seed(r, ONE_TIME, 32, INSTANCE, CONTEXT),
+            hbkd.stateful_seed(r, ONE_TIME, 32, CONTEXT, bytes(32)),
             hbkd.app_secret(r, LABEL), hbkd.app_secret(r, KEY_TYPE),
         }
         self.assertEqual(len(seeds), 10)

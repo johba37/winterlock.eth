@@ -448,7 +448,7 @@ pub fn winterlock_root(seed: &[u8; 32], passphrase: &str) -> Result<[u8; HASH_LE
 
 #[cfg(test)]
 mod tests {
-    //! The draft ERC's own test cases, hard-coded from its text (snapshot 14708d88), and a few
+    //! The draft ERC's own test cases, hard-coded from its text (snapshot aac2acae), and a few
     //! Wycheproof HKDF-SHA512 vectors: tests/python_vectors.rs checks the core against the Python
     //! signer instead.
     use super::*;
@@ -458,6 +458,8 @@ mod tests {
     use wasm_bindgen_test::wasm_bindgen_test as test;
 
     const KEY_TYPE: &str = "leanSphincs-keccak/wambsgans-keccak/b10";
+    /// The ERC's made-up stateful key type (a one-time key with a 32-byte seed).
+    const ONE_TIME: &str = "example/one-time/v1";
     const LABEL: &str = "example.app.gas";
     const ABANDON: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
                            abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
@@ -485,7 +487,7 @@ mod tests {
                 e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
             stateless0: "fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879",
             stateless1: "dae839ce92eb35bdd99718114d73d0b1ef6a2c66ad0bdd41b1fc7e99ee36ff82",
-            stateful0: "675a2390347bd7f57af7086cd3596929701d22f554100304555a946403542c9f",
+            stateful0: "e09f687949d34fe3700c4cc043fe4bbb9cc1747df356030f1660628bd17e3c35",
             app: "4a50286a3a17be26017002484f0e99f10b6a19bc6202fbc3f079760fd9b1c000",
         },
         Case {
@@ -497,7 +499,7 @@ mod tests {
                 edabf87db6ceaebf3684dbfaf5ea46ec34d2b91a0d7661310b03b4ec1b5202bf",
             stateless0: "3d5ad9f82a782c1578db5b40443cfba75c151167312a133d4c90457f6a98179d",
             stateless1: "e5fa8baf57d6a7fecf5cdd9b7e1d1714cfbbdd4c86e7de882d4494d02fe65433",
-            stateful0: "20023fe84a406e7f050108053e586d5741db708b721554c6a9e1e1cb16bd6b6b",
+            stateful0: "876af17dd4ee96eb01a062b1416ad826079c788902bab2a8f9a1dad694f70bf7",
             app: "63cf757802534428b39551535e5560831be70a5996f1eab6240d399a0798c151",
         },
         Case {
@@ -509,19 +511,19 @@ mod tests {
                 30dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
             stateless0: "601ae30e33d5058eed33e0cc0ec25cb5bf8659481104a7bd0f10c0ebdd30b967",
             stateless1: "7d3b358bf3d671dc6eb66dcfc58f7d91e6bb06bfe4cf92da9c19051a44516943",
-            stateful0: "52f7f43010563686fa971066e92e0e389d1caddf2c14a1dbb27f589a5f90dfee",
+            stateful0: "d3f9ac5b6a707b567dd6d3e4ceb54671e463f3a0b9a1419b6cfcb7ce715a0025",
             app: "27ed4acb2aed9f052692619b763f96da377a3f96f2b242d8d636d19e1d06a3be",
         },
     ];
-    /// The first case's stateless seed at L = 48 (account 0).
-    const STATELESS_48: &str = "da22b68be432f40bc516b7f4633ac9238970b93fe22e198438f32750cb42c45a\
-                                7eaa9c32c1bc6a3fb120d9d3e3cd9d51";
+    /// The first case's application secret at L = 48 (account 0).
+    const APP_48: &str = "12e34297e10e77196669049b009d5979ea993bd5f5bbc94fcf3f1fc9ed5b82ee\
+                          625c3c751825ca788a9ccb7fc31422ea";
     /// The random input 0x20..0x3f: its root, then its stateless and stateful seeds and app secret
     /// at account 2^32 - 1.
     const RANDOM_R: &str = "719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5\
                             c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a";
     const RANDOM_STATELESS: &str = "6a0989ffde23947e80f0dfe22f5c9f7df46b79403db776b90fdd127b84f76ceb";
-    const RANDOM_STATEFUL: &str = "0faee1dc2f4f8cdb4cd3fb634429c53d2305644fcc3903f5507ce05a64c6f5e8";
+    const RANDOM_STATEFUL: &str = "428e830b9fe051934bdcb8d5f10d16e4bf48bc1b2d7bdfcf56094e97d1a5a374";
     const RANDOM_APP: &str = "dadb75da4b8194cfac6575b65705b93e5343172e4c2ed271e2e3627ffadfa950";
     /// The `info` of the first stateless seed (account 0, L = 32), 47 bytes.
     const INFO: &str = "01000000000020276c65616e537068696e63732d6b656363616b2f77616d627367616e732d6b656363616b2f623130";
@@ -586,13 +588,13 @@ mod tests {
             assert_eq!(root(&s).unwrap(), r);
             assert_eq!(stateless_seed(&r, KEY_TYPE, 32, 0).unwrap(), h(c.stateless0));
             assert_eq!(stateless_seed(&r, KEY_TYPE, 32, 1).unwrap(), h(c.stateless1));
-            assert_eq!(stateful_seed(&r, KEY_TYPE, 32, &context(), &INSTANCE, 0).unwrap(), h(c.stateful0));
+            assert_eq!(stateful_seed(&r, ONE_TIME, 32, &context(), &INSTANCE, 0).unwrap(), h(c.stateful0));
             assert_eq!(app_secret(&r, LABEL, 32, 0).unwrap(), h(c.app));
             // the _into forms give the same bytes
             let mut out = [0u8; 32];
             stateless_seed_into(&r, KEY_TYPE, 1, &mut out).unwrap();
             assert_eq!(out, h32(c.stateless1));
-            stateful_seed_into(&r, KEY_TYPE, &context(), &INSTANCE, 0, &mut out).unwrap();
+            stateful_seed_into(&r, ONE_TIME, &context(), &INSTANCE, 0, &mut out).unwrap();
             assert_eq!(out, h32(c.stateful0));
             app_secret_into(&r, LABEL, 0, &mut out).unwrap();
             assert_eq!(out, h32(c.app));
@@ -600,16 +602,20 @@ mod tests {
         assert_eq!(context()[0x1f], 0x1f);
     }
 
-    /// "The line with L = 48 shows that a longer seed does not start with the shorter one."
+    /// "The application secret with L = 48 shows that a longer output does not start with the
+    /// shorter one."
     #[test]
-    fn erc_stateless_48() {
+    fn erc_app_secret_48() {
         let r = h64(CASES[0].r);
-        let s48 = stateless_seed(&r, KEY_TYPE, 48, 0).unwrap();
-        assert_eq!(s48, h(STATELESS_48));
-        assert_ne!(s48[..32], h(CASES[0].stateless0)[..]);
+        let a48 = app_secret(&r, LABEL, 48, 0).unwrap();
+        assert_eq!(a48, h(APP_48));
+        let mut out = [0u8; 48];
+        app_secret_into(&r, LABEL, 0, &mut out).unwrap();
+        assert_eq!(out[..], a48[..]);
+        assert_ne!(a48[..32], h(CASES[0].app)[..]);
         // HKDF alone would make it a prefix: L in info is what separates them
-        let info32 = info(STATELESS, 0, 32, KEY_TYPE.as_bytes(), &[]).unwrap();
-        assert_eq!(hkdf_expand(&r, &info32, 48).unwrap()[..32], h(CASES[0].stateless0)[..]);
+        let info32 = info(APPLICATION, 0, 32, LABEL.as_bytes(), &[]).unwrap();
+        assert_eq!(hkdf_expand(&r, &info32, 48).unwrap()[..32], h(CASES[0].app)[..]);
     }
 
     #[test]
@@ -619,7 +625,7 @@ mod tests {
         let r = root(&ikm).unwrap();
         assert_eq!(r, h64(RANDOM_R));
         assert_eq!(stateless_seed(&r, KEY_TYPE, 32, u32::MAX).unwrap(), h(RANDOM_STATELESS));
-        assert_eq!(stateful_seed(&r, KEY_TYPE, 32, &context(), &INSTANCE, u32::MAX).unwrap(), h(RANDOM_STATEFUL));
+        assert_eq!(stateful_seed(&r, ONE_TIME, 32, &context(), &INSTANCE, u32::MAX).unwrap(), h(RANDOM_STATEFUL));
         assert_eq!(app_secret(&r, LABEL, 32, u32::MAX).unwrap(), h(RANDOM_APP));
     }
 
@@ -634,8 +640,8 @@ mod tests {
         // the other two purposes, from the same layout
         let mut tail = context().to_vec();
         tail.extend_from_slice(&INSTANCE);
-        let sf = info(STATEFUL, 0, 32, KEY_TYPE.as_bytes(), &tail).unwrap();
-        assert_eq!(sf.len(), 47 + 64);
+        let sf = info(STATEFUL, 0, 32, ONE_TIME.as_bytes(), &tail).unwrap();
+        assert_eq!(sf.len(), 8 + ONE_TIME.len() + 64);
         assert_eq!(hkdf_expand(&r, &sf, 32).unwrap(), h(CASES[0].stateful0));
         let app = info(APPLICATION, 0, 32, LABEL.as_bytes(), &[]).unwrap();
         assert_eq!(app[..8], [0x03, 0, 0, 0, 0, 0x00, 0x20, 15]);
@@ -719,8 +725,8 @@ mod tests {
             let mut out = vec![0u8; bad];
             assert!(stateless_seed(&r, KEY_TYPE, bad, 0).is_err());
             assert!(stateless_seed_into(&r, KEY_TYPE, 0, &mut out).is_err());
-            assert!(stateful_seed(&r, KEY_TYPE, bad, &ctx, &INSTANCE, 0).is_err());
-            assert!(stateful_seed_into(&r, KEY_TYPE, &ctx, &INSTANCE, 0, &mut out).is_err());
+            assert!(stateful_seed(&r, ONE_TIME, bad, &ctx, &INSTANCE, 0).is_err());
+            assert!(stateful_seed_into(&r, ONE_TIME, &ctx, &INSTANCE, 0, &mut out).is_err());
             assert!(app_secret(&r, LABEL, bad, 0).is_err());
             assert!(app_secret_into(&r, LABEL, 0, &mut out).is_err());
             assert!(info(STATELESS, 0, bad, b"x", &[]).is_err());
