@@ -11,6 +11,8 @@
 //! - [`leansphincs`]: the stateless key (leanSphincs-keccak, pruned at kept-subtree height b)
 //! - [`wots`]: one-time keys of parameter set D6 and their trees
 //! - [`derive`]: the member key, device keys and tree secret seeds from a seed
+//! - [`hbkd`]: hash-based key derivation from BIP-39 (draft ERC), library code not used yet
+//!   (feature `hbkd`, on by default)
 //! - [`owner`]: WinterlockOwner v2's digests, signature layouts and addresses
 //! - [`safe`]: the SafeTx and SafeMessage hashes, from fields
 //! - [`keylog`]: which one-time key may sign what, recorded before it signs
@@ -27,6 +29,8 @@ extern crate std;
 
 pub mod abi;
 pub mod derive;
+#[cfg(feature = "hbkd")]
+pub mod hbkd;
 pub mod hex;
 pub mod keccak;
 pub mod keylog;

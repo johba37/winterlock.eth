@@ -8,7 +8,7 @@ license      = "MIT"
 publish      = false
 
 [features]
-default     = ["tiny-keccak"]
+default     = ["tiny-keccak", "hbkd"]
 # keccak256 backends: the Keccak-f[1600] permutation under the crate's own sponge. With both on, the
 # backend is picked at run time (keccak::set_backend), tiny-keccak first.
 tiny-keccak = ["dep:tiny-keccak"]
@@ -18,11 +18,17 @@ sha3        = ["dep:keccak"]
 std         = []
 # Counts Keccak-f permutations (keccak::permutations), for measurements.
 count       = []
+# Hash-based key derivation from BIP-39 (the hbkd module, draft ERC): library code that nothing
+# uses yet. A feature so that crates built without default features (core-wasm, the ESP32 images)
+# keep their dependencies and lock files as they are.
+hbkd        = ["dep:hmac"]
 
 [dependencies]
 tiny-keccak = { version = "2.0.2", features = ["keccak"], optional = true }
 keccak      = { version = "0.2.2", optional = true }
 sha2        = { version = "0.10.9", default-features = false }
+# HMAC-SHA512 for BIP-39's PBKDF2 (hbkd): RustCrypto, no_std, on the same digest 0.10 as sha2.
+hmac        = { version = "0.12.1", default-features = false, optional = true }
 
 [dev-dependencies]
 serde_json = "1.0"

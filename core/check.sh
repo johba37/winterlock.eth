@@ -11,7 +11,7 @@ cd "$(dirname "$0")"
 echo "== native, tiny-keccak"
 cargo test --quiet
 echo "== native, RustCrypto (sha3 feature)"
-cargo test --quiet --no-default-features --features sha3
+cargo test --quiet --no-default-features --features sha3,hbkd
 echo "== native, both backends (switched at run time)"
 cargo test --quiet --features sha3 --test round_trips
 
@@ -24,7 +24,8 @@ if [ -f "$HOME/export-esp.sh" ]; then
   # shellcheck disable=SC1091
   . "$HOME/export-esp.sh"
 fi
-for features in "tiny-keccak" "sha3" "tiny-keccak,sha3,count"; do
+# the last one adds hbkd (PBKDF2 through RustCrypto's hmac), which core-wasm and the board leave out
+for features in "tiny-keccak" "sha3" "tiny-keccak,sha3,count" "tiny-keccak,sha3,count,hbkd"; do
   cargo +esp build --quiet --release --target xtensa-esp32-none-elf -Z build-std=core,alloc \
     --no-default-features --features "$features"
   echo "built with features: $features"
