@@ -32,6 +32,9 @@ pub const NB: usize = 16;
 pub const SIG_BYTES: usize = 5684;
 /// The kept-subtree height of member and device keys (16 KiB of leaves).
 pub const DEFAULT_B: u32 = 10;
+/// One FORS tree's share of a signature made in parts ([`Key::fors_part`]): its opened secret and
+/// path (176 bytes, as in the signature), then its two tops (32 bytes).
+pub const FORS_PART: usize = 176 + 2 * NB;
 
 /// A 16-byte hash value.
 pub type Node = [u8; NB];
@@ -333,6 +336,106 @@ impl Key {
         }
         assert_eq!(out.len(), SIG_BYTES);
         out
+    }
+
+    /// R_0, the first randomizer candidate for `m`, as a number (u128 little endian).
+    fn r0(&self, m: &[u8; 32]) -> u128 {
+        u128::from_le_bytes(trunc(keccak256_parts(&[&self.plan.p, &addr(RANDOMIZER, 0, 0, 0), &self.seed, m])))
+    }
+
+    /// The least candidate i in `from .. from + count` whose randomizer R_0 + i puts the
+    /// signature's leaf in the kept subtree, if any. [`Key::sign`] uses the least i from 0; split
+    /// the candidates between cores and take the least hit to get the same signature.
+    pub fn grind_range(&self, m: &[u8; 32], from: u64, count: u64) -> Option<u64> {
+        let r0 = self.r0(m);
+        let mut block = [0u8; 80];
+        block[..16].copy_from_slice(&self.plan.p);
+        block[16..32].copy_from_slice(&addr(MSG, 0, 0, 0));
+        block[32..64].copy_from_slice(m);
+        let (b, s) = (self.plan.b, self.plan.s);
+        let end = from.saturating_add(count);
+        let mut i = from;
+        while i < end {
+            block[64..].copy_from_slice(&r0.wrapping_add(i as u128).to_le_bytes());
+            if leaf_index(&keccak256(&block)) >> b == s {
+                return Some(i);
+            }
+            i += 1;
+        }
+        None
+    }
+
+    /// ρ and the leaf index of candidate i, refused if the leaf is outside the kept subtree.
+    fn candidate(&self, m: &[u8; 32], i: u64) -> Result<([u8; 16], u32), Error> {
+        let rho = self.r0(m).wrapping_add(i as u128).to_le_bytes();
+        let idx = signature_leaf_index(&self.plan.p, m, &rho);
+        if idx >> self.plan.b != self.plan.s {
+            return Err(Error::Invalid("this randomizer candidate's leaf is outside the kept subtree"));
+        }
+        Ok((rho, idx))
+    }
+
+    /// FORS trees `trees` (a range of 0..24) of the signature of `m` at candidate i (from
+    /// [`Key::grind_range`]): for each tree, [`FORS_PART`] bytes (its opened secret, its path, its
+    /// two tops). Split the trees between cores and join the parts in order for [`Key::finish`].
+    pub fn fors_part(&self, m: &[u8; 32], i: u64, trees: core::ops::Range<usize>) -> Result<Vec<u8>, Error> {
+        if trees.start > trees.end || trees.end > K {
+            return Err(Error::Invalid("FORS trees are 0 to 23"));
+        }
+        let (rho, idx) = self.candidate(m, i)?;
+        let u = fors_indices(&self.plan.p, m, &rho);
+        let lo = idx.to_le_bytes();
+        let mut nodes = vec![[0u8; NB]; 1 << A];
+        let mut out = Vec::with_capacity(FORS_PART * trees.len());
+        for kappa in trees {
+            let (t0, t1) = self.fors_tree(&lo, kappa as u32, u[kappa] as usize, &mut nodes, &mut out);
+            out.extend_from_slice(&t0);
+            out.extend_from_slice(&t1);
+        }
+        Ok(out)
+    }
+
+    /// The signature of `m` at candidate i from all 24 FORS parts in order. With the least
+    /// candidate that hits, it is byte for byte the signature [`Key::sign`] makes.
+    pub fn finish(&self, m: &[u8; 32], i: u64, fors: &[u8]) -> Result<Vec<u8>, Error> {
+        if fors.len() != FORS_PART * K {
+            return Err(Error::Invalid("the FORS parts of all 24 trees are needed"));
+        }
+        let p = self.plan.p;
+        let (rho, idx) = self.candidate(m, i)?;
+        let lo = idx.to_le_bytes();
+        let mut out = Vec::with_capacity(SIG_BYTES);
+        out.extend_from_slice(&rho);
+        let mut enc = Keccak256::new();
+        enc.update(&p).update(&lo).update(&[0, 0, 0, ENC]).update(&Z8);
+        for part in fors.chunks_exact(FORS_PART) {
+            out.extend_from_slice(&part[..176]);
+            enc.update(&part[176..]);
+        }
+        let (c, x) = encode(enc);
+        out.extend_from_slice(&c.to_le_bytes());
+        for t in 0..32u8 {
+            let d = chain_secrets(&p, &lo, t, &self.seed);
+            for half in 0..2u8 {
+                let i = 2 * t + half;
+                let mut v = trunc_at(&d, half as usize);
+                for step in 0..digit(&x, i as usize) {
+                    v = chain_step(&p, &lo, i, step, &v);
+                }
+                out.extend_from_slice(&v);
+            }
+        }
+        let b = self.plan.b;
+        let local = (idx - (self.plan.s << b)) as usize;
+        for lvl in 0..H {
+            if lvl < b {
+                out.extend_from_slice(&self.tree[level_offset(b, lvl) + ((local >> lvl) ^ 1)]);
+            } else {
+                out.extend_from_slice(&self.surrogates[(lvl - b) as usize]);
+            }
+        }
+        debug_assert_eq!(out.len(), SIG_BYTES);
+        Ok(out)
     }
 
     /// ρ = R_0 + i (u128 little endian) for the least i whose digest's leaf index lies in the kept

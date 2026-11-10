@@ -155,6 +155,47 @@ fn leansphincs_signatures() {
     assert_eq!(small.sign(&arr(&b6["message"])), bytes(&b6["sig"]));
 }
 
+/// A signature in parts, as a board spreads it over two cores: the randomizer candidates in
+/// chunks taken in turn by "two cores", the least hit, the FORS trees split in two, then finish.
+/// Python's signatures, byte for byte.
+#[test]
+fn leansphincs_signatures_in_parts() {
+    let v = load(LEANSPHINCS);
+    let key = leansphincs::Key::new(&arr(&v["key_seed"]), uint(&v["b"]) as u32).unwrap();
+    const CHUNK: u64 = 1000;
+    for c in v["signatures"].as_array().unwrap() {
+        let m: [u8; 32] = arr(&c["message"]);
+        let mut round = 0u64;
+        let i = loop {
+            let a = key.grind_range(&m, 2 * round * CHUNK, CHUNK);
+            let b = key.grind_range(&m, (2 * round + 1) * CHUNK, CHUNK);
+            if let Some(i) = a.or(b) {
+                break i;
+            }
+            round += 1;
+        };
+        assert_eq!(i + 1, uint(&c["grind_tries"]), "Python's grind tries");
+        let mut fors = key.fors_part(&m, i, 0..13).unwrap();
+        fors.extend(key.fors_part(&m, i, 13..24).unwrap());
+        assert_eq!(fors.len(), 24 * leansphincs::FORS_PART);
+        let sig = key.finish(&m, i, &fors).unwrap();
+        assert_eq!(hex::encode0x(&sig), str_(&c["sig"]));
+        // another candidate that hits gives another valid signature; one that misses is refused
+        let next = key.grind_range(&m, i + 1, u64::MAX).unwrap();
+        let mut fors2 = key.fors_part(&m, next, 0..24).unwrap();
+        let sig2 = key.finish(&m, next, &fors2).unwrap();
+        assert_ne!(sig2, sig);
+        assert!(leansphincs::verify(&key.public_key(), &m, &sig2));
+        if i > 0 {
+            assert!(key.fors_part(&m, i - 1, 0..1).is_err());
+            assert!(key.finish(&m, i - 1, &fors).is_err());
+        }
+        fors2.pop();
+        assert!(key.finish(&m, next, &fors2).is_err());
+        assert!(key.fors_part(&m, i, 20..25).is_err());
+    }
+}
+
 #[test]
 fn leansphincs_refuses_changes() {
     let v = load(LEANSPHINCS);
