@@ -1336,6 +1336,33 @@ The Sepolia build is live at `https://app.winterlock.eth.limo`.
 
 **eth.limo clears cookies.** Every response carries `Clear-Site-Data: "cookies"`. The app keeps nothing in cookies. If eth.limo ever sent `"storage"` or `"*"`, the browser would erase every device key and key log at that origin, and members would have to revoke their devices and pair them again. This is another case of "whoever serves the code holds the keys" (notes/signer-app.md, "Risks a browser adds").
 
+**2026-11-09: SLH-DSA-SHA2-128s on the EVM, measured** (`contracts/bench/slh-dsa/`; details in its README)
+
+The question: what would an owner version cost whose every signature is SLH-DSA (FIPS 205), for team treasuries that must follow NIST? A paper estimate said about 2,100 SHA-256 calls and 0.7–0.9M gas per signature. Measured: about 2,125 calls, 623k gas for the verification, 629k for an owner's ERC-1271 check.
+
+| Per signature, Prague | SLH-DSA-SHA2-128s | SLH-DSA-SHA2-128-24 (DRAFT) | leanSphincs-keccak | WOTS (D6) | ECDSA |
+|---|---|---|---|---|---|
+| Signature | 7,856 B | 3,856 B | 5,684 B | 1,176 B + path | 65 B |
+| The owner's or validator's check, cold | **629k** (596k–667k) | 111k | 69,052 (validator, 1-of-1) | 71,005 (owner v2, a SafeTx) | about 6k |
+| With its calldata at 16 gas per byte | **about 755k** | about 173k | about 161k | about 99k | about 7k |
+| A transaction calling the verifier alone | 766k: 21,000 + 127k calldata + 618k | 187k; 285k under EIP-7976's floor | | | |
+| Signing: native, WebAssembly | 0.22 s, 1.3 s | minutes; no library has the set | | | |
+
+**How it was measured:**
+- **The verifier is the benchmark's own,** Yul from one template for both sets (4.4 KB of code for 128s), every hash a call to the SHA-256 precompile. Skale's slhdsa-solidity (MIT, FIPS 205) is the only other usable one and costs 1.83M on the same signatures (2.0M claimed); ZKNox has none.
+- **Checked against independent sources:** 56 NIST ACVP cases (sigVer's verdicts and sigGen's signatures, pure with contexts and internal), 19 from noble post-quantum 0.7.1 and RustCrypto slh-dsa 0.2.0-rc.5 (fresh keys, contexts, hedged and deterministic). Every verdict agrees, and 2,145 mutations of the 42 valid signatures (R, every FORS tree, every hypertree layer, message, context, key) are all refused.
+- **Gas:** from a calling contract with the verifier cold, over 18 signatures; whole transactions on anvil; a Forge trace confirms the call count. Osaka gives the same figures.
+- **The cost model:** 97k + 246 gas per SHA-256 call. F and H cost 208 each in the precompile and the STATICCALL; the verifier's own work adds about 38. The number of calls follows the WOTS digits, so gas varies by about ±40k (p1–p99).
+- **No midstate trick:** the precompile rehashes PK.seed's block on every call, but one SHA-256 compression in EVM code costs about 50k gas.
+
+**What it means for an all-SLH-DSA owner:**
+- **About 9× leanSphincs-keccak per check, 4.7× with calldata, and about 100× ECDSA.** A Safe 2-of-3 transfer with SLH-DSA-SHA2-128s owners would cost about 1.5–1.6M gas, against 257,760 with owner v2's WOTS (estimate, not measured end to end).
+- **Gas estimation needs the real signature,** since signatures of one key differ by up to about 90k (p1 to p99).
+- **Signing does 2.2M hash calls,** 15× the Keccak-f permutations of a leanSphincs-keccak signature: 0.2 s natively, 1.1–1.3 s in WebAssembly as the app would run it, and about 10 s or more on the ESP32's SHA accelerator (an estimate from Oryx Embedded's throughput figures; the board hasn't run it).
+- **Glamsterdam:** verification writes no state, so only calldata repricing touches it. Under this log's EIP-7976 model (64 gas per calldata byte) 128s stays above the floor, 541k against 766k. Deploying the verifier, once per chain, would cost about 7.0M gas under EIP-8037 (estimate, the model of "Owner v2, contracts"). Not modelled: any repricing of the precompile or of STATICCALL.
+- **SLH-DSA-SHA2-128-24 is a DRAFT set** (NIST SP 800-230, initial public draft). It costs about as much as leanSphincs-keccak per signature (173k against 161k), but a key and its first signature take about 1.45 billion hashes and each further one 0.3 billion: no browser or board can sign it. Its known answers come from our own Python reference and from SPHINCs-' signers, which the reference reproduces byte for byte; no independent standard source exists. Our verifier costs 106k, SPHINCs-' 142k (the "~142k" in D11's table, where the set is labelled FIPS 205).
+- **For the open question on EIP-8288's hash:** a SHA-256 precompile call costs about 246 gas here, against about 147 per Keccak-f permutation in leanSphincs-keccak (52.8k for about 360). "About twice as much" holds, at about 1.7×.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
