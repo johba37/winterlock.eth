@@ -47,6 +47,13 @@ pub mod ty {
     /// Test builds only: the screen's text.
     #[cfg(feature = "test-hooks")]
     pub const TEST_SCREEN: u8 = 0x71;
+    /// Test builds only: the firmware's heap and stack use (answered by the firmware itself).
+    #[cfg(feature = "test-hooks")]
+    pub const TEST_MEMORY: u8 = 0x72;
+    /// Test builds only: the firmware stops right after its n-th flash write or erase from now,
+    /// as if the power went there (QEMU is then killed); n = 0 turns it off.
+    #[cfg(feature = "test-hooks")]
+    pub const TEST_STALL: u8 = 0x73;
 
     pub const A_STATUS: u8 = 0x81;
     pub const A_IDENTITY: u8 = 0x82;
@@ -61,7 +68,15 @@ pub mod ty {
     /// Test builds only: the screen's text.
     #[cfg(feature = "test-hooks")]
     pub const A_SCREEN: u8 = 0xF0;
+    /// Test builds only: heap and stack use.
+    #[cfg(feature = "test-hooks")]
+    pub const A_MEMORY: u8 = 0xF1;
 }
+
+/// In the version text of a build with the test hooks, and nowhere in one without: the release
+/// check looks for it in the image.
+#[cfg(feature = "test-hooks")]
+pub const TEST_HOOKS_MARK: &str = "WINTERLOCK-TEST-HOOKS";
 
 /// Why a request failed (an ERROR answer's first byte).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -556,7 +556,7 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
                 }
             }
             Mode::Result { title, lines } => {
-                let l: Vec<&str> = lines.iter().map(|x| x.as_str()).take(4).collect();
+                let l: Vec<&str> = lines.iter().map(|x| x.as_str()).collect();
                 s(title, &l, "", "next >")
             }
         }
@@ -992,7 +992,9 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             Ok(i) => i,
             Err(e) => return self.storage_failed(Some(job.id), e),
         };
-        let digest = owner::certificate_digest(job.chain, &owner_addr, &job.safe, 0, 0, &tree.root, TREE_HEIGHT as u32, job.start);
+        let root = tree.root;
+        drop(tree); // 49 KB the signature can use
+        let digest = owner::certificate_digest(job.chain, &owner_addr, &job.safe, 0, 0, &root, TREE_HEIGHT as u32, job.start);
         if let Err(e) = self.store.record_certificate(i, &digest) {
             return self.storage_failed(Some(job.id), e);
         }
@@ -1001,9 +1003,9 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             Err(why) => return self.fail_flow(job.id, why),
         };
         let mut w = Writer::new();
-        w.u64(job.chain).bytes(&job.safe).u64(job.start).u8(TREE_HEIGHT).bytes(&tree.root).bytes(&sig);
+        w.u64(job.chain).bytes(&job.safe).u64(job.start).u8(TREE_HEIGHT).bytes(&root).bytes(&sig);
         self.send(ty::A_ENROLLED, job.id, &w.0);
-        let text = format!("Key tree for {} on {} made. The app sends its certificate.", short_address(&job.safe), chain_name(job.chain));
+        let text = format!("Tree for {} made. The app sends its certificate.", short_address(&job.safe));
         self.result("Enrolled", &text);
     }
 
@@ -1215,8 +1217,12 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             flags |= 2;
         }
         let (used, size) = self.store.usage();
+        #[cfg(feature = "test-hooks")]
+        let version = format!("{} {}", self.version, proto::TEST_HOOKS_MARK);
+        #[cfg(not(feature = "test-hooks"))]
+        let version = self.version;
         w.u8(proto::VERSION)
-            .text(self.version)
+            .text(&version)
             .u8(state)
             .u8(self.pending().is_some() as u8)
             .u8(flags)
@@ -1293,7 +1299,7 @@ fn action_pages(chain: u64, d: &Decoded, parent: bool, out: &mut Vec<Screen>) {
             };
             let l1 = format!("Call {}", short_address(to));
             let l3 = format!("{data_len} bytes of data");
-            let l4 = if value.is_zero() { "no value".to_string() } else { "and a value: next".to_string() };
+            let l4 = if value.is_zero() { "no value".to_string() } else { "a value: next page".to_string() };
             out.push(Screen::lines(&p("NOT DECODED"), &[&l1, &sel, &l3, &l4], "< back", "next >"));
             if !value.is_zero() {
                 out.push(amount_screen(&p("Value sent"), &chain_name(chain), &value_text(chain, value), "with the call"));
@@ -1325,7 +1331,7 @@ fn summary(chain: u64, d: &Decoded) -> [String; 2] {
         Action::Raw { to, .. } => ["Call, NOT DECODED".into(), format!("to {}", short_address(to))],
         Action::Approve { parent, .. } => {
             let [a, _] = summary(chain, parent);
-            ["Approve parent's tx:".into(), fits(a.to_lowercase(), "(pages before)")]
+            ["Approve parent's tx:".into(), fits(a, "(pages before)")]
         }
     }
 }
@@ -1346,7 +1352,7 @@ fn sign_pages(chain: u64, safe: &[u8; 20], d: &Decoded) -> Vec<Screen> {
     }
     pages.push(address_screen("From Safe", safe, &fits(format!("nonce {}, {}", d.nonce, chain_name(chain)), &format!("nonce {}", d.nonce))));
     let [a, b] = summary(chain, d);
-    let c = if d.needs_second() { "Asks twice: see why" } else { "" };
+    let c = if d.needs_second() { "2 confirmations" } else { "" };
     let safe_line = fits(format!("Safe {} #{}", short_address(safe), d.nonce), &format!("Safe {}", short_address(safe)));
     pages.push(Screen::lines("Sign?", &[&a, &b, &safe_line, c], "< reject", "hold both: sign"));
     let n = pages.len();

@@ -4,7 +4,9 @@
 //!
 //! A single press counts when it is released, so pressing both never starts with a left or right
 //! press. Both pressed together count once they have been held for [`Timing::hold_ms`]; letting
-//! go of both earlier counts as nothing.
+//! go of both earlier counts as nothing. Nothing counts until both buttons have been seen
+//! released once: a button held at start, a stuck one, or a pin that reads pressed all the time
+//! (an emulator) never confirms anything.
 
 /// A button event.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,6 +64,7 @@ enum Gesture {
 /// Debounces two buttons and turns them into [`Button`] events.
 pub struct Buttons {
     timing: Timing,
+    armed: bool,
     left: Debounced,
     right: Debounced,
     gesture: Gesture,
@@ -69,13 +72,18 @@ pub struct Buttons {
 
 impl Buttons {
     pub fn new(timing: Timing) -> Self {
-        Buttons { timing, left: Debounced::new(), right: Debounced::new(), gesture: Gesture::Idle }
+        Buttons { timing, armed: false, left: Debounced::new(), right: Debounced::new(), gesture: Gesture::Idle }
     }
 
     /// One sample of both levels (true: pressed) at `now_ms`; sample every few milliseconds.
     pub fn sample(&mut self, now_ms: u64, left_down: bool, right_down: bool) -> Option<Button> {
         let l = self.left.sample(now_ms, left_down, self.timing.debounce_ms);
         let r = self.right.sample(now_ms, right_down, self.timing.debounce_ms);
+        if !self.armed {
+            // both seen released before anything counts
+            self.armed = !left_down && !right_down && !l && !r;
+            return None;
+        }
         match &mut self.gesture {
             Gesture::Idle => {
                 if l || r {
@@ -163,6 +171,16 @@ mod tests {
         assert_eq!(run(&s).len(), 1);
         // a 10 ms blip is not a press
         assert!(run(&[(20, false, false), (10, true, false), (100, false, false)]).is_empty());
+    }
+
+    #[test]
+    fn nothing_counts_until_both_were_released() {
+        // pressed from the start and held 3 s: no Both, no Left
+        assert!(run(&[(3000, true, true), (100, false, false)]).is_empty());
+        assert!(run(&[(3000, true, false), (100, false, false)]).is_empty());
+        // then a real press counts
+        let e = run(&[(3000, true, true), (100, false, false), (100, false, true), (100, false, false)]);
+        assert_eq!(e.iter().map(|x| x.1).collect::<Vec<_>>(), [Button::Right]);
     }
 
     #[test]

@@ -428,6 +428,11 @@ impl<F: NorFlash> Store<F> {
         self.stateless
     }
 
+    /// Looks at the flash itself (a test, or a tool that copies a simulated one).
+    pub fn with_flash<R>(&self, f: impl FnOnce(&F) -> R) -> R {
+        f(&self.log.borrow().flash)
+    }
+
     /// (bytes in use, partition size)
     pub fn usage(&self) -> (u32, u32) {
         let l = self.log.borrow();
