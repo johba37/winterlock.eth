@@ -1,0 +1,30 @@
+[package]
+name         = "winterlock-board"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.88"
+description  = "Winterlock's board signer without hardware: button events and USB messages in, 128x64 screens and answers out, over winterlock-core and a NOR flash. no_std with alloc."
+license      = "MIT"
+publish      = false
+
+[features]
+# The test build's hooks: simulated buttons and screen text over the USB link. The release
+# firmware is built without them, and its check (firmware/check-release.sh) proves it.
+test-hooks = []
+
+[dependencies]
+winterlock-core   = { path = "../../../core", default-features = false, features = ["tiny-keccak"] }
+embedded-graphics = "0.8"
+embedded-storage  = "0.3"
+
+[dev-dependencies]
+serde_json = "1.0"
+png        = "0.17"
+
+[profile.test]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto           = "fat"
+
