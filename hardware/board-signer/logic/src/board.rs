@@ -1222,7 +1222,7 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
         #[cfg(not(feature = "test-hooks"))]
         let version = self.version;
         w.u8(proto::VERSION)
-            .text(&version)
+            .text(version)
             .u8(state)
             .u8(self.pending().is_some() as u8)
             .u8(flags)
