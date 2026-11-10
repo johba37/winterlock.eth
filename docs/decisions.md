@@ -1336,6 +1336,152 @@ The Sepolia build is live at `https://app.winterlock.eth.limo`.
 
 **eth.limo clears cookies.** Every response carries `Clear-Site-Data: "cookies"`. The app keeps nothing in cookies. If eth.limo ever sent `"storage"` or `"*"`, the browser would erase every device key and key log at that origin, and members would have to revoke their devices and pair them again. This is another case of "whoever serves the code holds the keys" (notes/signer-app.md, "Risks a browser adds").
 
+**2026-11-08: a member key guards a native frame-transaction account on Daisugi** (`contracts/frame/WinterlockFrameAccount.yul`, `contracts/bench/daisugi/`)
+
+Daisugi (`https://daisugi.fyi`, chain 1337) is a public test network for post-quantum accounts. It runs Nethermind's EIP-8141 prototype (branch `daisugi/devnet-handoff`, `ff0d878`) with a simple version of EIP-8288. Its public RPC accepts frame transactions (type 0x06) only, so even the deployments below were frame transactions, from an ordinary key through EIP-8141's default code.
+
+**The account (v0):** a 109-byte clone, EIP-1167's 45 bytes pointing at a 206-byte implementation, then the member's leanSphincs-keccak key (64 bytes). The implementation is Yul, since solc has no names for the frame opcodes. `contracts/frame/build.sh` builds it with solc 0.8.28 and pins its creation code in `accounts.json`; forge can't build it, because its Yul mode takes one file per run. In a VERIFY frame it requires:
+- that the transaction's sender is this account, and that the current frame is VERIFY
+- exactly one signature: scheme ARBITRARY, empty msg (so it signs the transaction's signature hash), 5,684 bytes
+
+It reads the signature with `SIGDATACOPY`, has the vendored stateless verifier check it against the key and `TXPARAM_SIG_HASH`, and calls `APPROVE(execution and payment)`. Any other call is a plain value transfer or reverts. The shape follows Daisugi's own account.
+
+**Deployed, CREATE2 through the deterministic deployment proxy:**
+- the stateless verifier, at its Sepolia address, `0x6Dc4…c254`
+- the implementation, `0x55Bd8b3a9d61e5652EB566d7ae7844db224F276c` (salt `keccak256("Winterlock.frame-account.v0")`)
+
+**Live, a throwaway member (phrase in the session's scratch directory):** account `0xcb8e2480805ba3d6ee1e9ad1c7eedc6c6b04f5a5`, funded by the faucet before it had code.
+
+| Transaction | Frames | Gas used | VERIFY | Bytes |
+| --- | --- | --- | --- | --- |
+| first, deploys the account (`0xfc5c115d…2f54ffe`) | DEFAULT (CREATE2 of the clone) 56,580; VERIFY 59,875; SENDER 2,600 | 244,165 | 59,875 | 6,002 |
+| later (`0xf883fbd9…86812461`) | VERIFY 59,909; SENDER 2,600 | 239,570 | 59,909 | 5,814 |
+| Daisugi's own SPHINCS account, later (`0x4576e4d3…1a06ddf`) | VERIFY 353,919; SENDER 2,600 | 468,001 | 353,919 | 6,176-byte signature |
+| the same account, first (`0xffa4e8c4…92741473`) | factory 60,547; VERIFY 344,349; SENDER 2,600 | 520,333 | 344,349 | |
+
+- **Why VERIFY costs a sixth:** both verifiers, traced on a local fork of Daisugi with the transactions above: ours runs 342 keccak hashes in 12,344 EVM steps, Daisugi's 1,477 in 86,873. leanSphincs has one tree layer, short WOTS+C chains whose digits the signer grinds to a fixed sum (72 chain steps), and a hand-written assembly verifier. The signer pays for it: 70–92k hashes per signature, 0.2 s in the signer's Python here.
+- **Where the gas goes:** of the 239,570, VERIFY takes 60k and the transfer 2.6k. Most of the remaining 177k is the 5.7 KB signature's calldata. That's the part the WOTS fast path would shrink.
+- **The public mempool's cap:** EIP-8141 lets a node refuse a transaction whose frames up to and including VERIFY reserve more than 100,000 execution gas, counting the signatures' intrinsic cost (100 for ARBITRARY). Ours reserves 75,100. Daisugi's own account reserves 450,000, and Daisugi accepts it all the same. A transaction that also deploys the account reserves at least 135,100 (60,000 for the deployment frame), so it is over the cap too.
+- **Refused before inclusion:** a signature of another message, a signature with one bit flipped, and a transaction whose value changed after signing. Daisugi answers "validation-prefix simulation failed" for each, and the nonce doesn't move.
+
+**The encoding, checked twice before sending:** our encoder reproduces the hashes of Daisugi transactions from their fields. For the signature hash, Daisugi's own verifier accepts one of its accounts' signatures over the hash we compute, and ecrecover over our hash gives a key-signed transaction's sender. Both transactions are in `bench/daisugi/vectors.json`.
+- **Payload:** `[chain_id, nonce, sender, frames, signatures, [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas], blob_versioned_hashes]`. The EIP now has a single `max_fee`; the prototype keeps per-gas fees.
+- **Frame:** `[mode, flags, target, [execution, state], value, data]`.
+- **Signature entry:** `[scheme, signer, msg, signature]`.
+- **The signature hash** replaces the signature bytes of empty-msg entries with empty bytes. The EIP commits to their length instead.
+- **SECP256K1 signatures** are `v ‖ r ‖ s`, with v as 0 or 1.
+
+**What this shows:** the same member key that guards a Safe owner or a Kernel validator guards a native EIP-8141 account, with the signer's own key derivation and leanSphincs code. Nothing changed in the key, the verifier or the derivation.
+
+**Not done yet:**
+- **Device keys,** as in owner v2.
+- **EIP-8288 dependencies:** our key isn't leanVM's leanSPHINCS (open questions, "A stateless key for EIP-8288").
+
+**2026-11-08, later: one-time keys in the frame account (v1)** (`contracts/frame/WinterlockFrameAccountV1.yul`)
+
+v1 keeps v0's clone and member-key path. It adds a tree of one-time WOTS keys (D6: 24-byte hashes, 1,176-byte signatures, the Safe owner's parameter set), bound to the protocol's nonce. The implementation is 749 bytes at `0x408b5fef4a0f5e76738aae2e0b226343048f8da5`. The shared WOTS verifier is at its Sepolia address, `0x2721…410D`.
+
+**How it works:**
+- **VERIFY** takes one ARBITRARY signature over the signature hash, in one of two forms:
+  - 5,684 bytes: the member key, as in v0
+  - `[slot][WOTS signature][path]`, 1 + 1,176 + 24·height bytes: key `(nonce − start)·2 + slot`, slot 0 or 1. The shared WOTS verifier computes the root, and the account compares it with the one it stores.
+- **Each key signs at most one included transaction:** the protocol includes each nonce once. The second slot is for replacing a pending transaction: a new fee is a new message, so it needs a new key.
+- **The tree:** a SENDER frame from the account to itself calls `enroll(root, height, start)`. It is refused unless the transaction's one signature is the member key's. Slot 0 packs root ‖ start ‖ height as the Safe owner does, and every write emits `Enrolled`.
+  - **Tree seed:** the first 16 bytes of `keccak256(abi.encode(keccak256("Winterlock.frame-account.tree-seed.v1"), chainid, account, start))`.
+  - **Starts only grow,** so seeds don't repeat.
+- **In VERIFY the account reads only its own storage and calls only the two verifiers,** as EIP-8141's public-mempool rules allow.
+- **The signer side** (`bench/daisugi/daisugi.py`) uses the signer's `wots` module and keeps a key log: each key is recorded, and synced to disk, before it signs. A third version at one nonce is refused before signing.
+
+**Live, the same throwaway member,** account `0x78077d00ba98fe6e0d94eca5c5f0d194a0082ba6`:
+
+| Transaction | Gas used | VERIFY | Signature | Transaction bytes |
+| --- | --- | --- | --- | --- |
+| enrolment, which also deploys the account (`0x797647af…f413c8f9`): DEFAULT 56,580, VERIFY with the member key 60,024, enroll 24,336 | 247,673 | 60,024 | 5,684 | 6,096 |
+| one-time key, tree of height 10 (`0x9b1f4119…5907d779f1`) | 101,984 | 63,746 | 1,417 | 1,547 |
+| one-time key, tree of height 2 | 96,599 | 61,373 | 1,225 | |
+| member key, after the height-2 tree ran out | 239,630 | 59,873 | 5,684 | |
+| for comparison: member key only (v0) | 239,570 | 59,909 | 5,684 | 5,814 |
+| for comparison: Daisugi's own SPHINCS account | 468,001 | 353,919 | 6,176 | |
+
+**Where the one-time key's gas goes:**
+- **The transaction's 101,984:** VERIFY 63,746, the transfer 2,600, the frame transaction's intrinsic cost 12,950, and about 22.7k to carry its 1,547 bytes.
+- **Inside VERIFY,** traced on a local fork: the shared WOTS verifier takes 54,982 (301 keccak hashes), and the account's own part about 8.8k (the cold storage read, the tree seed, `SIGDATACOPY`, the call). It returns the stored root.
+- **So a one-time key costs as much to check as the member key** (D6 needs 289 chain steps against leanSphincs's 72, but has no FORS). The saving is the signature's size: 2.3× cheaper than the member key per transaction, 4.6× cheaper than Daisugi's account.
+- **The estimate before building was about 80k;** it is 102k.
+- **The one-time keys are stronger than the account:** they use 24-byte hashes (category 3) while the member key uses 16-byte hashes (category 1, D12), and the member key sets the account's level. WOTS with 16-byte hashes would be smaller and cheaper; not measured.
+
+**Tested live, all as expected:**
+- **Refused by the node before inclusion** ("validation-prefix simulation failed"):
+  - the next nonce's key on this nonce
+  - slot byte 2
+  - one bit of the path flipped
+  - 5,684 zero bytes as a member-key signature
+  - the replaced tree's key, after the height-2 tree was enrolled
+- **A valid one-time signature for a spent nonce:** refused with "nonce too low". Re-sending an included transaction got "already known" from the node's cache, which doesn't test the nonce, hence this case.
+- **A one-time-key transaction that calls `enroll` for its own root:** included, because its VERIFY is valid, but the enroll frame reverts and the stored tree stays as it was.
+- **Replacement:** a first version of nonce 5 was signed with key 6 (slot 0) and held back. Its replacement went out with key 7 (slot 1) and was included, and the key log refused a third version.
+- **Exhaustion:** the height-2 tree's two nonces went through with one-time keys. The tool then signed nonce 9 with the member key.
+
+**Daisugi's public RPC has no `eth_getStorageAt` and no state overrides.** The tool reads the stored tree from the latest `Enrolled` event instead, within `eth_getLogs`'s 10,000-block window.
+
+**Not done yet:**
+- **Device keys,** as in owner v2: each device a tree of its own, certified by the member key.
+- **Smaller one-time keys:** a 16-byte WOTS, at the member key's security level.
+- **EIP-8288 dependencies:** not possible with our key (open questions, "A stateless key for EIP-8288").
+
+**2026-11-08, later still: device keys in the frame account (v2)** (`contracts/frame/WinterlockFrameAccountV2.yul`, `contracts/bench/daisugi/devices.py`)
+
+v2 brings owner v2's device model ([notes/owner-v2.md](notes/owner-v2.md)) to the native account. The implementation is 1,256 bytes at `0x8506f29d294a2d0e6e6d6d47352ce02f92ec4492`.
+
+**Devices:**
+- **Device 0 is the member key,** from the phrase, in the clone's code.
+- **Devices 1–3 hold device keys:** leanSphincs-keccak keys made from each device's own random seed, without the phrase.
+- **Only the member key adds and revokes devices,** and each add starts a new generation of that device.
+- **Each device enrols its own tree** of one-time keys, with its own key. A tree verifies only while its device is active at the tree's generation.
+
+**Signatures** (one ARBITRARY entry over the signature hash):
+- `[2][device][leanSphincs: 5,684]`: the device's key (device 0: the member key)
+- `[slot][device][WOTS: 1,176][path: 24 × height]`: a one-time key of the device's tree, bound to the nonce as in v1
+
+Two devices never share a one-time key, even at the same nonce, because each signs from its own tree.
+
+**Management:** `addDevice`, `revokeDevice` and `enroll` are SENDER frames from the account to itself.
+- **What authorises them** is the transaction's own signature, which covers the frames and the nonce. Owner v2 needs separate certificates because anyone may submit them to it; here none are needed, and none can be replayed.
+- **Who may call what:** `addDevice` and `revokeDevice` take the member key, and `enroll` the device's own key. A one-time key can't manage anything.
+
+**Storage:**
+- the tree of device d at slot d, packed as in owner v2: root ‖ generation ‖ start ‖ height
+- the key of device d at `0x10 + d`
+- the generation and active flag at `0x20 + d`
+
+`read(slot)` returns a slot, because Daisugi's public RPC has no `eth_getStorageAt`. The tree seed adds the device and its generation to v1's.
+
+**Live:** account `0xeba35563e11d705d4a2068cf24b6ff5dd452e236`, the same throwaway member. Devices 1 and 2 are throwaway device homes in the session's scratch directory. 17 transactions, every check as expected:
+
+| Step | Gas used | Notes |
+| --- | --- | --- |
+| the member key adds devices 1 and 2 (the transaction also deploys the account) | 317,502 | each `addDevice` 46,513 (two new storage words) |
+| a device enrols its own tree, with its key | 242,170 | VERIFY 64,341; `enroll` 25,230 |
+| a device signs a transfer with a one-time key | 104,372 | VERIFY 66,082 |
+| a device signs with its key | 240,130 | VERIFY 64,399 |
+| the member key signs a transfer | 240,070 | VERIFY 60,004 |
+| the member key revokes a device | 240,250 | `revokeDevice` 7,010 |
+| the member key adds a device again, with a new key | 241,470 | `addDevice` 12,313 |
+
+- **What devices cost:** a device's key costs about 4.3k more in VERIFY than the member key, for two cold storage reads: its state and its key. A device's one-time key costs 2.3k more than v1's, for the state read.
+- **The same nonce from two devices:** devices 1 and 2 each signed a different transfer at nonce 6. The node took device 1's and refused device 2's as "replacement transaction underpriced". Nonce 6 on chain is device 1's (`0x224b9e32…`). Device 2's signature used its own key for nonce 6, which can never be included now.
+- **Device 2, signing with its own key, tried to revoke device 1, add device 3, and enrol a tree for device 1.** Each transaction was included, since its VERIFY is valid, and each management frame reverted. Device 2 also tried to enrol its own tree in a transaction signed by one of its one-time keys: reverted.
+- **After the member key revoked device 1:** its one-time keys and its device key were refused before inclusion, and device 2 kept working.
+- **After the member key added device 1 again with a new key (generation 2):**
+  - the generation-1 tree, still in device 1's slot, was refused, and so was the old device key
+  - the new device 1 enrolled a tree and signed with it
+- **The demo script's own bugs,** fixed on the way: a check for the step at nonce 6 read the pending nonce, and a fresh device home was written to before it existed. Neither touched the chain.
+
+**Not done yet:**
+- **Smaller one-time keys:** a 16-byte WOTS.
+- **Device keys from hardware:** a device key is a leanSphincs-keccak key, which a Ledger-class device signs in 1.5–2.5 min (open questions). That's fine for a phrase kept on a hardware wallet, which only adds and revokes devices.
+- **EIP-8288 dependencies:** not possible with our keys yet.
+
 **2026-11-09: SLH-DSA-SHA2-128s on the EVM, measured** (`contracts/bench/slh-dsa/`; details in its README)
 
 The question: what would an owner version cost whose every signature is SLH-DSA (FIPS 205), for team treasuries that must follow NIST? A paper estimate said about 2,100 SHA-256 calls and 0.7–0.9M gas per signature. Measured: about 2,125 calls, 623k gas for the verification, 629k for an owner's ERC-1271 check.
