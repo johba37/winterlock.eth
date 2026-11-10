@@ -1,0 +1,51 @@
+[package]
+name         = "winterlock-board-firmware"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.95"
+description  = "Winterlock's board signer on an ESP32-WROOM-32: the logic crate with the OLED, two buttons, the flash partition and the USB serial link"
+publish      = false
+
+[[bin]]
+name  = "winterlock-board"
+path  = "src/main.rs"
+test  = false
+bench = false
+
+[features]
+# The QEMU and test build: simulated buttons and screen text over the USB link, and diagnostics
+# on the serial port. The release image is built without it (check-release.sh proves it).
+test-hooks = ["winterlock-board/test-hooks", "log"]
+# Diagnostics on the serial port (esp-println, esp-backtrace): never in the release image.
+log = ["dep:esp-println", "dep:esp-backtrace"]
+# Set by check-release.sh for the release image: it refuses to build together with test-hooks.
+release-image = []
+# Buttons that are high while pressed (touch modules), with pull-downs. Without it: push buttons
+# to GND, low while pressed, with pull-ups.
+touch-buttons = []
+
+[dependencies]
+esp-hal                = { version = "~1.2.2", features = ["esp32", "unstable"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32"] }
+esp-storage            = { version = "0.10.0", features = ["esp32", "embedded-storage"] }
+esp-alloc              = { version = "0.11.0", features = ["esp32", "internal-heap-stats"] }
+# The ESP32's registers, for the entropy source's I2S0 setup (see hw.rs).
+esp32                  = { version = "0.41", features = ["critical-section"] }
+embedded-storage       = "0.3"
+critical-section       = "1.2"
+ssd1306                = "0.10"
+
+winterlock-board = { path = "../logic" }
+winterlock-core  = { path = "../../../core", default-features = false, features = ["tiny-keccak"] }
+
+esp-println   = { version = "0.18.0", features = ["esp32"], optional = true }
+esp-backtrace = { version = "0.20.0", features = ["esp32", "panic-handler", "println"], optional = true }
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+debug         = 2
+lto           = "fat"
+opt-level     = 3
