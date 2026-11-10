@@ -1509,6 +1509,8 @@ The question: what would an owner version cost whose every signature is SLH-DSA 
 - **SLH-DSA-SHA2-128-24 is a DRAFT set** (NIST SP 800-230, initial public draft). It costs about as much as leanSphincs-keccak per signature (173k against 161k), but a key and its first signature take about 1.45 billion hashes and each further one 0.3 billion: no browser or board can sign it. Its known answers come from our own Python reference and from SPHINCs-' signers, which the reference reproduces byte for byte; no independent standard source exists. Our verifier costs 106k, SPHINCs-' 142k (the "~142k" in D11's table, where the set is labelled FIPS 205).
 - **For the open question on EIP-8288's hash:** a SHA-256 precompile call costs about 246 gas here, against about 147 per Keccak-f permutation in leanSphincs-keccak (52.8k for about 360). "About twice as much" holds, at about 1.7×.
 
+**Decided by the user (2026-11-10): no all-SLH-DSA owner.** The cost is too high, and the teams it would serve haven't been counted. The verifier stays a benchmark.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
