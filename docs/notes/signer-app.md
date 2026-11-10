@@ -1,6 +1,6 @@
 # A signer without a terminal: design note (proposal, 2026-11-06)
 
-**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. On 2026-11-07: the app first, without a board, developed on Ethereum Sepolia. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively, under Node, in QEMU and on the ESP32 itself (all 54 board checks pass, 2026-11-10; decisions.md, "2026-11-07: Rust core"). **On 2026-11-10 the user decided: in the round, the board is each member's only device,** over USB, with two buttons and a PIN (decision 7). The app without a board stays the development path and the fallback.
+**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. On 2026-11-07: the app first, without a board, developed on Ethereum Sepolia. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively, under Node, in QEMU and on the ESP32 itself (all 54 board checks pass, 2026-11-10; decisions.md, "2026-11-07: Rust core"). **On 2026-11-10 the user decided: in the round, the board is each member's only device,** over USB, with two buttons and a PIN (decision 7). The app without a board stays the development path and the fallback. **The board's firmware is built the same day, before the hardware** (`hardware/board-signer/`): natively, as screen images and in QEMU, not yet on a board (decisions.md, "2026-11-10: the board signer, before the hardware").
 
 ## Why
 
@@ -106,7 +106,7 @@ TypeScript, Vite, Preact (small enough for phones), viem for RPC, ABI and EIP-71
 
 ### What it does
 
-- **Setup:** the board makes the seed from its hardware random number generator with the radio on (the classic ESP32's generator is only truly random then), hashed together with randomness from the app, so neither side alone sets it. It shows the 24 words, a few per screen, then asks for three of them, each picked from four choices. Then the member sets a PIN of 4 to 8 digits, twice. The board gives the app the member's public key, and both show the owner address.
+- **Setup:** the board makes the seed from its hardware random number generator with the radio on (the classic ESP32's generator is only truly random then), hashed together with randomness from the app, so neither side alone sets it. (The first build uses the generator's other entropy source instead, the SAR ADC as ESP-IDF's bootloader does, with no radio stack.) It shows the 24 words, a few per screen, then asks for three of them, each picked from four choices. Then the member sets a PIN of 4 to 8 digits, twice. The board gives the app the member's public key, and both show the owner address.
 - **Unlock:** the PIN, on the board, at every start. The board counts a try in flash before checking it, so pulling the cable doesn't reset the count. After three wrong PINs in a row it erases the seed and the key log; the paper phrase is the backup.
 - **Enrol:** a key tree per Safe and chain, 512 nonces, from a random salt that never leaves the board. The board shows the Safe, the chain and the first nonce, and signs the tree's certificate on confirm (about a minute in all). The app sends it from the gas account.
 - **Confirm a Safe transaction:** the app sends the fields, never a hash. The board computes the SafeTx hash and shows the chain, the Safe, the nonce and what the transaction does:
@@ -123,11 +123,11 @@ TypeScript, Vite, Preact (small enough for phones), viem for RPC, ABI and EIP-71
 
 ### The USB link
 
-Framed binary messages with a version, a length and a checksum: requests from the app, answers from the board. The board never sends the seed, a salt or any secret but the gas account's key, and it signs nothing without a confirmation on its own screen. A small Python client speaks the same messages for tests.
+Framed binary messages with a version, a length and a checksum: requests from the app, answers from the board. The board never sends the seed, a salt or any secret but the gas account's key, and it signs nothing without a confirmation on its own screen. A small Python client speaks the same messages for tests. Built: [PROTOCOL.md](../../hardware/board-signer/PROTOCOL.md), at 115200 baud, with a magic and two CRCs so frames are found among the bootloader's text.
 
 ### Storage
 
-A flash partition holds the seed, the PIN's check value and its try count, each tree's salt, root and place, and the key log. Writes survive a pulled cable: a key log record is written and read back before its signature leaves, as the core requires. A tree's public nodes are public, so they can live on the board (about 64 KB per tree) or in the app.
+A flash partition holds the seed, the PIN's check value and its try count, each tree's salt, root and place, and the key log. Writes survive a pulled cable: a key log record is written and read back before its signature leaves, as the core requires. A tree's public nodes are public, so they can live on the board (about 64 KB per tree) or in the app. **Settled in the build:** the board keeps each tree's leaves (24 KB) and rebuilds the inner nodes before a signature (about 0.1 s), in an append-only log of records in a 3 MB partition; the member key's leaves are kept too.
 
 ### Before the hardware is ready
 
@@ -137,6 +137,8 @@ A flash partition holds the seed, the PIN's check value and its try count, each 
 - **The app's board backend** against a virtual board: the same crate compiled to WebAssembly, so the app's flows run end to end on Sepolia without hardware.
 
 **Only on the board:** the OLED and the buttons, USB with Chrome or Edge on each system, the random number generator with the radio on, and how the screens feel. A small test image goes first: display, both buttons, BOOT, and serial both ways.
+
+**Built on 2026-11-10,** all but the app's board backend (`hardware/board-signer/`): the crate, the screens (87, as PNGs), the firmware in QEMU with the Python client, power cuts at every flash write natively and QEMU killed in the middle of a key log write, and an anvil run where Safes execute the board's signatures.
 
 ### Security
 
@@ -173,6 +175,6 @@ Decided on 2026-11-10:
    - live on Sepolia through Safe's service without an API key, next to the Python signer: create, pair a second device, join a script-made Safe, enrol, propose, confirm and execute both ways, revoke the second device while its confirmation was pending, a copied browser that refuses, and the revoked device paired again
    - in Chromium's worker: the member key in about 0.12 s, a height-10 key tree in about 0.45 s, a stateless signature in about 0.07 s
    - still to do: dapps over WalletConnect, Safari and phones, the fresh-eyes run
-4. **The board's firmware** (decision 7): the parts in "Before the hardware is ready", then on the user's board once it is wired with the OLED and two buttons.
+4. **The board's firmware** (decision 7): the parts in "Before the hardware is ready", then on the user's board once it is wired with the OLED and two buttons. **Built on 2026-11-10 before the hardware,** except the app's board backend (`hardware/board-signer/`; decisions.md, "2026-11-10: the board signer, before the hardware").
 5. **Arbitrum One:** deploy (user-funded; a first measurement of Arbitrum's fees), the user and one other person end to end, then the rest of the round.
 6. **The normative spec,** after the round, from this note, owner-v2.md and the code.

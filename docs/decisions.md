@@ -1524,6 +1524,48 @@ The question: what would an owner version cost whose every signature is SLH-DSA 
 
 **Decided by the user (2026-11-10): no all-SLH-DSA owner.** The cost is too high, and the teams it would serve haven't been counted. The verifier stays a benchmark.
 
+**2026-11-10: the board signer, before the hardware** (`hardware/board-signer/`, `core/src/leansphincs.rs`)
+
+Step 4 of [notes/signer-app.md](notes/signer-app.md), "Order": the parts of "Before the hardware is ready" but the app's board backend. Decided the same day (decision 7): in the round, the board is each member's only device. The firmware runs in QEMU and has not run on a board.
+
+**What's built:**
+- **`winterlock-board`** (`logic/`, `no_std` with `alloc`, on `winterlock-core`; 4,059 lines with its unit tests): button events and USB requests in, 128×64 screens and answers out. Setup, unlock, recovery, enrolment, confirming transactions, the gas key and erase, as the note describes them. Its storage is a NOR flash partition; its randomness, display, link and second core come from a platform trait.
+- **The firmware** (`firmware/`, esp-hal 1.2.2; 624 lines): the OLED on GPIO21/22, buttons on GPIO32/33, the `signer` partition through esp-storage, UART0 at 115200 baud, both cores. Release app 286,816 bytes (27% of a 1 MB app partition).
+- **The USB link** ([PROTOCOL.md](../hardware/board-signer/PROTOCOL.md)): framed messages with a magic, version, type, id, length, a CRC-16 over the header and a CRC-32 over the frame, so a reader finds frames among the bootloader's text. A Python client (`tools/board_client.py`, stdlib and pyserial).
+- **Screens:** every screen of every flow as a PNG (87, `logic/examples/screens.rs`); the contact sheet is in `hardware/board-signer/screens/`.
+- **In the core:** a stateless signature in parts (`Key::grind_range`, `fors_part`, `finish`), so the board spreads the randomizer search and the 24 FORS trees over both cores. `Key::sign` is unchanged. A new test splits Python's four signatures as two cores would and matches them byte for byte; `core/check.sh` passes on all three targets.
+
+**What was verified, and how:**
+- **Native,** 30 tests (29 with the test hooks):
+  - 9 flows through the buttons and the messages, checked with the core's verifiers as the contracts check
+  - the Python signer's outputs byte for byte (`tools/board_vectors.py`): words, member key, owner, gas key, the PIN's check value, a tree's root and certificate, and four transaction signatures (ETH, a second version at the same nonce, an approveHash with the parent's fields, an undecoded call)
+  - **power cuts at every flash write and erase:** setup (74 operations), unlock and a signature (6, with 32 torn patterns each), an enrolment (104), the third wrong PIN (17, 8 each) and an erase (19, 8 each), 658 cuts in all. After each, the board starts again from the bytes left. No one-time key signs two hashes; no signature or certificate leaves before its record is durable (checked as each one leaves, by opening a copy of the flash as it is then); the board comes back as it was, or blank with the seed gone from the flash.
+  - a write that stores a bit wrong without a power cut: the read-back refuses it, and nothing is signed
+  - a full log: no new tree or key use, but the last 8 KB stay for PIN tries (341 unlocks) and the erase
+- **QEMU** (Espressif's 9.2.2, `tools/qemu_flows.py`), every output checked with the Python signer: setup, a restart and unlock, enrolment, an ETH transfer, an approveHash, an undecoded call with its second confirmation, a refused delegate call. QEMU killed after a key use record's header: the record is skipped and the key is unused. Killed after the whole record: the record survives, the same transaction gets the same key, another gets the second. Three wrong PINs erase the board (the seed is no longer in the flash image); a recovery gives the same owner, refuses to sign before it enrols, then signs. The release image boots, answers a simulated button with "unknown type", and sends nothing but frames after the bootloader.
+- **A local chain** (`tools/anvil_e2e.py`, the firmware in QEMU): the factory deploys the board's owner at the address the board computed; `enroll` takes the board's certificate, sent from the board's gas account (251,600 to 251,630 gas over three runs); a Safe whose only owner is the board executes an ETH transfer with the board's signature (225,108 to 225,132 gas); a parent Safe executes a transfer on the approveHash the board confirmed.
+- **The release image** (`firmware/check-release.sh`): the test build's marker string is in its ELF and not in the release ELF or images; esp-println and esp-backtrace aren't in the release build; a release build with the test hooks fails.
+- **Memory in QEMU:** heap peak 109,624 of 180,224 bytes; stacks 18,864 of 72,868 (first core) and 2,204 of 32,768 (second).
+
+**Choices beyond the note:**
+- **Storage: an append-only log of its own,** not `sequential-storage`. Records are only appended, so there is nothing to garbage-collect; `sequential-storage` is async-only and would need an executor. A record's header is a value and its complement, written before the rest: a torn write leaves extra 1 bits, so a torn header never reads valid, and a valid one gives the exact length to skip a torn body. A complete setup is 16,608 bytes, a tree 24,684, a key use 124; the 3,080,192-byte partition holds, say, 40 trees and 12,000 signatures. Its last 8 KB are kept for PIN tries and the erase, so a full board still unlocks.
+- **A tree's leaves stay on the board** (24 KB a tree), settling the note's "on the board or in the app": a signature rebuilds the 1,023 inner nodes from them (about 0.1 s on the chip) instead of making the leaves again (42 s), and the app holds nothing the board needs.
+- **Randomness: the SAR ADC entropy source, not the radio.** Espressif names both as making the generator truly random; the ADC needs no radio stack. esp-hal 1.2.2's ESP32 setup enables I2C0's clock where ESP-IDF's enables I2S0's, so the firmware enables I2S0 and repeats its setup. Bytes go through a keccak pool with the cycle counter.
+- **Labels:** the seed is keccak256(abi.encode("winterlock.board.seed.v1", board randomness, app randomness)); the PIN's check value is keccak256(abi.encode("winterlock.board.pin.v1", a 32-byte salt, a word of its digit count and digits)). Without flash encryption the check value guards nothing the flash doesn't already give away; it keeps the PIN itself out of the flash.
+- **A try is counted until a right PIN is recorded:** a cut between the try and that record counts it as wrong, and a start that finds three counted erases. The safe side, at the cost of a rare erase.
+- **Two confirmations also for refund fields** (gas price, base gas, safeTxGas, gas token, receiver): they can pay whoever executes. A cancel (an empty call from the Safe to itself) is decoded.
+- **One level of parents:** a parent's own approveHash shows as not decoded; parent fields with any other call are refused.
+- **Which tree:** the request names a root, or zeros for the newest tree of the Safe; a new tree must start after the board's last one for that Safe, as in the Python signer. Certificates are recorded before they are signed, as the Python signer records them.
+- **Buttons:** single presses count when released; both held 1 s; nothing counts until both were seen released (a button held at start, or QEMU's pins). The PIN pad steps through 0–9, delete and done. The word wheel offers only letters that continue some word.
+- **The gas key** is sent on request once unlocked, without a confirmation, as the note says.
+- **The token list** has four entries checked against first-party pages and read on-chain: USDC on Arbitrum One, Ethereum Sepolia and Arbitrum Sepolia, WETH on Arbitrum One. USDT and ARB are left out: their first-party pages didn't list them.
+- **The release image prints nothing:** no logs and no panic text (it halts). Test builds print each screen and diagnostics between the frames.
+- **The partition table:** a 1 MB app at 0x10000 and `signer` (data, subtype undefined) at 0x110000 to the end of 4 MB, checked by `build.rs` and at start. espflash 4.7.0 needs `--partition-table-offset 0x8000` with a custom table, or it leaves the table out of a merged image.
+
+**Not verified until the board runs it:** the OLED, the buttons and how the screens read at 0.96 inch; Web Serial through the CP2102 from Chrome or Edge; the generator with the ADC source on the chip (QEMU neither has it nor keeps DPORT's clock bit); real flash under real power cuts (the tests used QEMU's flash and a simulated NOR flash); the times on the chip, where the two-core stateless signature should beat the core check's 15 s average; a v1.0 chip (QEMU emulates v0.0).
+
+**Not done:** the app's board backend (a virtual board in WebAssembly), messages (ERC-1271), BLE.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.

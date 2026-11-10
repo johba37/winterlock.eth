@@ -47,7 +47,7 @@ The partition table (`firmware/partitions.csv`, checked by `build.rs` against th
 | Partition | Offset | Size |
 |---|---|---|
 | bootloader, partition table | 0x1000, 0x8000 | |
-| factory app | 0x10000 | 1 MB (the release app is 291,472 bytes, 28%) |
+| factory app | 0x10000 | 1 MB (the release app is 286,816 bytes, 27%) |
 | `signer` (data, subtype undefined) | 0x110000 | 3,080,192 bytes, to the end of the 4 MB flash |
 
 The firmware reads the table it booted with and refuses to start if `signer` isn't where the build expects.
@@ -62,7 +62,7 @@ The firmware reads the table it booted with and refuses to start if `signer` isn
 | a certificate record | 96 |
 | a PIN try, a right PIN | 12 each |
 
-So the partition holds, for example, 40 trees with 12,000 signatures. When it is full the board says so and signs nothing; erasing and recovering starts it afresh (and costs new trees).
+So the partition holds, for example, 40 trees with 12,000 signatures. When it is full the board says so and makes no new tree or signature. The last 8 KB are kept for PIN tries (341 unlocks) and the WIPE record, so a full board still unlocks and erases; erasing and recovering starts it afresh (and costs new trees).
 
 **Why a log of its own, not `sequential-storage`:** the board's records are appended and never updated, so it needs no map or garbage collection; `sequential-storage` is async-only today and would need an executor; and with its own format, the rules a power cut must not break fit in one file and are tested at every write.
 
@@ -109,11 +109,12 @@ QEMU needs the image padded to 4 MB (without `--skip-padding`): `qemu-system-xte
 
 ## What was verified, and how (2026-11-10)
 
-- **Native** (`cargo test`): 29 tests, 28 with the test hooks (one checks their absence):
+- **Native** (`cargo test`): 30 tests, 29 with the test hooks (one checks their absence):
   - 9 flows through the buttons and the messages; the outputs checked with the core's verifiers as the contracts do
   - the Python signer's outputs byte for byte: words, member key, owner, gas key, the PIN's check value, a tree's root and its 5,684-byte certificate, four transaction signatures
   - power cut at every flash write and erase, then a restart from what was left: setup (74 operations), unlock and a signature (6 operations, 32 torn patterns each), an enrolment (104), the third wrong PIN (17, 8 patterns each), an erase (19, 8 each): 658 cuts. At every cut no one-time key ever signs two hashes, no signature or certificate leaves before its record is durable (checked as each leaves, by opening a copy of the flash as it is then), and the board comes back as it was or blank with the seed gone; never half set up, with fewer wrong PINs, or damaged.
   - a write that doesn't stick (a bit left set, no power cut): the read-back catches it and nothing is signed
+  - a full log refuses trees and key uses but still takes 300 unlocks, and erases
   - frames through bootloader text and damage, the debouncer, amounts, layouts
 - **QEMU** (`qemu_flows.py`, Espressif's QEMU 9.2.2, the test image): setup; a restart and unlock; enrolment; an ETH transfer, an approveHash with the parent's fields, a call that isn't decoded, a refused delegate call; QEMU killed after the key use record's header (the torn record is skipped, the key unused) and after the whole record (it survives, the same transaction gets the same key and another gets the other); three wrong PINs erase the board (the seed is no longer in the flash image); a recovery gives the same owner, refuses to sign until it enrols, then signs. Every output is checked with the Python signer. The release image boots, refuses a simulated button, and sends nothing but frames.
 - **On a local chain** (`anvil_e2e.py`): the board's owner deployed by the factory at the address the board computed; its certificate accepted by `enroll` from the board's gas account; a Safe whose only owner is the board executes an ETH transfer with the board's signature; a parent Safe executes a transfer on the board-confirmed approveHash.
@@ -125,7 +126,7 @@ QEMU needs the image padded to 4 MB (without `--skip-padding`): `qemu-system-xte
 - the serial link through the CP2102 with Chrome or Edge (Web Serial), and the board's reset lines
 - the random number generator with the ADC entropy source on the chip (QEMU can't show it)
 - flash writes, erases and power cuts on the real chip (QEMU's flash model and the simulated NOR flash are what was tested)
-- the times on the chip: QEMU's say nothing about them; the core check measured 11.7 s for the member key, 42 s for a tree, 15 s on average for a stateless signature on one core's grind (the board now spreads the grind and the FORS trees over both cores)
+- the times on the chip: QEMU's say nothing about them. The core check measured 11.7 s for the member key and 42 s for a tree on both cores, and 15 s on average (32 s at most) for a stateless signature on one core; the board spreads a signature's grind and FORS trees over both cores, which should shorten it, unmeasured
 - a chip of revision v1.0 (QEMU emulates v0.0; the core check ran on v1.0)
 
 ## Files

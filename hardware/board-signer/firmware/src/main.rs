@@ -145,7 +145,9 @@ fn main() -> ! {
     let mut board = match Board::new(Partition::new(flash, SIGNER_OFFSET, SIGNER_SIZE), platform, VERSION) {
         Ok(b) => b,
         Err(_) => {
-            // the platform went into the failed board; show the error on a fresh probe-less screen
+            // the flash partition couldn't be read or written: the board can't start (the display
+            // went with the platform into the board that failed, so it keeps its blank frame)
+            log!("halted: the signer partition can't be read or written");
             loop {
                 core::hint::spin_loop();
             }

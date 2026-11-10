@@ -54,6 +54,8 @@ pub const FORMAT_MAGIC: [u8; 4] = *b"WLBS";
 pub const FORMAT_VERSION: u16 = 1;
 /// The tallest tree the store keeps (the board makes height 10).
 pub const MAX_HEIGHT: u8 = 10;
+/// Room kept for PIN tries once the log is otherwise full: 341 unlocks of a try and a right PIN.
+pub const UNLOCK_RESERVE: u32 = 8 * 1024;
 const TREE_FIXED: usize = 8 + 20 + 8 + 1 + 32 + 24;
 const USE_LEN: usize = 8 + 20 + 24 + 8 + 8 + 1 + 8 + 32;
 const CERT_LEN: usize = 8 + 20 + 24 + 32;
@@ -397,10 +399,18 @@ impl<F: NorFlash> Store<F> {
         self.wipe_now()
     }
 
+    /// Appends a record. The last bytes of the partition are kept: the WIPE record's room for
+    /// everything, and [`UNLOCK_RESERVE`] more for everything but PIN tries, so a full board can
+    /// still be unlocked (to read its trees) and erased.
     fn append(&mut self, ty: u8, parts: &[&[u8]]) -> Result<u32, StoreError> {
         let len: usize = parts.iter().map(|p| p.len()).sum();
         let log = self.log.get_mut();
-        if log.end() + record_size(len as u32) + record_size(0) > log.size() {
+        let keep = match ty {
+            rec::WIPE => 0,
+            rec::PIN_TRY | rec::PIN_OK => record_size(0),
+            _ => record_size(0) + UNLOCK_RESERVE,
+        };
+        if log.end() + record_size(len as u32) + keep > log.size() {
             return Err(StoreError::Full);
         }
         Ok(log.append(ty, parts)?)
@@ -618,5 +628,47 @@ impl<F: NorFlash> KeyLogStore for Store<F> {
         t.mark(u.key_index);
         t.uses.push(at + log::HEADER);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sim::SimFlash;
+
+    /// A full log refuses trees and key uses, but still counts PIN tries and erases.
+    #[test]
+    fn a_full_board_still_unlocks_and_erases() {
+        // 16 sectors: room for a setup and one tree
+        let (mut st, opened) = Store::open(SimFlash::new(16)).unwrap();
+        assert_eq!(opened, Opened::Formatted);
+        let leaves = vec![[7u8; 16]; 1024];
+        st.setup(&[1; 32], How::Setup, &[2; 32], &leaves, &[3; 32], &[4; 32], &[5; 20]).unwrap();
+        let tree = |b: u8| wots::Tree::from_leaves(&[b; 16], 10, 10, vec![[b; 24]; 1024], vec![]).unwrap();
+        st.add_tree(1, &[9; 20], 0, 10, &[6; 32], &tree(1)).unwrap();
+        assert_eq!(st.add_tree(1, &[9; 20], 600, 10, &[6; 32], &tree(2)), Err(StoreError::Full));
+        // key uses until full
+        let t = st.trees()[0].tree_ref();
+        let mut n = 0u64;
+        loop {
+            let u = KeyUse { chain: 1, safe: [9; 20], root: t.root, start: 0, nonce: n, slot: 0, key_index: 2 * n, hash: [n as u8; 32] };
+            match st.append_use(&u) {
+                Ok(()) => n += 1,
+                Err(e) => {
+                    assert_eq!(e, StoreError::Full);
+                    break;
+                }
+            }
+        }
+        assert!(n > 0);
+        // PIN tries still go in: hundreds of unlocks
+        for _ in 0..300 {
+            st.pin_try().unwrap();
+            st.pin_ok().unwrap();
+        }
+        st.wipe().unwrap();
+        assert_eq!(st.phase(), Phase::Blank);
+        let (st, _) = Store::open(st.log.into_inner().flash).unwrap();
+        assert_eq!(st.phase(), Phase::Blank);
     }
 }

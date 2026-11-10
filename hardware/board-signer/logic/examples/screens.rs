@@ -468,7 +468,7 @@ fn write_all(out: &Path, list: &[(String, Screen)]) {
         let px = pixels(&s.render(), scale);
         for y in 0..HEIGHT * scale {
             for x in 0..WIDTH * scale {
-                sheet[(cy + y) * sw + cx + x] = px[y * WIDTH * scale + x].max(0x00);
+                sheet[(cy + y) * sw + cx + x] = px[y * WIDTH * scale + x];
             }
         }
         let _ = Text::with_baseline(name, Point::new(cx as i32, (cy + HEIGHT * scale + 2) as i32), MonoTextStyle::new(&FONT_6X10, BinaryColor::On), Baseline::Top).draw(&mut text);
