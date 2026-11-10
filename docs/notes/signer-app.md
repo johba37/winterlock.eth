@@ -1,6 +1,6 @@
 # A signer without a terminal: design note (proposal, 2026-11-06)
 
-**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. On 2026-11-07: the app first, without a board, developed on Ethereum Sepolia. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively, under Node, in QEMU and on the ESP32 itself (all 54 board checks pass, 2026-11-10; decisions.md, "2026-11-07: Rust core").
+**Status:** proposal. Decided by the user on 2026-11-06: one Rust core for the browser and an ESP32 board, a TypeScript app around it, Arbitrum One with play money, and the decisions below. On 2026-11-07: the app first, without a board, developed on Ethereum Sepolia. An ESP32 timing firmware is built (branch `esp32-bench`); its numbers decide whether the board can hold the member key in the first round. **The core is built (2026-11-07, branch `rust-core`):** it matches the Python vectors byte for byte natively, under Node, in QEMU and on the ESP32 itself (all 54 board checks pass, 2026-11-10; decisions.md, "2026-11-07: Rust core"). **On 2026-11-10 the user decided: in the round, the board is each member's only device,** over USB, with two buttons and a PIN (decision 7). The app without a board stays the development path and the fallback.
 
 ## Why
 
@@ -15,8 +15,8 @@ Their use should find the edges before the normative spec fixes the formats. The
 | Part | Language | Runs on | Holds |
 |---|---|---|---|
 | **Core** | Rust, `no_std` with `alloc` | the browser (WebAssembly), the ESP32 (firmware), native tests | nothing: functions and the key log's rules |
-| **App** | TypeScript | a current browser, installed to the home screen on phones | a device key, its key log, a gas account |
-| **Board** (later) | Rust firmware on the core | ESP32-WROOM-32 with a 128×64 OLED and the BOOT button | the member key: it makes the phrase, and pairs and revokes devices (decision 2) |
+| **App** | TypeScript | a current browser, installed to the home screen on phones | with a board, only the gas account; without one, also a device key and its key log |
+| **Board** | Rust firmware on the core | ESP32-WROOM-32 with a 128×64 OLED and two buttons | the seed: the member key (device 0), its key trees and their key log (decision 7) |
 
 **Python stays the reference.** The core must reproduce its outputs byte for byte. The Python signer writes the test vectors; the core's tests read them on every target. These vectors become the normative spec's.
 
@@ -68,7 +68,9 @@ Their use should find the edges before the normative spec fixes the formats. The
 6. **Dapps over WalletConnect** (Reown's wallet SDK): sign-in, transactions, permits, with the rules of walletconnect.md, "Which path a message takes".
 7. **Revoke a device** with the phrase (later, from the board).
 
-**Not in the first round:** moves (device keys never move), several chains at once, the board.
+**With the board (decision 7):** the board makes the phrase, so step 1 happens on it; there are no devices to add or revoke (steps 2 and 7); the board signs every enrolment and confirmation after showing it (steps 4 and 5). The app holds no key but the gas account.
+
+**Not in the first round:** moves (device keys never move), several chains at once.
 
 **Phones and WalletConnect:** a web app can't receive a dapp's deep link on a phone. The user copies the pairing link into the app, or scans the QR code from another screen. Requests wait at the relay while the app is closed; iOS doesn't run web apps in the background.
 
@@ -87,39 +89,75 @@ TypeScript, Vite, Preact (small enough for phones), viem for RPC, ABI and EIP-71
 
 **To check first:** whether a browser may post proposals and confirmations to Safe's service without an API key. Reads work without one: on 2026-11-06 the Sepolia service answered without a key and allowed any site to call it, with a rate limit. If writes need a key, the options are a key per user (poor), a small proxy holding ours (a server), or confirmations passed between members as links or QR codes (a signature is about 1.8 KB). **Answered on 2026-11-07: writes work without a key too.** The app proposed and confirmed live on Sepolia from a browser origin with no key; keyless callers get 5,000 requests per window (decisions.md, "2026-11-07: the signer app, first build").
 
-## The board (if the timing firmware says yes)
+## The board
 
-- **Hardware:** ESP32-WROOM-32 (classic ESP32, two cores at 240 MHz), a 0.96-inch SSD1306 OLED (128×64, I2C), and the board's BOOT button as "confirm". Four wires: VCC to 3V3, GND to GND, SDA to GPIO21, SCK to GPIO22.
-- **Work per operation,** counted with the Python signer (keccak permutations):
+- **Hardware:** ESP32-WROOM-32 (classic ESP32, two cores at 240 MHz), a 0.96-inch SSD1306 OLED (128×64, I2C) and two buttons. The OLED: VCC to 3V3, GND to GND, SDA to GPIO21, SCK to GPIO22. The buttons: left on GPIO32, right on GPIO33; touch modules (high while touched) or push buttons to GND, set in the firmware. These pins don't take part in booting. BOOT (GPIO0) isn't used in normal operation.
+- **Times on the board** (v1.0 chip, `tiny-keccak`, both cores; decisions.md, "2026-11-07: Rust core"):
 
-  | Operation | Permutations |
+  | Operation | Time |
   |---|---|
-  | One-time signature (a Safe transaction) | about 3.9k on average, up to 19k |
-  | Stateless signature | about 142k on average, up to 291k |
-  | A device key, once | about 239k |
-  | A key tree of 512 nonces (height 10) | about 849k |
-  | A key tree of 32 nonces (height 6) | about 53k |
+  | One-time signature (a Safe transaction) | 0.3 s on average, 0.5 s at most of 8 |
+  | Stateless signature (a tree's certificate) | 15 s on average, 32 s at most of 4 |
+  | The member key, once at setup (its pruned tree is then kept in flash) | 11.7 s |
+  | A key tree of 512 nonces (height 10) | 42 s |
 
-  The firmware measures permutations per second and turns these into times. Key trees and most of a stateless signature can use both cores.
-- **Connection:** USB serial from Chrome or Edge on macOS, Windows and Linux; Bluetooth LE from Chrome on Android. **Not from an iPhone:** no browser on iOS lets a web page reach USB or Bluetooth.
-- **As the member key's home** (decision 2), it:
-  - makes the phrase from its hardware random number generator with the radio on (the classic ESP32's generator is only truly random then), mixed with randomness from the app
-  - shows the phrase once, and compares the three words the app passes on
-  - keeps the seed in its flash
-  - signs device certificates and revocations after showing the device number and check code, on a press of BOOT
-  - can also sign Safe transactions as device 0, showing the Safe, nonce, recipient and amount it computed from the fields
-- **Security:** no secure element. Someone holding the board can read its flash, and published fault-injection attacks read keys out of early ESP32 revisions even with flash encryption. Since the board holds the member key, a stolen board means a member replacement, as a leaked phrase does. Fine for play money, not more.
+- **Connection:** USB, through the board's USB serial chip, from Chrome or Edge on macOS, Windows and Linux (Web Serial). **Not in the round:** Bluetooth LE. It would reach Chrome on Android, but it needs a radio stack on the board, puts a radio on the key's holder, and saves no cable, since the board is powered over USB. **Never from an iPhone:** no browser on iOS lets a web page reach USB, and only a third-party browser reaches Bluetooth.
+- **Buttons:** left is back or no, right is next or yes, and holding both for about a second confirms. For the PIN, left and right change the digit and both move to the next one, as on a Ledger.
+
+### What it does
+
+- **Setup:** the board makes the seed from its hardware random number generator with the radio on (the classic ESP32's generator is only truly random then), hashed together with randomness from the app, so neither side alone sets it. It shows the 24 words, a few per screen, then asks for three of them, each picked from four choices. Then the member sets a PIN of 4 to 8 digits, twice. The board gives the app the member's public key, and both show the owner address.
+- **Unlock:** the PIN, on the board, at every start. The board counts a try in flash before checking it, so pulling the cable doesn't reset the count. After three wrong PINs in a row it erases the seed and the key log; the paper phrase is the backup.
+- **Enrol:** a key tree per Safe and chain, 512 nonces, from a random salt that never leaves the board. The board shows the Safe, the chain and the first nonce, and signs the tree's certificate on confirm (about a minute in all). The app sends it from the gas account.
+- **Confirm a Safe transaction:** the app sends the fields, never a hash. The board computes the SafeTx hash and shows the chain, the Safe, the nonce and what the transaction does:
+  - a transfer of ETH, or of a token from a short list built into the firmware: recipient and amount
+  - `approveHash` on a parent Safe: the app sends the parent's fields too, the board recomputes the parent's hash, checks it against the call, and shows the parent's transfer
+  - anything else: the target, the value and the function selector, marked as not decoded, with a second confirmation
+  - a delegate call: refused (Safe's batches use one; not in the round)
+
+  On confirm, the key log records the one-time key, then the board signs and sends the signature.
+- **The gas account:** the board derives its key and gives it to the app after an unlock. It holds a few dollars and reveals nothing about the phrase.
+- **Recovery:** the 24 words are entered on the board, letter by letter; the first four letters identify any word, and the checksum is checked. The old trees' salts were lost with the old board, so a recovered board can't rebuild their keys: it enrols new trees, which replace the old ones on-chain, before it signs.
+- **Erase:** from the menu, with a confirmation.
+- **Not in the round:** messages (ERC-1271), which need a stateless signature of 15 to 32 s; dapps.
+
+### The USB link
+
+Framed binary messages with a version, a length and a checksum: requests from the app, answers from the board. The board never sends the seed, a salt or any secret but the gas account's key, and it signs nothing without a confirmation on its own screen. A small Python client speaks the same messages for tests.
+
+### Storage
+
+A flash partition holds the seed, the PIN's check value and its try count, each tree's salt, root and place, and the key log. Writes survive a pulled cable: a key log record is written and read back before its signature leaves, as the core requires. A tree's public nodes are public, so they can live on the board (about 64 KB per tree) or in the app.
+
+### Before the hardware is ready
+
+- **The signer as a crate without hardware:** button events and USB messages in, screens and answers out. Tested natively against the core's vectors, including power cuts in the middle of a write.
+- **Screens as images:** every screen rendered to a PNG on the computer, for review before anything is soldered.
+- **The firmware in QEMU,** with scripted buttons (as in the core check) and the Python client on QEMU's serial port: setup, unlock, wrong PINs and erasing, enrolment, confirmation, recovery, and QEMU killed in the middle of a key log write.
+- **The app's board backend** against a virtual board: the same crate compiled to WebAssembly, so the app's flows run end to end on Sepolia without hardware.
+
+**Only on the board:** the OLED and the buttons, USB with Chrome or Edge on each system, the random number generator with the radio on, and how the screens feel. A small test image goes first: display, both buttons, BOOT, and serial both ways.
+
+### Security
+
+- **Nothing online holds a key** but the gas account. A compromised computer or a bad build of the app can't sign. It can only ask the board, which shows what it computed itself. Transactions it can't decode are signed blind, after a second confirmation.
+- **No secure element.** Whoever holds the board and knows the PIN signs as the member. Without the PIN, a thief can still read the flash, and published fault-injection attacks read keys out of early ESP32 revisions even with flash encryption. The round's boards don't use flash encryption: it can't be undone and it complicates updates. A stolen board means a member replacement, as a leaked phrase does. Fine for play money, not more.
+- **The derivation sits in one place,** so it can change before the round without touching the rest.
 - **The ESP32 accelerates SHA-256, not keccak.** Changing the hash changes the contracts (D9), so it stays a last resort.
 
 ## Decisions
 
 Decided on 2026-11-06:
 1. **Arbitrum One with play money; Ethereum Sepolia for development.** (Changed on 2026-11-07 from Arbitrum Sepolia, where Safe's service doesn't run.)
-2. **The board makes the phrase, shows it once, and keeps the member key;** it pairs and revokes devices. The phrase is typed again only for a recovery. This keeps the phrase out of browsers: a leaked phrase would make revoking devices pointless (owner-v2.md, "The question behind several devices"). It suits a slow board: certificates are rare. **The app comes first without a board** (decided 2026-11-07): it makes the phrase and forgets it, and the phrase is typed into the app to pair or revoke a device. The board joins later, after its timings.
-3. **No unlock in the first round.** The device's screen lock protects the device key. A passkey unlock waits until the round asks for it.
+2. **The board makes the phrase, shows it once, and keeps the member key;** it pairs and revokes devices (replaced in part by decision 7: in the round, the board is the only device). The phrase is typed again only for a recovery. This keeps the phrase out of browsers: a leaked phrase would make revoking devices pointless (owner-v2.md, "The question behind several devices"). It suits a slow board: certificates are rare. **The app comes first without a board** (decided 2026-11-07): it makes the phrase and forgets it, and the phrase is typed into the app to pair or revoke a device. The board joins later, after its timings.
+3. **No unlock in the app in the first round.** The device's screen lock protects the device key. The board has a PIN (decision 7). A passkey unlock waits until the round asks for it.
 4. **Its own name, `app.winterlock.eth`,** so changes to the landing page can never touch the app's storage. Served through eth.limo, pinned on IPFS. The user creates the subname and sets its content hash.
 5. **No Safe creation:** the members join their existing Safe.
 6. **On iOS, the app runs only when installed to the home screen.**
+
+Decided on 2026-11-10:
+
+7. **In the round, the board is each member's only device:** it holds the member key (device 0), its key trees and their key log, and signs every enrolment and confirmation; no device keys. Over USB from Chrome or Edge on a computer; every member has one. Two buttons and a PIN entered on the board, which erases itself after three wrong PINs in a row. The member key never touches a browser, and a compromised computer can't sign. The app without a board stays the development path and the fallback.
 
 ## Order
 
@@ -135,5 +173,6 @@ Decided on 2026-11-06:
    - live on Sepolia through Safe's service without an API key, next to the Python signer: create, pair a second device, join a script-made Safe, enrol, propose, confirm and execute both ways, revoke the second device while its confirmation was pending, a copied browser that refuses, and the revoked device paired again
    - in Chromium's worker: the member key in about 0.12 s, a height-10 key tree in about 0.45 s, a stateless signature in about 0.07 s
    - still to do: dapps over WalletConnect, Safari and phones, the fresh-eyes run
-4. **Arbitrum One:** deploy (user-funded; a first measurement of Arbitrum's fees), the user and one other person end to end, then the rest of the round.
-5. **The normative spec,** after the round, from this note, owner-v2.md and the code.
+4. **The board's firmware** (decision 7): the parts in "Before the hardware is ready", then on the user's board once it is wired with the OLED and two buttons.
+5. **Arbitrum One:** deploy (user-funded; a first measurement of Arbitrum's fees), the user and one other person end to end, then the rest of the round.
+6. **The normative spec,** after the round, from this note, owner-v2.md and the code.
