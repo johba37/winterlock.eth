@@ -1148,7 +1148,7 @@ The question: does owner v2 work end to end on Sepolia, with a member signing th
 
 **2026-11-07: Rust core** (`core/`, `signer/tools/core_vectors.py`, `hardware/esp32-core-check/`)
 
-Step 2 of [notes/signer-app.md](notes/signer-app.md), "Order". The question: does a `no_std` Rust port of the Python signer's cryptography and key rules give the same bytes as Python, natively, in WebAssembly and on the ESP32? Yes natively, under Node and in Espressif's QEMU. The chip itself runs it on 2026-11-09.
+Step 2 of [notes/signer-app.md](notes/signer-app.md), "Order". The question: does a `no_std` Rust port of the Python signer's cryptography and key rules give the same bytes as Python, natively, in WebAssembly and on the ESP32? Yes natively, under Node, in Espressif's QEMU and, on 2026-11-10, on the chip itself: all 54 board checks pass on an ESP32 v1.0.
 
 **What's built:**
 - **`winterlock-core`** (`core/`), `no_std` with `alloc`, no floating point, no randomness inside (seeds, salts and phrase entropy are parameters):
@@ -1197,12 +1197,25 @@ Two threads saved less than half (a height-10 tree in 0.29–0.33 s) on the busy
 - **Checks** a compact subset of the vectors built into the image (phrase to seed, member key, owner address, check code, device certificate digest, two SafeTx hashes, a key log scenario, stateless and WOTS verification, both backends' keccak), then **times** the member key (one core, both), four stateless signatures, WOTS trees of height 6 and 10 (one core, both) and eight WOTS signatures through the key log, with each backend, checking every result byte for byte: 54 checks.
 - **In QEMU** (v0.0 and v3.0 chips): all 54 pass; heap peak 82,144 of 180,224 bytes; the first core's stack peaked at 9,868 of 73,992 bytes, the second's at 1,644 of 32,768 over 6 jobs. With `scripted-boot`, BOOT starts the run and turns the summary pages. QEMU's times say nothing about the chip.
 
-**Unverified until the board runs it (2026-11-09):**
-- that the chip computes the same bytes (QEMU emulates the Xtensa core, not the silicon)
-- every timing, and which backend is faster on the chip: the image times both, then the board's firmware builds with the faster feature
-- the second core restarted for each job, and the heap in memory reclaimed from the bootloader, on silicon
-- the OLED (QEMU has none) and the BOOT button
-- chips older than v3.0 on real silicon
+**On the board (2026-11-10):** an ESP32-D0WDQ6, silicon revision v1.0, 240 MHz (239 measured), CP2102 USB bridge, no display. The image was built from this commit with Xtensa Rust 1.97.0.0, espup 0.19.0 and espflash 4.7.0; it is 395,072 bytes like the one above but not byte-identical (SHA-256 `20ff56ff…7ed7e6`). The run started by itself after 10 s and took 666 s. Full serial output: `hardware/esp32-core-check/runs/2026-11-10-esp32-v1.0.log`.
+- **All 54 checks pass on silicon:** the chip computes the same bytes as Python, both backends.
+- **Memory as in QEMU:** heap peak 82,144 of 180,224 bytes (the bootloader's reclaimed 96 KB works); stacks 9,868 of 73,992 and 1,644 of 32,768 bytes. The second core started and parked for all 6 jobs.
+- **A v1.0 chip runs it,** with esp-hal's revision check relaxed.
+- **`tiny-keccak` is faster on the chip,** by 1.7 to 1.9× in every operation, so it stays the default and the board's firmware builds with it.
+
+| Operation (ms) | tiny-keccak | sha3 |
+|---|---|---|
+| keccak256 of 64 bytes, per second | 9,464 | 5,120 |
+| member key (b = 10), one core / both | 23,330 / 11,719 | 44,435 / 22,318 |
+| stateless signature, mean / max of 4 | 15,322 / 32,350 | 26,600 / 58,992 |
+| stateless verification | 40 | 68 |
+| WOTS tree height 6, one core / both | 5,313 / 2,661 | 9,933 / 4,973 |
+| WOTS tree height 10, one core / both | 83,836 / 41,971 | 158,917 / 79,556 |
+| WOTS signature, mean / max of 8 | 311 / 526 | 579 / 978 |
+
+The chip is about 8× slower than QEMU suggested (9,464 hashes per second against 74,988) and about 230× slower than one Ryzen thread natively (a member key in 23.3 s on one core against 0.10 s). Both cores halve every key and tree.
+
+**Still unverified:** the OLED and the BOOT button (this board had no display, and the run started by itself).
 
 **Python, read while porting** (matched in Rust, not changed):
 - `phrase.matches(words, 0, answer)` compares with the last word (`words[position - 1]`); position 25 raises IndexError. Callers only pass 1 to 24.
