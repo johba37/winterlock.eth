@@ -1,0 +1,355 @@
+ets Jun  8 2016 00:22:57
+
+rst:0x1 (POWERON_RESET),boot:0x17 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0040,len:6072
+load:0x40078000,len:15776
+load:0x40080400,len:3920
+entry 0x40080638
+I (27) boot: ESP-IDF v6.1-829-g9a97f6c54ec 2nd stage bootloader
+I (28) boot: chip revision: v1.0
+I (28) boot.esp32: SPI Speed      : 40MHz
+I (29) boot.esp32: SPI Mode       : DIO
+I (33) boot.esp32: SPI Flash Size : 4MB
+I (36) boot: Partition Table:
+I (39) boot: ## Label            Usage          Type ST Offset   Length
+I (45) boot:  0 nvs              WiFi data        01 02 00009000 00006000
+I (52) boot:  1 phy_init         RF data          01 01 0000f000 00001000
+I (58) boot:  2 factory          factory app      00 00 00010000 003f0000
+I (65) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=19900h (104704) map
+I (110) esp_image: segment 1: paddr=00029928 vaddr=3ffb0000 size=01e64h (  7780) load
+I (113) esp_image: segment 2: paddr=0002b794 vaddr=40080000 size=015e4h (  5604) load
+I (116) esp_image: segment 3: paddr=0002cd80 vaddr=00000000 size=03298h ( 12952) 
+I (126) esp_image: segment 4: paddr=00030020 vaddr=400d0020 size=306f8h (198392) map
+I (201) boot: Loaded app from partition at offset 0x10000
+
+winterlock-esp32-core-check 0.1.0
+chip: ESP32 (Esp32D0wdq6), Xtensa LX6, 2 cores, silicon revision v1.0
+note: esp-hal supports ESP32 v3.0 and later; this build lets older silicon run
+cpu clock: 240 MHz set (rated up to 240 MHz), 239 MHz measured against the APB timer
+heap: 180224 bytes (98304 reclaimed from the bootloader + 81920 of main DRAM); second core's stack 32768 bytes
+display: none at 0x3C or 0x3D, serial only
+  +---------------------+
+  |WINTERLOCK           |
+  |core check           |
+  |v0.1.0               |
+  |ESP32 v1.0  240 MHz  |
+  |                     |
+  |press BOOT to start  |
+  |(starts by itself    |
+  | in 10 s)            |
+  +---------------------+
+press BOOT to start, or wait 10 s
+start: automatic after 10 s
+
+checks against the Python signer's vectors (core/tests/vectors/board.json)
+  +---------------------+
+  |core check           |
+  |                     |
+  |checks against       |
+  |the Python vectors   |
+  +---------------------+
+  keccak256 (tiny-keccak): empty input, 1,000-step chain     PASS
+  keccak256 (sha3): empty input, 1,000-step chain            PASS
+  phrase (numbered, upper case) -> seed                      PASS
+  seed -> phrase -> seed                                     PASS
+  a 25th word is refused                                     PASS
+  member key seed (winterlock.signer.stateless.v1)           PASS
+  owner address of the member key                            PASS
+  pairing check code                                         PASS
+  device certificate digest                                  PASS
+  SafeTx hash: delegatecall with data                        PASS
+  SafeTx hash: every field set, nonce above 2^64             PASS
+  key log scenario (first, second, third version)            PASS
+  stateless signature verifies (Python's)                    PASS
+  a changed byte doesn't                                     PASS
+  tree secret and public seeds                               PASS
+  WOTS signature and path verify to the height-6 root        PASS
+
+timings with tiny-keccak (every result checked against the Python vectors)
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |keccak256, 1 s       |
+  +---------------------+
+  keccak256 of 64 bytes, chained: 9464 per second (25359 cycles each)
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |member key, 1 core   |
+  +---------------------+
+  member key (leanSphincs, b = 10), one core            23330.2 ms   238624 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |member key, 2 cores  |
+  +---------------------+
+  member key, both cores                                11718.6 ms        - perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |stateless sig 1/4    |
+  +---------------------+
+  stateless signature 1 (243 grind tries), verified      7586.6 ms    63451 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |stateless sig 2/4    |
+  +---------------------+
+  stateless signature 2 (45633 grind tries), verified   11908.9 ms   107625 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |stateless sig 3/4    |
+  +---------------------+
+  stateless signature 3 (20293 grind tries), verified    9440.9 ms    82431 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |stateless sig 4/4    |
+  +---------------------+
+  stateless signature 4 (251953 grind tries), verified  32350.1 ms   316188 perm  PASS
+  stateless verification                                   40.0 ms      355 perm  PASS
+  stateless signature: mean 15321.6 ms, max 32350.1 ms
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS h6, 1 core      |
+  +---------------------+
+  WOTS tree, height 6, one core                          5313.1 ms    53055 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS h6, 2 cores     |
+  +---------------------+
+  WOTS tree, height 6, both cores                        2660.5 ms        - perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS sig h6 1/4      |
+  +---------------------+
+  WOTS signature, h6 key 0, hash to signature data        303.4 ms     2955 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS sig h6 2/4      |
+  +---------------------+
+  WOTS signature, h6 key 1, hash to signature data        526.1 ms     5125 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS sig h6 3/4      |
+  +---------------------+
+  WOTS signature, h6 key 2, hash to signature data        114.8 ms     1131 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS sig h6 4/4      |
+  +---------------------+
+  WOTS signature, h6 key 63, hash to signature data       309.3 ms     3019 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS h10, 1 core     |
+  +---------------------+
+  WOTS tree, height 10, one core                        83836.1 ms   848895 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS h10, 2 cores    |
+  +---------------------+
+  WOTS tree, height 10, both cores                      41970.8 ms        - perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS sig h10 1/4     |
+  +---------------------+
+  WOTS signature, h10 key 0, hash to signature data       412.0 ms     4027 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS sig h10 2/4     |
+  +---------------------+
+  WOTS signature, h10 key 1, hash to signature data       281.8 ms     2761 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS sig h10 3/4     |
+  +---------------------+
+  WOTS signature, h10 key 2, hash to signature data       303.6 ms     2973 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 1/2 tiny-keccak |
+  |                     |
+  |WOTS sig h10 4/4     |
+  +---------------------+
+  WOTS signature, h10 key 1023, hash to signature data    236.4 ms     2321 perm  PASS
+  WOTS signature: mean 310.9 ms, max 526.1 ms (8 signatures)
+
+timings with sha3 (every result checked against the Python vectors)
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |keccak256, 1 s       |
+  +---------------------+
+  keccak256 of 64 bytes, chained: 5120 per second (46875 cycles each)
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |member key, 1 core   |
+  +---------------------+
+  member key (leanSphincs, b = 10), one core            44435.3 ms   238624 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |member key, 2 cores  |
+  +---------------------+
+  member key, both cores                                22317.8 ms        - perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |stateless sig 1/4    |
+  +---------------------+
+  stateless signature 1 (243 grind tries), verified     11883.4 ms    63451 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |stateless sig 2/4    |
+  +---------------------+
+  stateless signature 2 (45633 grind tries), verified   20111.0 ms   107625 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |stateless sig 3/4    |
+  +---------------------+
+  stateless signature 3 (20293 grind tries), verified   15415.7 ms    82431 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |stateless sig 4/4    |
+  +---------------------+
+  stateless signature 4 (251953 grind tries), verified  58991.7 ms   316188 perm  PASS
+  stateless verification                                   68.3 ms      355 perm  PASS
+  stateless signature: mean 26600.4 ms, max 58991.7 ms
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS h6, 1 core      |
+  +---------------------+
+  WOTS tree, height 6, one core                          9932.7 ms    53055 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS h6, 2 cores     |
+  +---------------------+
+  WOTS tree, height 6, both cores                        4973.1 ms        - perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS sig h6 1/4      |
+  +---------------------+
+  WOTS signature, h6 key 0, hash to signature data        563.9 ms     2955 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS sig h6 2/4      |
+  +---------------------+
+  WOTS signature, h6 key 1, hash to signature data        978.4 ms     5125 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS sig h6 3/4      |
+  +---------------------+
+  WOTS signature, h6 key 2, hash to signature data        213.8 ms     1131 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS sig h6 4/4      |
+  +---------------------+
+  WOTS signature, h6 key 63, hash to signature data       575.1 ms     3019 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS h10, 1 core     |
+  +---------------------+
+  WOTS tree, height 10, one core                       158916.8 ms   848895 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS h10, 2 cores    |
+  +---------------------+
+  WOTS tree, height 10, both cores                      79556.4 ms        - perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS sig h10 1/4     |
+  +---------------------+
+  WOTS signature, h10 key 0, hash to signature data       768.0 ms     4027 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS sig h10 2/4     |
+  +---------------------+
+  WOTS signature, h10 key 1, hash to signature data       525.7 ms     2761 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS sig h10 3/4     |
+  +---------------------+
+  WOTS signature, h10 key 2, hash to signature data       566.6 ms     2973 perm  PASS
+  +---------------------+
+  |core check           |
+  |pass 2/2 sha3        |
+  |                     |
+  |WOTS sig h10 4/4     |
+  +---------------------+
+  WOTS signature, h10 key 1023, hash to signature data    441.5 ms     2321 perm  PASS
+  WOTS signature: mean 579.1 ms, max 978.4 ms (8 signatures)
+
+memory
+  heap: peak 82144 of 180224 bytes, 0 in use now
+  first core's stack: peak 9868 of 73992 bytes
+  second core's stack: peak 1644 of 32768 bytes (6 jobs)
+
+checks: 54 passed, 0 failed; run took 666 s
+RESULT winterlock-esp32-core-check 0.1.0 rev=v1.0 mhz=240 checks=PASS passed=54/54 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=9868/73992 stack1=1644/32768
+RESULT tiny-keccak perm_s=9464 key_1core_ms=23330 key_2core_ms=11719 spx_mean_ms=15322 spx_max_ms=32350 spx_verify_ms=40 h6_1core_ms=5313 h6_2core_ms=2661 h10_1core_ms=83836 h10_2core_ms=41971 wots_mean_ms=311 wots_max_ms=526
+RESULT sha3 perm_s=5120 key_1core_ms=44435 key_2core_ms=22318 spx_mean_ms=26600 spx_max_ms=58992 spx_verify_ms=68 h6_1core_ms=9933 h6_2core_ms=4973 h10_1core_ms=158917 h10_2core_ms=79556 wots_mean_ms=579 wots_max_ms=978

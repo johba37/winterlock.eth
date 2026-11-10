@@ -101,9 +101,21 @@ The first line: the chip, whether all 54 checks passed, the peak heap use and bo
 
 On the display, `1c` and `2c` are one core and both; `SPX` is the stateless signature; `h6` and `h10` are the WOTS trees; times are in ms.
 
+## On the board (2026-11-10)
+
+An ESP32-D0WDQ6, silicon revision v1.0, with no display; the run started by itself and took 666 s. All 54 checks pass. Full output: [`runs/2026-11-10-esp32-v1.0.log`](runs/2026-11-10-esp32-v1.0.log).
+
+```
+RESULT winterlock-esp32-core-check 0.1.0 rev=v1.0 mhz=240 checks=PASS passed=54/54 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=9868/73992 stack1=1644/32768
+RESULT tiny-keccak perm_s=9464 key_1core_ms=23330 key_2core_ms=11719 spx_mean_ms=15322 spx_max_ms=32350 spx_verify_ms=40 h6_1core_ms=5313 h6_2core_ms=2661 h10_1core_ms=83836 h10_2core_ms=41971 wots_mean_ms=311 wots_max_ms=526
+RESULT sha3 perm_s=5120 key_1core_ms=44435 key_2core_ms=22318 spx_mean_ms=26600 spx_max_ms=58992 spx_verify_ms=68 h6_1core_ms=9933 h6_2core_ms=4973 h10_1core_ms=158917 h10_2core_ms=79556 wots_mean_ms=579 wots_max_ms=978
+```
+
+Not yet tried on a board: the OLED and the BOOT button.
+
 ## Notes
 
-- **Which keccak.** The image has both backends and times both. Outside the timings it uses `tiny-keccak`, the core's default: it was the fastest permutation in QEMU, where the benchmark firmware's times mean nothing. The board's numbers decide which feature the board's firmware builds with.
+- **Which keccak.** The image has both backends and times both. Outside the timings it uses `tiny-keccak`, the core's default: it was the fastest permutation in QEMU, where the benchmark firmware's times mean nothing. On the board (2026-11-10) it is faster too, by 1.7 to 1.9× in every operation, so the board's firmware builds with it.
 - **Chip revision.** esp-hal 1.2 supports ESP32 v3.0 and later, and by default it refuses older chips. This build accepts any revision (`.cargo/esp-config.toml`), as the benchmark firmware does, and prints the revision at start.
 - **The FPU** is turned on at start on both cores, as in the benchmark firmware. The core uses no floating point.
 - **The second core** is started for each two-core job and parked when it's done. If it doesn't start, the first core does its half and the check says FAIL.
