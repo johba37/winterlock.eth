@@ -1217,10 +1217,13 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             flags |= 2;
         }
         let (used, size) = self.store.usage();
+        // a &str in both builds, so `.text(version)` below compiles (and passes clippy) in each
         #[cfg(feature = "test-hooks")]
-        let version = format!("{} {}", self.version, proto::TEST_HOOKS_MARK);
+        let marked = format!("{} {}", self.version, proto::TEST_HOOKS_MARK);
+        #[cfg(feature = "test-hooks")]
+        let version: &str = &marked;
         #[cfg(not(feature = "test-hooks"))]
-        let version = self.version;
+        let version: &str = self.version;
         w.u8(proto::VERSION)
             .text(version)
             .u8(state)
