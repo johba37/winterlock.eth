@@ -3,7 +3,10 @@
 import { useEffect, useState } from 'preact/hooks'
 import { type Address, getAddress, toHex } from 'viem'
 import { short } from '../lib/chain'
-import { useApp, useDevice } from '../app'
+import { useApp, useMember } from '../app'
+import { link, useLink } from '../board/link'
+import { type BoardSafeView, approveHashOf, boardConfirm, boardPropose, boardSafeView } from '../lib/board-flows'
+import { BoardTreePanel } from './board'
 import { ctxFor, fmtEth } from '../lib/chain'
 import { chainById } from '../lib/chains'
 import type { Hex } from '../lib/db'
@@ -66,6 +69,13 @@ export function Describe(props: { d: Decoded; tokens: Record<string, { symbol: s
       </p>
     )
   }
+  if (d.kind === 'approve')
+    return (
+      <p data-testid="tx-summary">
+        <span class="tag amber">approval</span> Approves transaction <code>{d.hash.slice(0, 10)}…</code> of the Safe at <code>{d.to}</code> (approveHash): the board shows that
+        transaction before it signs.
+      </p>
+    )
   if (d.kind === 'self')
     return (
       <p data-testid="tx-summary">
@@ -88,8 +98,12 @@ export function Describe(props: { d: Decoded; tokens: Record<string, { symbol: s
 
 export function SafeScreen(props: { chain: number; safe: Address }) {
   const app = useApp()
-  const dev = useDevice()
+  const member = useMember()
+  const board = app.board
+  const ls = useLink()
+  const unlocked = ls.phase === 'connected' && ls.status?.state === 'unlocked'
   const [view, setView] = useState<SafeView | null>(null)
+  const [bview, setBview] = useState<BoardSafeView | null>(null)
   const [items, setItems] = useState<QueueItem[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [k, setK] = useState(0)
@@ -103,10 +117,19 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
     setLoadError(null)
     ;(async () => {
       try {
-        const v = await safeView(app.env, dev, props.chain, props.safe)
-        if (!live) return
-        setView(v)
-        const q = await queue(app.env, dev, props.chain, props.safe, v.state.nonce)
+        let nonce: number
+        if (board) {
+          const bv = await boardSafeView(app.env, board, props.chain, props.safe, unlocked ? (link.client ?? null) : null)
+          if (!live) return
+          setBview(bv)
+          nonce = bv.state.nonce
+        } else {
+          const v = await safeView(app.env, app.device!, props.chain, props.safe)
+          if (!live) return
+          setView(v)
+          nonce = v.state.nonce
+        }
+        const q = await queue(app.env, member, props.chain, props.safe, nonce)
         if (!live) return
         setItems(q)
         for (const it of q) if (it.decoding.decoded.kind === 'erc20') want(it.decoding.decoded.token)
@@ -117,27 +140,29 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
     return () => {
       live = false
     }
-  }, [k])
+  }, [k, unlocked])
 
   async function doEnrol() {
-    const r = await act.run((step) => enrol(app.env, dev, props.chain, props.safe, step))
+    const r = await act.run((step) => enrol(app.env, app.device!, props.chain, props.safe, step))
     if (r) setDone(`Enrolled a key tree for nonces ${r.tree.start} to ${r.tree.start + 2 ** (r.tree.height - 1) - 1} (${r.gasUsed.toLocaleString()} gas).`)
     setK(k + 1)
   }
 
   const low = view?.left !== undefined && view.capacity !== undefined && view.left < view.capacity / 5
+  const state = view?.state ?? bview?.state
+  const isOwner = view?.isOwner ?? bview?.isOwner
   return (
     <Screen title="Safe" back="/" testid="safe">
       <Panel>
         <Addr label={`Safe on ${c.name}`} value={props.safe} testid="safe-address" full />
-        {view && (
+        {state && (
           <p class="small" data-testid="safe-state">
-            {view.state.threshold} of {view.state.owners.length} owners, next nonce <code>{view.state.nonce}</code>, Safe v{view.state.version}
+            {state.threshold} of {state.owners.length} owners, next nonce <code>{state.nonce}</code>, Safe v{state.version}
           </p>
         )}
         {loadError && <p class="error">{loadError}</p>}
       </Panel>
-      {view && !view.isOwner && (
+      {state && !isOwner && (
         <Panel title="Ask your team to add you" tone="warn" testid="not-owner">
           <p>Your owner address isn’t an owner of this Safe yet. One of its current owners adds it in Safe’s app:</p>
           <ol class="steps">
@@ -151,12 +176,13 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
             <li>Add a new owner (Safe’s app calls owners signers): paste your owner address, below, and choose the threshold the team agrees on.</li>
             <li>The Safe’s owners sign and execute that change as usual.</li>
           </ol>
-          <Addr value={dev.owner} full />
+          <Addr value={member.owner} full />
           <button type="button" class="secondary" data-testid="check-again" onClick={() => setK(k + 1)}>
             Check again
           </button>
         </Panel>
       )}
+      {bview && <BoardTreePanel view={bview} chain={props.chain} safe={props.safe} onDone={() => setK(k + 1)} />}
       {view && view.device.kind !== 'active' && (
         <Panel title="This device can’t sign here" tone="warn">
           <p>{view.device.text}</p>
@@ -199,14 +225,14 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
                 <Describe d={it.decoding.decoded} tokens={tokens} safe={props.safe} />
                 {!it.hashOk && <span class="error">The service’s hash differs from the one computed here: don’t sign.</span>}
                 <span class="small">
-                  {it.confirmations} of {view?.state.threshold ?? '?'} signatures{it.mine ? ', including yours' : ''}
+                  {it.confirmations} of {state?.threshold ?? '?'} signatures{it.mine ? ', including yours' : ''}
                 </span>
               </a>
             </li>
           ))}
         </ul>
         <div class="actions row">
-          <button type="button" data-testid="new-transfer" disabled={!view?.isOwner} onClick={() => go(`/safe/${props.chain}/${props.safe}/send`)}>
+          <button type="button" data-testid="new-transfer" disabled={!isOwner} onClick={() => go(`/safe/${props.chain}/${props.safe}/send`)}>
             New transfer
           </button>
           <button type="button" class="secondary" data-testid="refresh" onClick={() => setK(k + 1)}>
@@ -223,7 +249,8 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
 
 export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
   const app = useApp()
-  const dev = useDevice()
+  const dev = useMember()
+  const board = app.board
   const [rec, setRec] = useState<ServiceTx | null>(null)
   const [hashOk, setHashOk] = useState<boolean | null>(null)
   const [col, setCol] = useState<Collected | null>(null)
@@ -251,8 +278,10 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
   }, [k])
 
   async function doConfirm() {
-    const r = await act.run((step) => confirm(app.env, dev, props.chain, props.safe, props.hash, step))
-    if (r) setDone({ text: r.note ?? `Confirmed with your ${r.slot === 0 ? 'first' : 'second and last'} one-time key for this nonce.` })
+    const r = await act.run((step, signal) =>
+      board ? boardConfirm(app.env, board, link.need(), props.chain, props.safe, props.hash, step, { signal }) : confirm(app.env, app.device!, props.chain, props.safe, props.hash, step),
+    )
+    if (r) setDone({ text: r.note ?? `Confirmed with your ${r.slot === 0 ? 'first' : 'second and last'} one-time key for this nonce${board ? ', on the board' : ''}.` })
     setK(k + 1)
   }
   async function doExecute() {
@@ -273,6 +302,8 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
           <Panel>
             <p class="small mono">NONCE {String(t.nonce).padStart(3, '0')}</p>
             <Describe d={decoding.decoded} tokens={tokens} safe={props.safe} />
+            {board && t.operation === 1 && <p class="error small">The board refuses delegate calls: it won’t sign this.</p>}
+            {board && approveHashOf(t) && <p class="small muted">The app fetches the approved transaction’s fields from Safe’s service and sends them along: the board checks their hash and shows them.</p>}
             {decoding.warnings.length > 0 && (
               <ul class="warnings small">
                 {decoding.warnings.map((w) => (
@@ -321,7 +352,7 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
                     <code>{cf.owner}</code>
                     <span>
                       {cf.owner.toLowerCase() === dev.owner.toLowerCase() ? 'you' : 'another owner'}
-                      {dev_ !== undefined ? `, device ${dev_}` : ''}
+                      {dev_ !== undefined ? (dev_ === 0 ? ', member key' : `, device ${dev_}`) : ''}
                       {cf.held ? ', kept on this device (the service kept an earlier one)' : ''}{' '}
                       {verdict === true ? <span class="tag green">counts</span> : verdict === false ? <span class="tag red">no longer counts</span> : col ? null : '…'}
                     </span>
@@ -344,12 +375,12 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
                 </p>
               )}
               {act.busy ? (
-                <Progress step={act.step} started={act.started} />
+                <Progress step={act.step} started={act.started} onCancel={board ? act.cancel : undefined} />
               ) : (
                 <div class="actions">
                   {!mineValid && hashOk && (
                     <button type="button" data-testid="confirm" onClick={doConfirm}>
-                      Confirm with this device
+                      {board ? 'Confirm on the board' : 'Confirm with this device'}
                     </button>
                   )}
                   {ready && (
@@ -375,7 +406,7 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
 
 export function Send(props: { chain: number; safe: Address }) {
   const app = useApp()
-  const dev = useDevice()
+  const board = app.board
   const [asset, setAsset] = useState<'eth' | 'token'>('eth')
   const [token, setToken] = useState('')
   const [info, setInfo] = useState<{ symbol: string; decimals: number } | null>(null)
@@ -431,7 +462,9 @@ export function Send(props: { chain: number; safe: Address }) {
   }
 
   async function sign() {
-    const r = await act.run((step) => propose(app.env, dev, props.chain, props.safe, review!, step))
+    const r = await act.run((step, signal) =>
+      board ? boardPropose(app.env, board, link.need(), props.chain, props.safe, review!, step, { signal }) : propose(app.env, app.device!, props.chain, props.safe, review!, step),
+    )
     if (r) setDone({ text: `Proposed at nonce ${r.nonce} and signed with your ${r.slot === 0 ? 'first' : 'second'} one-time key for it. The other owners confirm it in Safe’s app or this app.`, hash: r.hash })
   }
 
@@ -480,7 +513,10 @@ export function Send(props: { chain: number; safe: Address }) {
             </strong>{' '}
             from the Safe to <code>{review.to}</code>
           </p>
-          <p class="muted small">This device signs with a one-time key and posts the proposal to Safe’s Transaction Service. Nothing moves until enough owners confirm and someone executes it.</p>
+          <p class="muted small">
+            {board ? 'The board shows it and signs it with a one-time key once you confirm there' : 'This device signs with a one-time key'}, and the app posts the proposal to Safe’s Transaction Service. Nothing moves until enough owners confirm and
+            someone executes it.
+          </p>
           <ErrorLine error={act.error} />
           {done ? (
             <>
@@ -495,11 +531,11 @@ export function Send(props: { chain: number; safe: Address }) {
               </button>
             </>
           ) : act.busy ? (
-            <Progress step={act.step} started={act.started} />
+            <Progress step={act.step} started={act.started} onCancel={board ? act.cancel : undefined} />
           ) : (
             <div class="actions row">
               <button type="button" data-testid="sign-propose" onClick={sign}>
-                Sign and propose
+                {board ? 'Sign on the board and propose' : 'Sign and propose'}
               </button>
               <button type="button" class="secondary" onClick={() => setReview(null)}>
                 Change

@@ -223,6 +223,7 @@ export type Decoded =
   | { kind: 'eth'; to: Address; value: bigint }
   | { kind: 'erc20'; token: Address; to: Address; amount: bigint }
   | { kind: 'self'; what: string; to: Address; value: bigint; data: Hex }
+  | { kind: 'approve'; to: Address; hash: Hex }
   | { kind: 'raw'; to: Address; value: bigint; data: Hex; selector: Hex }
 
 const SAFE_SELF = parseAbi([
@@ -259,6 +260,11 @@ export function decode(t: SafeTx, safe: Address): Decoding {
     } catch {
       /* not a transfer */
     }
+  }
+  if (!self && t.operation === 0 && t.value === 0n && size(t.data) === 36 && t.data.slice(0, 10).toLowerCase() === '0xd4d9bdcd') {
+    // approveHash(bytes32) on another Safe: this Safe approves one of that Safe's transactions
+    warnings.push('This approves a transaction of another Safe: check that one too')
+    return { decoded: { kind: 'approve', to: t.to, hash: `0x${t.data.slice(10)}` as Hex }, warnings }
   }
   if (self) {
     try {

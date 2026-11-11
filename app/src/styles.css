@@ -381,3 +381,89 @@ ol.steps {
   padding-left: 1.1rem;
   color: var(--breach);
 }
+
+/* the board: its bar on every screen, and the virtual board's screen and buttons */
+.dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  background: var(--surface);
+  border-top: 1px solid var(--frost);
+  padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 0.4rem;
+  justify-items: center;
+}
+.dock-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: baseline;
+  justify-content: center;
+  font-size: 0.9rem;
+  text-align: center;
+}
+.dock-bar.warn span {
+  color: var(--lamp-ink);
+  font-weight: 650;
+}
+.dock-bar.ok span {
+  color: var(--ok);
+}
+.with-dock .screen {
+  padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+}
+.with-dock:has(.dock.with-board:not(.closed)) .screen {
+  padding-bottom: calc(19rem + env(safe-area-inset-bottom));
+}
+@media (min-width: 72rem) {
+  /* beside the page on a wide screen */
+  .dock.with-board:not(.closed) {
+    left: auto;
+    top: 5rem;
+    bottom: auto;
+    right: 1.5rem;
+    width: 19rem;
+    border: 1px solid var(--frost);
+    border-radius: 10px;
+  }
+  .with-dock:has(.dock.with-board:not(.closed)) .screen {
+    padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
+}
+.vboard {
+  display: grid;
+  gap: 0.45rem;
+  justify-items: center;
+  max-width: 19rem;
+}
+.vboard-label {
+  font-size: 0.85rem;
+  text-align: center;
+  color: var(--lamp-ink);
+}
+canvas.oled {
+  width: 256px;
+  height: 128px;
+  image-rendering: pixelated;
+  background: #06080a;
+  border: 6px solid #1d2a33;
+  border-radius: 6px;
+}
+.vboard-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 0.4rem;
+  width: 100%;
+}
+.vboard-buttons button {
+  padding: 0.4rem 0.5rem;
+  min-height: 2.4rem;
+}
+.row-label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+}

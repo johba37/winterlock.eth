@@ -211,7 +211,7 @@ export function Join() {
 
 export function Settings() {
   const app = useApp()
-  const dev = app.device
+  const dev = app.device ?? app.board
   const [k, setK] = useState(0)
   const [urls, setUrls] = useState<Record<number, string>>({})
   const [editing, setEditing] = useState<number | null>(null)
@@ -263,7 +263,10 @@ export function Settings() {
     <Screen title="Settings" back="/" testid="settings">
       {dev && (
         <Panel title="Gas account" testid="gas-panel">
-          <p class="small">An ordinary account that pays for your transactions: your owner contract, certificates, key trees and executions. Every device you pair from your phrase holds it. It isn’t an owner of any Safe.</p>
+          <p class="small">
+            An ordinary account that pays for your transactions: your owner contract, certificates, key trees and executions.{' '}
+            {app.board ? 'The board derives its key from your seed and gave it to this app.' : 'Every device you pair from your phrase holds it.'} It isn’t an owner of any Safe.
+          </p>
           <Addr value={dev.gasAddress} testid="gas-address" full />
           {enabledChains().map((c) => (
             <p key={c.id} class="small">
@@ -318,9 +321,14 @@ export function Settings() {
         <p class="small">
           Storage: {stored === true ? 'kept (persistent)' : stored === false ? 'not marked persistent: the browser may delete it under pressure' : 'unknown'}
         </p>
-        {dev && (
+        {app.device && (
           <p class="small">
             <a href="#/devices">Devices</a>
+          </p>
+        )}
+        {app.board && (
+          <p class="small">
+            <a href="#/board">Board</a>
           </p>
         )}
       </Panel>

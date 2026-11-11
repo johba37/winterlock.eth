@@ -29,7 +29,7 @@ import {
   type TreeRecord,
   certs,
   get,
-  getDevice,
+  hasMember,
   putSafe,
   putTree,
   treeId,
@@ -110,7 +110,7 @@ async function certifyWithMemberKey(env: Env, session: Session, chain: number, d
  */
 export async function createDevice(env: Env, session: Session, step: Step): Promise<DeviceRecord> {
   try {
-    if (await getDevice(env.db)) throw new Error('This browser already holds a device.')
+    if (await hasMember(env.db)) throw new Error('This browser already holds a device or a board.')
     const [d, k] = await Promise.all([derive(session, step), newDeviceKey(env, step)])
     const out: CertRecord[] = []
     for (const c of enabledChains()) {
@@ -149,7 +149,7 @@ function gasAddressOf(gasKey: Hex): Address {
 export async function pairDevice(env: Env, session: Session, step: Step): Promise<{ device: DeviceRecord; report: string[] }> {
   let rec: DeviceRecord
   try {
-    if (await getDevice(env.db)) throw new Error('This browser already holds a device.')
+    if (await hasMember(env.db)) throw new Error('This browser already holds a device or a board.')
     const d = await derive(session, step)
     // the device number: the lowest one that isn't active on any enabled chain
     const gens = new Map<number, number[]>()
@@ -436,7 +436,7 @@ export async function safeTxHash(core: Core, chainId: number, safe: Address, tx:
 }
 
 /** The Safe's pending transactions from Safe's service, each decoded and its hash checked here. */
-export async function queue(env: Env, dev: DeviceRecord, chainId: number, safe: Address, fromNonce: number): Promise<QueueItem[]> {
+export async function queue(env: Env, dev: { owner: Hex }, chainId: number, safe: Address, fromNonce: number): Promise<QueueItem[]> {
   const items = await service(chainId).pending(safe, fromNonce)
   const out: QueueItem[] = []
   for (const s of items) {
@@ -559,7 +559,7 @@ export async function confirm(env: Env, dev: DeviceRecord, chainId: number, safe
  * owner's first confirmation (get_or_create), so after a revoke or a fresh tree it may keep one
  * that no longer counts. Then this device keeps the new signature and uses it when it executes.
  */
-async function keptCheck(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, sig: Hex): Promise<string | undefined> {
+export async function keptCheck(env: Env, dev: { owner: Hex }, chainId: number, safe: Address, hash: Hex, sig: Hex): Promise<string | undefined> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   for (let i = 0; i < 3; i++) {
     const rec = await service(chainId).transaction(hash).catch(() => null)
@@ -625,7 +625,7 @@ export async function collect(env: Env, chainId: number, safe: Address, hash: He
 }
 
 /** Execute a fully confirmed transaction, paid by the gas account (cli.py's execute). */
-export async function execute(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, step: Step): Promise<{ tx: Hex; gasUsed: bigint }> {
+export async function execute(env: Env, dev: { gasKey: Hex; gasAddress: Hex }, chainId: number, safe: Address, hash: Hex, step: Step): Promise<{ tx: Hex; gasUsed: bigint }> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   step('Fetching the proposal and its confirmations')
   const rec = await service(chainId).transaction(hash)

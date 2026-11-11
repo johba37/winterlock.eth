@@ -263,6 +263,11 @@ export class BoardClient {
     return this.open
   }
 
+  /** A request of this client is waiting for its answer. */
+  get busy() {
+    return this.pending.size > 0
+  }
+
   /** The bootloader's text and anything else that wasn't a frame, for diagnostics. */
   get noise() {
     return this.d.noise

@@ -41,6 +41,7 @@ export const OWNER_ABI = parseAbi([
 
 export const FACTORY_ABI = parseAbi([
   'function deploy(bytes32 key) returns (address owner)',
+  'function deployAndEnroll(bytes32 key, address safe, bytes32 root, uint8 height, uint64 start, bytes signature) returns (address owner)',
   'function predict(bytes32 key) view returns (address)',
   'function IMPLEMENTATION() view returns (address)',
 ])

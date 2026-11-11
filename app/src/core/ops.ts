@@ -80,6 +80,12 @@ export function deviceOps(w: typeof Wasm): Record<string, Op> {
     safeTxHash(a: { chain: number; safe: Uint8Array; tx: Uint8Array }) {
       return w.safe_tx_hash(BigInt(a.chain), a.safe, a.tx)
     },
+    /** Whether a board's tree certificate is the member key's signature of the digest the owner
+     * contract checks (device 0, generation 0). */
+    certificateValid(a: { memberKey: Uint8Array; chain: number; owner: Uint8Array; safe: Uint8Array; root: Uint8Array; height: number; start: number; signature: Uint8Array }) {
+      const d = w.certificate_digest(BigInt(a.chain), a.owner, a.safe, 0, 0, a.root, a.height, BigInt(a.start))
+      return w.stateless_verify(a.memberKey, d, a.signature)
+    },
     ownerAddress(a: { memberKey: Uint8Array }) {
       return w.owner_address(a.memberKey)
     },

@@ -25,7 +25,11 @@ export function Welcome() {
         <button type="button" class="secondary" data-testid="go-pair" disabled={!mayHoldKeys()} onClick={() => go('/pair')}>
           I have a recovery phrase: pair this device
         </button>
+        <button type="button" class="secondary" data-testid="go-board" onClick={() => go('/board')}>
+          Use a board
+        </button>
       </div>
+      <p class="muted small">With a board, the board makes and keeps your member key and signs every transaction after showing it; this app holds no key but the gas account’s.</p>
       <p class="small">
         <a href="#/settings">Settings</a>
       </p>

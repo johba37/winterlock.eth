@@ -9,6 +9,8 @@ import type { Transport, TransportEvents } from './transport'
 export interface Screen {
   pixels: Uint8Array
   text: string
+  /** screens drawn since the page started the board: each button press draws at least one */
+  seq: number
 }
 
 type ScreenListener = (s: Screen) => void
@@ -22,6 +24,7 @@ export class VirtualTransport implements Transport {
   private fatalL = new Set<(m: string) => void>()
   screen: Screen | null = null
   fatal: string | null = null
+  private seq = 0
 
   async open(events: TransportEvents) {
     this.events = events
@@ -38,7 +41,7 @@ export class VirtualTransport implements Transport {
         if (w !== this.worker) return
         if (m.t === 'tx') this.events?.data(m.bytes)
         else if (m.t === 'screen') {
-          this.screen = { pixels: m.pixels, text: m.text }
+          this.screen = { pixels: m.pixels, text: m.text, seq: ++this.seq }
           for (const l of this.listeners) l(this.screen)
         } else if (m.t === 'started') resolve()
         else if (m.t === 'fatal') {
