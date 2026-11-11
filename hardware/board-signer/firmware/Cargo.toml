@@ -12,6 +12,14 @@ path  = "src/main.rs"
 test  = false
 bench = false
 
+# The first image for a wired board: the OLED, the buttons, BOOT, serial both ways and the
+# entropy source's registers. No key, no signing, no flash writes (src/bringup.rs).
+[[bin]]
+name  = "winterlock-bringup"
+path  = "src/bringup.rs"
+test  = false
+bench = false
+
 [features]
 # The QEMU and test build: simulated buttons and screen text over the USB link, and diagnostics
 # on the serial port. The release image is built without it (check-release.sh proves it).

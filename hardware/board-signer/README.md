@@ -41,6 +41,41 @@ Winterlock's board: an ESP32-WROOM-32 with a 128×64 OLED and two buttons that h
 
 Push buttons go to GND (the default build: active low, internal pull-ups). Touch modules (high while touched) need `--features touch-buttons` (active high, pull-downs). Nothing counts until both buttons have been seen released, so a button held at start, a stuck one, or a pin that reads pressed never confirms anything. BOOT (GPIO0) isn't used.
 
+## On the board, first
+
+1. **Wire it** as above.
+2. **The bring-up image** (`firmware/src/bringup.rs`). It holds no key, signs nothing and writes no flash.
+   ```sh
+   espflash write-bin 0x0 winterlock-bringup.bin
+   espflash monitor                      # 115200 baud, or any serial terminal
+   ```
+   - **At start, it prints:**
+     - the OLED's address
+     - each button's level, which tells push buttons (high while idle) from touch modules (low while idle), and so which signer build to flash
+     - DPORT's clock and reset bits for I2S0 and I2C0, and I2S0's registers: after `esp_hal::init`, after esp-hal's `TrngSource::new`, and after the signer's fix (see "Randomness")
+   - **Then:**
+     - press each button and BOOT: the screen counts the presses and the port prints them
+     - type a line and press Enter: it comes back on the port and shows on the screen
+     - close and reopen the port: if the uptime starts over, opening the port resets the board
+3. **The signer, with diagnostics on the port:** `winterlock-board-push.bin` for push buttons or `winterlock-board-touch.bin` for touch modules (`--features log`, plus `touch-buttons`), written the same way at 0x0. Its storage starts blank.
+4. **The app with a board:**
+   ```sh
+   git checkout board-app && cd app && npm ci && npm run wasm && npm run dev
+   ```
+   Open http://localhost:5173 in Chrome or Edge, choose "Use a board", then "Connect a board by USB".
+
+To build the images:
+```sh
+cargo build --release --bin winterlock-bringup --features log
+cargo build --release --bin winterlock-board --features log            # or log,touch-buttons
+espflash save-image --chip esp32 --merge --flash-size 4mb --partition-table partitions.csv \
+  --partition-table-offset 0x8000 --skip-padding target/xtensa-esp32-none-elf/release/<bin> <image>.bin
+```
+
+Checked in QEMU only, which has no OLED and doesn't model the pins or DPORT's registers (they read 0):
+- The bring-up image prints its report and echoes a typed line.
+- The signer's diagnostics build answers STATUS (blank, no test hooks).
+
 ## Storage
 
 The partition table (`firmware/partitions.csv`, checked by `build.rs` against the 4 MB flash):
@@ -156,4 +191,5 @@ The app talks to the board over Web Serial, or, in development builds only, to t
 | `logic/tests/` | Flows, power cuts, the Python vectors |
 | `logic/examples/screens.rs` | Every screen as a PNG |
 | `firmware/src/main.rs`, `hw.rs`, `dual.rs` | Start-up and the main loop; the partition, OLED, RNG and platform; the second core (from the core check) |
+| `firmware/src/bringup.rs` | The bring-up image for a wired board: OLED, buttons, BOOT, serial both ways, the entropy source's registers |
 | `firmware/partitions.csv`, `build.rs`, `check-release.sh` | The partition table and its check; the release check |
