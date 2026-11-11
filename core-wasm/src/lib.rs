@@ -488,6 +488,21 @@ pub fn owner_address(member_key: &[u8]) -> Result<Vec<u8>, JsError> {
     Ok(owner::owner_address(&arr(member_key, "member key")?).map_err(js)?.to_vec())
 }
 
+/// The digest a tree certificate signs (the owner's `enroll` checks it): for a board's trees,
+/// device 0 (the member key) and generation 0.
+#[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
+pub fn certificate_digest(chain: u64, owner_addr: &[u8], safe_addr: &[u8], device: u8, generation: u16, root: &[u8], height: u32, start: u64) -> Result<Vec<u8>, JsError> {
+    Ok(owner::certificate_digest(chain, &arr(owner_addr, "owner")?, &arr(safe_addr, "safe")?, device, generation, &arr(root, "root")?, height, start).to_vec())
+}
+
+/// Whether `signature` is a stateless signature of `message` (32 bytes) by `public_key` (root ‖ P),
+/// as the stateless verifier checks it.
+#[wasm_bindgen]
+pub fn stateless_verify(public_key: &[u8], message: &[u8], signature: &[u8]) -> Result<bool, JsError> {
+    Ok(leansphincs::verify(&arr(public_key, "public key")?, &arr(message, "message")?, signature))
+}
+
 /// The member key in `code` if it is a v2 owner of the pinned implementation at `address`.
 #[wasm_bindgen]
 pub fn member_key_of(address: &[u8], code: &[u8]) -> Result<Option<Vec<u8>>, JsError> {
