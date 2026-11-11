@@ -6,6 +6,8 @@
 // - Locked: the status is read every 1.5 s until the member has entered the PIN on the board.
 // - Unplugged: the link is closed; when the same port comes back (Web Serial's connect event) it
 //   is opened again by itself.
+// - Busy when the link opens: a request from before (a page reloaded while the board waited for
+//   the member) that no one will read; a serial port has one tab at a time, so it is cancelled.
 
 import { useEffect, useState } from 'preact/hooks'
 import { BoardClient, type BoardStatus } from './client'
@@ -63,7 +65,7 @@ export class BoardLink {
 
   /** The client, if a board is connected. */
   need(): BoardClient {
-    if (this.state.phase !== 'connected' || !this.client?.connected) throw new Error('No board is connected: connect it first (the board bar at the top).')
+    if (this.state.phase !== 'connected' || !this.client?.connected) throw new Error('No board is connected: connect it first (the board’s bar).')
     return this.client
   }
 
@@ -83,7 +85,11 @@ export class BoardLink {
     this.transport = t
     try {
       await c.connect()
-      const status = await c.status()
+      let status = await c.status()
+      if (status.busy) {
+        await c.cancel().catch(() => {})
+        status = await c.status()
+      }
       this.set({ phase: 'connected', kind: t.kind, label: t.label, status })
     } catch (e) {
       if (this.client === c) {

@@ -29,7 +29,7 @@ In the round, the board is each member's only device (docs/notes/signer-app.md, 
 
 **The link** (`src/board/`): one transport interface with two implementations. **Web Serial** (`serial.ts`, Chrome and Edge on a computer): the chooser lists the usual USB serial chips (CP2102 `10c4:ea60`, CH340 `1a86:7523`, CH9102 `1a86:55d4`, FTDI `0403:6001`), or every port on request; 115200 baud; DTR and RTS low; an unplugged port's link closes, and when the same port comes back the app opens it again. **The virtual board** (`virtual.ts`): the board's own logic (`hardware/board-signer/logic`) in WebAssembly (`hardware/board-signer/wasm`) in a worker, its flash in IndexedDB, its randomness from `crypto.getRandomValues`. The client (`client.ts`) speaks PROTOCOL.md: frames found among the bootloader's text by the magic and both CRCs, an id per request, BOOTED (the board restarted: what it was doing is dropped), no timeout on the requests that wait for the member, retries on the short ones.
 
-**The virtual board** is a development board whose keys live in the browser, and says so on its screen's frame. The page draws its 128×64 screen and its buttons (keys: ← and →, ↓ or B for both held) and can restart it. Its flash is saved sector by sector in a strict-durability IndexedDB transaction after each request or button press, and only then does what the board sent reach the app, so a signature never leaves before its key log record is stored. One virtual board runs per browser profile: its worker holds a Web Lock, and a second tab's board doesn't start. It runs without the test hooks.
+**The virtual board** is a development board whose keys live in the browser, and the page labels it so. The page draws its 128×64 screen and its buttons (keys: ← and →, ↓ or B for both held) and can restart it. Its flash is saved sector by sector in a strict-durability IndexedDB transaction after each request or button press, and only then does what the board sent reach the app, so a signature never leaves before its key log record is stored. One virtual board runs per browser profile: its worker holds a Web Lock, and a second tab's board doesn't start. It runs without the test hooks.
 
 ## Run
 
@@ -62,6 +62,9 @@ WINTERLOCK_PYTHON=../signer/.venv/bin/python E2E_PORT=5291 npx playwright test e
 
 - `board.spec.ts`: the virtual board in Chromium, through the app's screens and the board's drawn screen and buttons.
 - `serial.spec.ts`: the app's Web Serial code against the firmware's test image in QEMU. A stand-in for `navigator.serial` in the page (`e2e/fake-serial.js`) bridges its port to QEMU's TCP serial port; the test presses the board's buttons with the test image's hooks on the same port.
+- `device-local.spec.ts`: the app without a board, on the same local chain.
+
+**With the virtual board, live on Sepolia** (as the live run above, from the same `.env`; stops past 0.03 ETH): `E2E_DIR=... WINTERLOCK_ENV_FILE=... npx playwright test e2e/live-board.spec.ts`. A Safe made by script whose ECDSA test owner adds the board's owner with threshold 2; the board and that owner each propose a transfer the other confirms.
 
 **Live, on Sepolia** (spends test ETH; each step runs once and is skipped on a re-run):
 
