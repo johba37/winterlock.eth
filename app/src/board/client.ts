@@ -398,7 +398,11 @@ export class BoardClient {
     }
   }
 
-  /** A short request: a timeout, and retries (each with a new id). */
+  /**
+   * A short request: a timeout, and retries (each with a new id), after a timeout or after the
+   * board restarted while it waited. Many ESP32 boards reset when their port opens, so the first
+   * STATUS can meet BOOTED. Every short request only reads, or cancels, so asking again is safe.
+   */
   private async short(type: number, payload: Uint8Array, answer: number, timeoutMs = 4000, tries = 3): Promise<Frame> {
     let last: unknown
     for (let i = 0; i < tries; i++) {
@@ -406,7 +410,7 @@ export class BoardClient {
         return await this.request(type, payload, answer, { timeoutMs })
       } catch (e) {
         last = e
-        if (!(e instanceof BoardError && e.code === 'timeout')) throw e
+        if (!(e instanceof BoardError && (e.code === 'timeout' || e.code === 'restarted'))) throw e
       }
     }
     throw last
