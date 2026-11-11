@@ -84,7 +84,7 @@ export function App() {
         setDevice((await getDevice(db)) ?? null)
         // the member's board: the virtual one starts by itself, a USB one opens if this site may
         // use its port already (otherwise the board bar's Connect asks)
-        if (b?.link === 'virtual') link.connectVirtual().catch(() => {})
+        if (__VIRTUAL_BOARD__ && b?.link === 'virtual') link.connectVirtual().catch(() => {})
         else if (b?.link === 'serial') link.connectGranted().catch(() => {})
       } catch (err) {
         setFatal(short(err))

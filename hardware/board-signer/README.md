@@ -125,7 +125,7 @@ QEMU needs the image padded to 4 MB (without `--skip-padding`): `qemu-system-xte
 
 ## The app's side (2026-11-11)
 
-The app talks to the board over Web Serial, or to the virtual board: this crate in WebAssembly in a worker, without the test hooks, its flash in the browser's IndexedDB (app/README.md, "With a board"). Verified:
+The app talks to the board over Web Serial, or, in development builds only, to the virtual board: this crate in WebAssembly in a worker, without the test hooks, its flash in the browser's IndexedDB (app/README.md, "With a board"). Verified:
 
 - **The link's bytes:** the TypeScript client and this crate both match `board_client.py`'s frames, CRCs, request payloads and noisy stream (`tools/frame_vectors.py`; `app/test/board-frames.test.ts`, `logic/tests/frames.rs`).
 - **The virtual board under Node** (`app/test/board.test.ts`), through the app's client: setup, a restart and unlock, the gas key, enrolment, an ETH transfer, the same transfer again (the same key and signature), an approveHash with the parent's fields and a parent that doesn't match, an undecoded call with its second confirmation, a refused delegate call, a rejection, a cancel, a busy board, both keys of a nonce and a third transaction refused, an erase and a recovery. Every certificate and signature is checked with the core; a board started from the stored flash knows every key that signed.

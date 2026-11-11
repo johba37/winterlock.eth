@@ -13,7 +13,7 @@ import { useEffect, useState } from 'preact/hooks'
 import { BoardClient, type BoardStatus } from './client'
 import { SerialTransport, grantedPorts } from './serial'
 import type { LinkKind, Transport } from './transport'
-import { VirtualTransport } from './virtual'
+import type { VirtualTransport } from './virtual'
 
 export type LinkState =
   | { phase: 'none' }
@@ -60,7 +60,7 @@ export class BoardLink {
   }
 
   get virtual(): VirtualTransport | undefined {
-    return this.transport instanceof VirtualTransport ? this.transport : undefined
+    return this.transport?.kind === 'virtual' ? (this.transport as VirtualTransport) : undefined
   }
 
   /** The client, if a board is connected. */
@@ -103,7 +103,10 @@ export class BoardLink {
   }
 
   async connectVirtual() {
-    await this.attach(new VirtualTransport())
+    if (__VIRTUAL_BOARD__) {
+      const { VirtualTransport } = await import('./virtual')
+      await this.attach(new VirtualTransport())
+    } else throw new Error('The virtual board is only in development builds of the app.')
   }
 
   async connectSerial(port: SerialPort) {

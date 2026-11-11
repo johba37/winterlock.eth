@@ -28,7 +28,7 @@ function csp(): Plugin {
   }
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   // Development only: SAFE_API_KEY from the environment, added by the dev server's proxy for
   // writes to Safe's service when VITE_SERVICE_PROXY=/safe-service is set. Never bundled: the
   // key stays in this Node process and only the dev server's proxy sees it.
@@ -37,6 +37,8 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     plugins: [preact(), csp()],
+    // the virtual board: the dev server and the tests only, unless VIRTUAL_BOARD=1 (src/board/dev.d.ts)
+    define: { __VIRTUAL_BOARD__: JSON.stringify(command === 'serve' || mode === 'test' || process.env.VIRTUAL_BOARD === '1') },
     worker: { format: 'es' },
     build: { target: 'es2022', sourcemap: true, assetsInlineLimit: 0 },
     server: {

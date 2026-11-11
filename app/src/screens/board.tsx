@@ -158,7 +158,13 @@ export function BoardDock() {
         <span data-testid="link-state" data-phase={s.phase} data-state={s.phase === 'connected' ? (s.status?.state ?? '') : ''}>
           {mismatch ?? line.text}
         </span>
-        {(s.phase === 'none' || s.phase === 'disconnected') && rec && (
+        {(s.phase === 'none' || s.phase === 'disconnected') && rec && kind === 'virtual' && !__VIRTUAL_BOARD__ && (
+          <span class="small" data-testid="virtual-missing">
+            {' '}
+            This browser’s board is the virtual one, which only development builds of the app have.
+          </span>
+        )}
+        {(s.phase === 'none' || s.phase === 'disconnected') && rec && (kind !== 'virtual' || __VIRTUAL_BOARD__) && (
           <button
             type="button"
             class="link"
@@ -268,10 +274,14 @@ export function BoardStart() {
             <label class="small row-label">
               <input type="checkbox" checked={all} onChange={(e) => setAll((e.target as HTMLInputElement).checked)} /> Show all serial ports (if your board’s USB chip isn’t listed)
             </label>
-            <button type="button" class="secondary" data-testid="connect-virtual" disabled={act.busy || !mayHoldKeys()} onClick={() => connectTo('virtual')}>
-              Use the virtual board (development)
-            </button>
-            <p class="muted small">The virtual board runs the board’s own code in this browser, for development and tests. Its keys live in this browser: it is not a signer.</p>
+            {__VIRTUAL_BOARD__ && (
+              <>
+                <button type="button" class="secondary" data-testid="connect-virtual" disabled={act.busy || !mayHoldKeys()} onClick={() => connectTo('virtual')}>
+                  Use the virtual board (development)
+                </button>
+                <p class="muted small">The virtual board runs the board’s own code in this browser, for development and tests. Its keys live in this browser: it is not a signer.</p>
+              </>
+            )}
           </div>
         </>
       )}
