@@ -11,111 +11,28 @@
 // Needs Foundry's anvil (~/.foundry/bin), the Python signer's virtualenv (WINTERLOCK_PYTHON) and
 // Safe v1.4.1's build (SAFE_141_BUILD). Spends nothing: a local chain.
 
-import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
-import { createServer } from 'node:net'
-import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type Page, expect, test } from '@playwright/test'
-import { type Address, type Hex, createPublicClient, createWalletClient, encodeFunctionData, getAddress, http, keccak256, parseAbi, toHex, zeroAddress } from 'viem'
+import { type Address, type Hex, encodeFunctionData, getAddress, zeroAddress } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { FakeService } from './fake-service'
+import { BOB, LocalChain, OWNER_FACTORY, SAFE_ABI, boardRecord, haveChainTools, joinSafe, shot as shotIn, tid as t, useLocalRpc, waitDone } from './local'
 import { VBoard } from './vboard'
 
 const here = dirname(fileURLToPath(import.meta.url))
-const repo = resolve(here, '../..')
-const PYTHON = process.env.WINTERLOCK_PYTHON ?? resolve(repo, 'signer/.venv/bin/python')
-const ANVIL = process.env.ANVIL ?? join(homedir(), '.foundry/bin/anvil')
-// anvil's first default account: a public test key, local chains only
-const ANVIL_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
-const BOB = getAddress(keccak256(toHex('board run: recipient')).slice(0, 42))
 const SHOTS = join(process.env.E2E_DIR ?? join(here, '..', 'test-results'), 'board-screens')
-
-const SAFE_ABI = parseAbi([
-  'function setup(address[] owners, uint256 threshold, address to, bytes data, address fallbackHandler, address paymentToken, uint256 payment, address paymentReceiver)',
-  'function nonce() view returns (uint256)',
-  'function getTransactionHash(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, uint256 _nonce) view returns (bytes32)',
-  'function execTransaction(address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver, bytes signatures) payable returns (bool)',
-  'function approvedHashes(address owner, bytes32 hash) view returns (uint256)',
-  'function approveHash(bytes32 hashToApprove)',
-])
-const FACTORY_ABI = parseAbi(['function createProxyWithNonce(address singleton, bytes initializer, uint256 saltNonce) returns (address proxy)'])
-const OWNER_FACTORY = parseAbi(['function predict(bytes32 key) view returns (address)'])
-
-function freePort(): Promise<number> {
-  return new Promise((res) => {
-    const s = createServer()
-    s.listen(0, '127.0.0.1', () => {
-      const p = (s.address() as any).port
-      s.close(() => res(p))
-    })
-  })
-}
-
-let anvil: ChildProcess | undefined
-let rpcUrl = ''
-let deployed: { factory: Address; safe: { singleton: Address; factory: Address; fallback_handler: Address } }
+const shot = (p: Page, name: string) => shotIn(p, SHOTS, name)
+const chain = new LocalChain()
 
 test.beforeAll(async () => {
-  test.skip(!existsSync(ANVIL) || !existsSync(PYTHON), 'needs anvil and the Python signer’s virtualenv (WINTERLOCK_PYTHON)')
-  const port = await freePort()
-  rpcUrl = `http://127.0.0.1:${port}`
-  anvil = spawn(ANVIL, ['--port', String(port), '--chain-id', '11155111', '--silent', '--disable-code-size-limit', '--disable-block-gas-limit'], { stdio: 'ignore' })
-  const c = createPublicClient({ transport: http(rpcUrl) })
-  for (let i = 0; ; i++) {
-    try {
-      await c.getChainId()
-      break
-    } catch {
-      if (i > 100) throw new Error('anvil didn’t start')
-      await new Promise((r) => setTimeout(r, 100))
-    }
-  }
-  const r = spawnSync(PYTHON, ['-I', join(here, 'local_chain.py'), rpcUrl], { encoding: 'utf8' })
-  if (r.status !== 0) throw new Error(`local_chain.py: ${r.stderr}`)
-  deployed = JSON.parse(r.stdout)
+  test.skip(!haveChainTools(), 'needs anvil and the Python signer’s virtualenv (WINTERLOCK_PYTHON)')
+  await chain.start()
 })
 
-test.afterAll(() => {
-  anvil?.kill()
-})
+test.afterAll(() => chain.stop())
 
-const client = () => createPublicClient({ transport: http(rpcUrl) })
-const wallet = () => createWalletClient({ account: privateKeyToAccount(ANVIL_KEY), transport: http(rpcUrl), chain: { id: 11155111, name: 'anvil', nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } } })
-
-async function sendTx(to: Address, data: Hex, value = 0n) {
-  const hash = await wallet().sendTransaction({ to, data, value })
-  const r = await client().waitForTransactionReceipt({ hash })
-  if (r.status !== 'success') throw new Error(`reverted: ${hash}`)
-  return r
-}
-
-async function createSafe(owners: Address[], salt: bigint): Promise<Address> {
-  const init = encodeFunctionData({ abi: SAFE_ABI, functionName: 'setup', args: [owners, 1n, zeroAddress, '0x', deployed.safe.fallback_handler, zeroAddress, 0n, zeroAddress] })
-  const args = [deployed.safe.singleton, init, salt] as const
-  const { result } = await client().simulateContract({ account: privateKeyToAccount(ANVIL_KEY), address: deployed.safe.factory, abi: FACTORY_ABI, functionName: 'createProxyWithNonce', args })
-  await sendTx(deployed.safe.factory, encodeFunctionData({ abi: FACTORY_ABI, functionName: 'createProxyWithNonce', args }))
-  await client().request({ method: 'anvil_setBalance' as any, params: [result, toHex(10n ** 18n)] as any })
-  return getAddress(result)
-}
-
-const nonceOf = async (safe: Address) => Number(await client().readContract({ address: safe, abi: SAFE_ABI, functionName: 'nonce' }))
-const hashOf = (safe: Address, to: Address, value: bigint, data: Hex, operation: number, nonce: number) =>
-  client().readContract({ address: safe, abi: SAFE_ABI, functionName: 'getTransactionHash', args: [to, value, data, operation, 0n, 0n, 0n, zeroAddress, zeroAddress, BigInt(nonce)] })
-
-const t = (p: Page, id: string) => p.getByTestId(id)
-
-async function shot(p: Page, name: string) {
-  mkdirSync(SHOTS, { recursive: true })
-  await p.screenshot({ path: join(SHOTS, `${name}.png`), fullPage: true })
-}
-
-/** Waits for the action's result line, or fails with the app's error. */
-async function waitDone(p: Page, ok: ReturnType<Page['locator']>, timeout = 180_000) {
-  await expect(ok.or(t(p, 'error')).first()).toBeVisible({ timeout })
-  if (await t(p, 'error').isVisible()) throw new Error(`the app says: ${await t(p, 'error').textContent()}`)
-}
+const client = () => chain.client()
 
 test('the app with the virtual board, on a local chain', async ({ page, baseURL }) => {
   test.setTimeout(10 * 60_000)
@@ -126,13 +43,7 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
   const vb = new VBoard(page)
   const t0 = Date.now()
 
-  await test.step('the local chain as the RPC', async () => {
-    await page.goto(`${baseURL}/#/settings`)
-    await t(page, 'rpc-edit-11155111').click()
-    await t(page, 'rpc-input-11155111').fill(rpcUrl)
-    await t(page, 'rpc-save-11155111').click()
-    await expect(t(page, 'rpc-host-11155111')).toHaveText(new URL(rpcUrl).origin)
-  })
+  await test.step('the local chain as the RPC', () => useLocalRpc(page, baseURL!, chain.url))
 
   let owner: Address = zeroAddress
   let words: string[] = []
@@ -161,21 +72,12 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
   })
 
   await test.step('the owner the factory predicts for the board’s member key; the gas key the board gave', async () => {
-    const st = await page.evaluate(() =>
-      new Promise<any>((res, rej) => {
-        const r = indexedDB.open('winterlock')
-        r.onsuccess = () => {
-          const q = r.result.transaction('device').objectStore('device').get('this')
-          q.onsuccess = () => res(q.result)
-          q.onerror = () => rej(q.error)
-        }
-      }),
-    )
+    const st = await boardRecord(page)
     expect(st.kind).toBe('board')
     expect(Object.keys(st).sort()).toEqual(['createdAt', 'gasAddress', 'gasKey', 'how', 'id', 'kind', 'link', 'memberKey', 'owner'])
-    expect(await client().readContract({ address: deployed.factory, abi: OWNER_FACTORY, functionName: 'predict', args: [st.memberKey] })).toBe(owner)
+    expect(await client().readContract({ address: chain.deployed.factory, abi: OWNER_FACTORY, functionName: 'predict', args: [st.memberKey] })).toBe(owner)
     expect(privateKeyToAccount(st.gasKey).address).toBe(getAddress(st.gasAddress))
-    await client().request({ method: 'anvil_setBalance' as any, params: [st.gasAddress, toHex(10n ** 19n)] as any })
+    await chain.setBalance(st.gasAddress, 10n ** 19n)
   })
 
   await test.step('a restart: locked until the PIN is entered on the board', async () => {
@@ -190,15 +92,13 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
   let child: Address = zeroAddress
   let parent: Address = zeroAddress
   await test.step('a Safe owned by the board’s owner alone, and a parent Safe owned by that Safe', async () => {
-    child = await createSafe([owner], 1n)
-    parent = await createSafe([child], 2n)
+    child = await chain.createSafe([owner], 1n)
+    parent = await chain.createSafe([child], 2n)
     log(`Safe ${child}, parent Safe ${parent}`)
   })
 
   await test.step('join, then enrol: the first enrolment creates the owner contract', async () => {
-    await page.goto(`${baseURL}/#/join`)
-    await t(page, 'safe-input').fill(`sep:${child}`)
-    await t(page, 'join-submit').click()
+    await joinSafe(page, baseURL!, child)
     await expect(t(page, 'tree-state')).toHaveAttribute('data-left', '0', { timeout: 60_000 })
     await shot(page, '05-safe-no-tree')
     await t(page, 'enrol').click()
@@ -233,12 +133,12 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
   })
 
   await test.step('approveHash of the parent Safe’s transfer: the board shows the parent’s transaction', async () => {
-    const pn = await nonceOf(parent)
-    const ph = await hashOf(parent, BOB, 10n ** 17n, '0x', 0, pn)
+    const pn = await chain.nonceOf(parent)
+    const ph = await chain.hashOf(parent, BOB, 10n ** 17n, '0x', 0, pn)
     svc.add(parent, { to: BOB, value: String(10n ** 17n), data: null, operation: 0, safeTxGas: '0', baseGas: '0', gasPrice: '0', gasToken: zeroAddress, refundReceiver: zeroAddress, nonce: pn }, ph)
-    const cn = await nonceOf(child)
+    const cn = await chain.nonceOf(child)
     const data = encodeFunctionData({ abi: SAFE_ABI, functionName: 'approveHash', args: [ph] })
-    const ch = await hashOf(child, parent, 0n, data, 0, cn)
+    const ch = await chain.hashOf(child, parent, 0n, data, 0, cn)
     svc.add(child, { to: parent, value: '0', data, operation: 0, safeTxGas: '0', baseGas: '0', gasPrice: '0', gasToken: zeroAddress, refundReceiver: zeroAddress, nonce: cn }, ch)
     await page.goto(`${baseURL}/#/safe/11155111/${child}/tx/${ch}`)
     await expect(t(page, 'tx-summary')).toContainText('Approves transaction')
@@ -255,14 +155,14 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
     // the parent executes on the approval: r = the approving owner, s = 0, v = 1
     const approval = `0x${child.slice(2).toLowerCase().padStart(64, '0')}${'0'.repeat(64)}01` as Hex
     const before = await client().getBalance({ address: BOB })
-    await sendTx(parent, encodeFunctionData({ abi: SAFE_ABI, functionName: 'execTransaction', args: [BOB, 10n ** 17n, '0x', 0, 0n, 0n, 0n, zeroAddress, zeroAddress, approval] }))
+    await chain.send(parent, encodeFunctionData({ abi: SAFE_ABI, functionName: 'execTransaction', args: [BOB, 10n ** 17n, '0x', 0, 0n, 0n, 0n, zeroAddress, zeroAddress, approval] }))
     expect((await client().getBalance({ address: BOB })) - before).toBe(10n ** 17n)
     log(`approveHash executed, then the parent Safe's transfer on it (pages: ${pages.join(' / ')})`)
   })
 
   await test.step('a delegate call: the board refuses it', async () => {
-    const cn = await nonceOf(child)
-    const h = await hashOf(child, BOB, 0n, '0x12345678', 1, cn)
+    const cn = await chain.nonceOf(child)
+    const h = await chain.hashOf(child, BOB, 0n, '0x12345678', 1, cn)
     svc.add(child, { to: BOB, value: '0', data: '0x12345678', operation: 1, safeTxGas: '0', baseGas: '0', gasPrice: '0', gasToken: zeroAddress, refundReceiver: zeroAddress, nonce: cn }, h)
     await page.goto(`${baseURL}/#/safe/11155111/${child}/tx/${h}`)
     await t(page, 'confirm').click()
@@ -272,8 +172,8 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
   })
 
   await test.step('cancel from the app while the board shows the transaction', async () => {
-    const cn = await nonceOf(child)
-    const h = await hashOf(child, BOB, 1n, '0x', 0, cn)
+    const cn = await chain.nonceOf(child)
+    const h = await chain.hashOf(child, BOB, 1n, '0x', 0, cn)
     svc.add(child, { to: BOB, value: '1', data: null, operation: 0, safeTxGas: '0', baseGas: '0', gasPrice: '0', gasToken: zeroAddress, refundReceiver: zeroAddress, nonce: cn }, h)
     await page.goto(`${baseURL}/#/safe/11155111/${child}/tx/${h}`)
     await t(page, 'confirm').click()
