@@ -1558,7 +1558,7 @@ Step 4 of [notes/signer-app.md](notes/signer-app.md), "Order": the parts of "Bef
 - **Which tree:** the request names a root, or zeros for the newest tree of the Safe; a new tree must start after the board's last one for that Safe, as in the Python signer. Certificates are recorded before they are signed, as the Python signer records them.
 - **Buttons:** single presses count when released; both held 1 s; nothing counts until both were seen released (a button held at start, or QEMU's pins). The PIN pad steps through 0–9, delete and done. The word wheel offers only letters that continue some word.
 - **The gas key** is sent on request once unlocked, without a confirmation, as the note says.
-- **The token list** has four entries checked against first-party pages and read on-chain: USDC on Arbitrum One, Ethereum Sepolia and Arbitrum Sepolia, WETH on Arbitrum One. USDT and ARB are left out: their first-party pages didn't list them.
+- **The token list** has eight entries checked against first-party pages and read on-chain: USDC on Ethereum, Arbitrum One, Base, Ethereum Sepolia and Arbitrum Sepolia; WETH on Ethereum, Arbitrum One and Base. USDT and ARB are left out: their first-party pages didn't list them.
 - **The release image prints nothing:** no logs and no panic text (it halts). Test builds print each screen and diagnostics between the frames.
 - **The partition table:** a 1 MB app at 0x10000 and `signer` (data, subtype undefined) at 0x110000 to the end of 4 MB, checked by `build.rs` and at start. espflash 4.7.0 needs `--partition-table-offset 0x8000` with a custom table, or it leaves the table out of a merged image.
 

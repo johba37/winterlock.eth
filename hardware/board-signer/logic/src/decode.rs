@@ -12,9 +12,12 @@ use winterlock_core::hex::h20;
 use winterlock_core::safe::{Operation, SafeTx};
 
 /// A token the board names: only addresses checked against the issuer's or the chain's own
-/// documentation, and their decimals and symbol read on-chain (2026-11-10):
+/// documentation, and their decimals and symbol read on-chain (2026-11-10, Ethereum and Base on
+/// 2026-11-11):
 /// - USDC: Circle's "USDC contract addresses" page (developers.circle.com), mainnet and testnet
 /// - WETH on Arbitrum One: Arbitrum's "Contract addresses" page (docs.arbitrum.io)
+/// - WETH on Ethereum: ethereum.org's "Wrapped Ether" page
+/// - WETH on Base: Base's "Base Contracts" page (docs.base.org), WETH9
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Token {
     pub chain: u64,
@@ -28,6 +31,10 @@ pub const TOKENS: &[Token] = &[
     Token { chain: 42161, address: h20("82aF49447D8a07e3bd95BD0d56f35241523fBab1"), symbol: "WETH", decimals: 18 },
     Token { chain: 11155111, address: h20("1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"), symbol: "USDC", decimals: 6 },
     Token { chain: 421614, address: h20("75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"), symbol: "USDC", decimals: 6 },
+    Token { chain: 1, address: h20("A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"), symbol: "USDC", decimals: 6 },
+    Token { chain: 1, address: h20("C02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"), symbol: "WETH", decimals: 18 },
+    Token { chain: 8453, address: h20("833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"), symbol: "USDC", decimals: 6 },
+    Token { chain: 8453, address: h20("4200000000000000000000000000000000000006"), symbol: "WETH", decimals: 18 },
 ];
 
 pub fn token(chain: u64, address: &[u8; 20]) -> Option<&'static Token> {
@@ -224,6 +231,17 @@ mod tests {
         assert!(!d.needs_second());
         // the same call on another chain, or to another contract: not decoded
         assert!(matches!(decode(1, &safe, &t, None).unwrap().action, Action::Raw { .. }));
+        // each chain's own USDC and WETH are named there and nowhere else
+        for (chain, sym, addr) in [
+            (1, "USDC", "A0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"),
+            (1, "WETH", "C02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"),
+            (8453, "USDC", "833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"),
+            (8453, "WETH", "4200000000000000000000000000000000000006"),
+        ] {
+            let t = SafeTx { to: h20(addr), data: data.clone(), ..Default::default() };
+            assert!(matches!(decode(chain, &safe, &t, None).unwrap().action, Action::Token { token, .. } if token.symbol == sym && token.chain == chain));
+            assert!(matches!(decode(42161, &safe, &t, None).unwrap().action, Action::Raw { .. }));
+        }
         let mut dc = t.clone();
         dc.operation = Operation::DelegateCall;
         assert_eq!(decode(42161, &safe, &dc, None), Err(Refusal::DelegateCall));

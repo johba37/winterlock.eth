@@ -26,7 +26,7 @@ Winterlock's board: an ESP32-WROOM-32 with a 128×64 OLED and two buttons that h
   Then the key log record is written and read back, and only then is the one-time signature made and sent.
 - **The gas key** to the app once unlocked. **Recovery:** the 24 words letter by letter, the checksum checked, a PIN; a recovered board has no key trees and enrols new ones before it signs. **Erase:** from the menu, with a confirmation.
 
-**The token list** has only addresses checked against the issuer's or the chain's own documentation on 2026-11-10, with symbol and decimals read on-chain: USDC on Arbitrum One, Ethereum Sepolia and Arbitrum Sepolia (Circle's "USDC contract addresses"), WETH on Arbitrum One (Arbitrum's "Contract addresses"). USDT and ARB are left out: their first-party pages didn't list the addresses.
+**The token list** has only addresses checked against the issuer's or the chain's own documentation (2026-11-10, Ethereum and Base on 2026-11-11), with symbol and decimals read on-chain: USDC on Ethereum, Arbitrum One, Base, Ethereum Sepolia and Arbitrum Sepolia (Circle's "USDC contract addresses"), WETH on Ethereum (ethereum.org's "Wrapped Ether"), Arbitrum One (Arbitrum's "Contract addresses") and Base (Base's "Base Contracts"). USDT and ARB are left out: their first-party pages didn't list the addresses.
 
 **Buttons:** left is back or no, right is next or yes, both held for 1 s confirm. For the PIN, left and right step through 0–9, delete and done; both takes the one shown. For a word, they step through the letters that continue some word of the list; four letters (fewer for some) pick a word.
 

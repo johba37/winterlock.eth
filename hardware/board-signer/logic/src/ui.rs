@@ -307,6 +307,7 @@ pub fn chain_name(chain: u64) -> String {
     match chain {
         1 => "Ethereum".into(),
         42161 => "Arbitrum One".into(),
+        8453 => "Base".into(),
         11155111 => "Sepolia".into(),
         421614 => "Arbitrum Sepolia".into(),
         _ => alloc::format!("chain {chain}"),
@@ -315,7 +316,7 @@ pub fn chain_name(chain: u64) -> String {
 
 /// Whether a chain's native currency is ETH (the chains [`chain_name`] knows).
 pub fn eth_chain(chain: u64) -> bool {
-    matches!(chain, 1 | 42161 | 11155111 | 421614)
+    matches!(chain, 1 | 42161 | 8453 | 11155111 | 421614)
 }
 
 /// Splits text into lines of at most `cols` characters at spaces.
