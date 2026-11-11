@@ -16,6 +16,8 @@
 //! Its keys live in the browser that runs it: it is a development board, not a signer.
 
 #![forbid(unsafe_code)]
+// as in the logic crate: `%` reads as the alignment rule it is
+#![allow(clippy::manual_is_multiple_of)]
 
 use std::cell::RefCell;
 use std::rc::Rc;

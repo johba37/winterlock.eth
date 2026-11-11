@@ -105,7 +105,8 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
     const pages = await vb.confirm()
     expect(pages[0]).toMatch(/^Enrol key tree/)
     await expect(t(page, 'tree-state')).toHaveAttribute('data-left', '512', { timeout: 180_000 })
-    await expect(page.locator('.okline').first()).toContainText('created your owner contract')
+    await expect(t(page, 'enrolled')).toContainText('created your owner contract')
+    log(await t(page, 'enrolled').textContent())
     await vb.dismiss('Enrolled')
     await shot(page, '06-safe-enrolled')
   })
@@ -129,7 +130,7 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
     await t(page, 'execute').click()
     await waitDone(page, page.locator('[data-testid="done"][data-tx^="0x"]'))
     expect((await client().getBalance({ address: BOB })) - before).toBe(25n * 10n ** 16n)
-    log(`transfer executed: ${await page.locator('[data-testid="done"]').getAttribute('data-tx')}`)
+    log(`transfer: ${await page.locator('[data-testid="done"][data-tx^="0x"]').textContent()}`)
   })
 
   await test.step('approveHash of the parent Safe’s transfer: the board shows the parent’s transaction', async () => {

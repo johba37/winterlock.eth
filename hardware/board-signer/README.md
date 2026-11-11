@@ -1,12 +1,13 @@
 # Board signer
 
-Winterlock's board: an ESP32-WROOM-32 with a 128×64 OLED and two buttons that holds a member's seed and signs every enrolment and confirmation after showing it (docs/notes/signer-app.md, "The board", decision 7). This is its first version, built and tested before the hardware is wired: natively, as screen images, and in QEMU. **It hasn't run on a board yet.**
+Winterlock's board: an ESP32-WROOM-32 with a 128×64 OLED and two buttons that holds a member's seed and signs every enrolment and confirmation after showing it (docs/notes/signer-app.md, "The board", decision 7). This is its first version, built and tested before the hardware is wired: natively, as screen images, in QEMU, and as a virtual board in the app. **It hasn't run on a board yet.**
 
 | Path | What it is |
 |---|---|
 | `logic/` | `winterlock-board`: the signer without hardware, `no_std` with `alloc`, on `winterlock-core`. Button events and USB requests in, screens and answers out. Builds natively and for `xtensa-esp32-none-elf`. |
 | `firmware/` | The ESP32 firmware around it: OLED, buttons, flash partition, serial link, both cores, the random number generator. |
-| `tools/` | `board_client.py` (the protocol in Python, stdlib and pyserial), `board_vectors.py` (the Python signer's known answers), `qemu_flows.py` (the firmware in QEMU), `anvil_e2e.py` (end to end on a local chain). |
+| `wasm/` | The virtual board: `logic/` in WebAssembly for the app (`app/src/board/`), its flash in memory, its randomness from `crypto.getRandomValues`. Bindings only, as `core-wasm/` is for the core. |
+| `tools/` | `board_client.py` (the protocol in Python, stdlib and pyserial), `board_vectors.py` (the Python signer's known answers), `frame_vectors.py` (the link's known answers from `board_client.py`, for the app's client and `logic/tests/frames.rs`), `qemu_flows.py` (the firmware in QEMU), `anvil_e2e.py` (end to end on a local chain). |
 | `screens/` | `contact-sheet.png`: every screen of every flow; a few screens on their own. |
 | `PROTOCOL.md` | The USB link's frames and messages. |
 
@@ -93,7 +94,9 @@ python -I ../tools/qemu_flows.py target/images/winterlock-board-test-qemu.bin ta
 python -I ../tools/anvil_e2e.py target/images/winterlock-board-test-qemu.bin   # needs anvil and Safe v1.4.1's build
 ```
 
-The vectors: `signer/.venv/bin/python -I hardware/board-signer/tools/board_vectors.py` writes `logic/tests/vectors/board_flows.json`.
+The vectors: `signer/.venv/bin/python -I hardware/board-signer/tools/board_vectors.py` writes `logic/tests/vectors/board_flows.json`; `python3 -I hardware/board-signer/tools/frame_vectors.py` writes `logic/tests/vectors/frames.json`.
+
+**The virtual board** is built with the app's WebAssembly (`cd app && npm run wasm`, which runs `cargo build --release --target wasm32-unknown-unknown` in `wasm/` and wasm-bindgen 0.2.130); the app's tests run it (app/README.md, "Test").
 
 **Images.** espflash 4.7.0 needs `--partition-table-offset 0x8000` with a custom table, or it leaves the table out of a merged image:
 
@@ -120,10 +123,19 @@ QEMU needs the image padded to 4 MB (without `--skip-padding`): `qemu-system-xte
 - **On a local chain** (`anvil_e2e.py`): the board's owner deployed by the factory at the address the board computed; its certificate accepted by `enroll` from the board's gas account; a Safe whose only owner is the board executes an ETH transfer with the board's signature; a parent Safe executes a transfer on the board-confirmed approveHash.
 - **Memory in QEMU:** heap peak 109,624 of 180,224 bytes; first core's stack 18,864 of 72,868; second core's 2,204 of 32,768.
 
+## The app's side (2026-11-11)
+
+The app talks to the board over Web Serial, or to the virtual board: this crate in WebAssembly in a worker, without the test hooks, its flash in the browser's IndexedDB (app/README.md, "With a board"). Verified:
+
+- **The link's bytes:** the TypeScript client and this crate both match `board_client.py`'s frames, CRCs, request payloads and noisy stream (`tools/frame_vectors.py`; `app/test/board-frames.test.ts`, `logic/tests/frames.rs`).
+- **The virtual board under Node** (`app/test/board.test.ts`), through the app's client: setup, a restart and unlock, the gas key, enrolment, an ETH transfer, the same transfer again (the same key and signature), an approveHash with the parent's fields and a parent that doesn't match, an undecoded call with its second confirmation, a refused delegate call, a rejection, a cancel, a busy board, both keys of a nonce and a third transaction refused, an erase and a recovery. Every certificate and signature is checked with the core; a board started from the stored flash knows every key that signed.
+- **In Chromium** (`app/e2e/board.spec.ts`): the app's screens and the virtual board's drawn screen and buttons, on anvil with a stand-in for Safe's service.
+- **The app's Web Serial code against this firmware in QEMU** (`app/e2e/serial.spec.ts`): a stand-in for `navigator.serial` in the page bridges its port to QEMU's TCP serial port, bootloader text and all; the test presses the buttons through the test image's hooks on the same port. Setup through the app, the reset button (BOOTED on the open port, locked, the PIN), an unplug and a replug (the app opens the port again by itself), then on anvil an enrolment (`deployAndEnroll`) and a transfer signed by the firmware and executed.
+
 ## Not verified until the board runs it
 
 - the OLED, the buttons and their debouncing, and how the screens feel at 0.96 inch
-- the serial link through the CP2102 with Chrome or Edge (Web Serial), and the board's reset lines
+- the serial link through the CP2102 with Chrome or Edge (Web Serial) on each system, and the board's reset lines: the app sets DTR and RTS low once the port is open, as the Python client does, but how each driver toggles them on open (a reset at every connect?) shows only on the board
 - the random number generator with the ADC entropy source on the chip (QEMU can't show it)
 - flash writes, erases and power cuts on the real chip (QEMU's flash model and the simulated NOR flash are what was tested)
 - the times on the chip: QEMU's say nothing about them. The core check measured 11.7 s for the member key and 42 s for a tree on both cores, and 15 s on average (32 s at most) for a stateless signature on one core; the board spreads a signature's grind and FORS trees over both cores, which should shorten it, unmeasured
@@ -140,6 +152,7 @@ QEMU needs the image padded to 4 MB (without `--skip-padding`): `qemu-system-xte
 | `logic/src/keys.rs` | Every key derived from the seed, in one place (today: the core's `derive`) |
 | `logic/src/ui.rs`, `input.rs` | Screens and the frame buffer; the buttons |
 | `logic/src/sim.rs` | A NOR flash in memory that can lose power at any write |
+| `wasm/src/lib.rs` | The virtual board's bindings: bytes, buttons, the screen, the flash's changed sectors |
 | `logic/tests/` | Flows, power cuts, the Python vectors |
 | `logic/examples/screens.rs` | Every screen as a PNG |
 | `firmware/src/main.rs`, `hw.rs`, `dual.rs` | Start-up and the main loop; the partition, OLED, RNG and platform; the second core (from the core check) |

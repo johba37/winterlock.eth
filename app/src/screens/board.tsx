@@ -556,7 +556,7 @@ export function BoardTreePanel(props: { view: BoardSafeView; chain: number; safe
   const rec = useBoard()
   const s = useLink()
   const v = props.view
-  const [done, setDone] = useState<string | null>(null)
+  const [done, setDone] = useState<{ text: string; tx: string } | null>(null)
   const act = useAction()
   const low = v.left !== undefined && v.capacity !== undefined && v.left < v.capacity / 5
   const usable = !!v.onchain.root && !!v.tree && (v.left ?? 0) > 0
@@ -564,7 +564,7 @@ export function BoardTreePanel(props: { view: BoardSafeView; chain: number; safe
 
   async function doEnrol() {
     const r = await act.run((step, signal) => boardEnrol(app.env, rec, link.need(), props.chain, props.safe, step, { signal }))
-    if (r) setDone(`Enrolled a key tree for nonces ${r.start} to ${r.start + 2 ** (r.height - 1) - 1}${r.created ? ', and created your owner contract' : ''} (${r.gasUsed.toLocaleString()} gas).`)
+    if (r) setDone({ text: `Enrolled a key tree for nonces ${r.start} to ${r.start + 2 ** (r.height - 1) - 1}${r.created ? ', and created your owner contract' : ''} (${r.gasUsed.toLocaleString()} gas).`, tx: r.hash })
     props.onDone()
   }
 
@@ -585,7 +585,11 @@ export function BoardTreePanel(props: { view: BoardSafeView; chain: number; safe
       {v.treeProblem && <p class="error">{v.treeProblem}</p>}
       {v.pending && <p class="small">The board signed a certificate (from nonce {v.pending.start}) that isn’t sent yet: enrolling sends it.</p>}
       <ErrorLine error={act.error} />
-      {done && <p class="okline">{done}</p>}
+      {done && (
+        <p class="okline" data-testid="enrolled" data-tx={done.tx}>
+          {done.text}
+        </p>
+      )}
       {act.busy ? (
         <Progress step={act.step} started={act.started} onCancel={act.cancel} />
       ) : (
