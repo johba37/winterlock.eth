@@ -4,7 +4,8 @@
 // against the relay, the chain and Safe's service.
 //
 //   eth_sendTransaction       a SafeTx (a call) the member confirms and proposes; the dapp gets the
-//                             SafeTx hash after the proposal, as Safe's own app answers
+//                             SafeTx hash after the proposal, as Safe's own app answers, or the
+//                             execution's hash when the app executes at once (threshold 1)
 //   wallet_sendCalls          EIP-5792: one call, or a batch as a delegatecall to MultiSendCallOnly
 //                             v1.4.1; the dapp gets {id: SafeTx hash}
 //   wallet_getCallsStatus     100 pending, 200 executed, 400 replaced at its nonce, 500 reverted

@@ -59,9 +59,15 @@ export interface DappDone {
   nonce: number
   answered: boolean
   note?: string
-  /** this member's confirmation meets the threshold and the Safe is at its nonce */
+  /** this member's confirmation meets the threshold and the Safe is at its nonce, not executed yet */
   ready: boolean
   executed?: Hex
+  /** executed at once on the confirm (the member's confirmation was enough) */
+  atOnce?: boolean
+  /** why executing at once failed; the proposal stands */
+  executeError?: string
+  /** the dapp's answer was the execution's transaction hash, not the SafeTx hash */
+  gotTx?: boolean
 }
 
 /** Something the app answered by itself that the member should see: a refusal, a disconnection. */

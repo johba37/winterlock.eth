@@ -5,13 +5,17 @@
 // Needs anvil and the Python signer's virtualenv (local.ts), and WINTERLOCK_ENV_FILE with
 // WALLETCONNECT_PROJECT_ID (never printed). With E2E_PREVIEW=1 the app is the production build,
 // under its Content Security Policy. Spends nothing.
+//
+// The Safe starts with the member as its only owner (threshold 1), where the app executes a dapp's
+// transaction at once. Then an ECDSA test owner joins with threshold 2, for the proposals that wait
+// for another member.
 
 import { type Browser, type BrowserContext, type Page, expect, test } from '@playwright/test'
 import { SignClient } from '@walletconnect/sign-client'
 import { readFileSync } from 'node:fs'
-import { type Address, type Hex, createWalletClient, encodeFunctionData, getAddress, http, keccak256, parseAbi, toHex } from 'viem'
+import { type Address, type Hex, createWalletClient, encodeFunctionData, getAddress, hexToBytes, http, keccak256, parseAbi, toHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
-import { ERC20_ABI, MAX_UINT256, execCalldata, fromService, pack, parseSignature } from '../src/lib/safe'
+import { ERC20_ABI, MAX_UINT256, SAFE_ABI, execCalldata, fromService, pack, parseSignature } from '../src/lib/safe'
 import { log, projectId, redact } from './env'
 import { FakeService } from './fake-service'
 import { BOB, LocalChain, haveChainTools, joinSafe, tid as t, useLocalRpc, waitDone } from './local'
@@ -22,9 +26,12 @@ const BASE = `http://localhost:${process.env.E2E_PORT ?? 5190}`
 const CAIP = `eip155:${CHAIN}`
 // anvil's first default account: a public test key, local chains only
 const ANVIL_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
+// anvil's second default account: the Safe's other owner once the threshold is 2
+const OTHER = privateKeyToAccount('0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d')
 const SPENDER = getAddress(keccak256(toHex('walletconnect run: spender')).slice(0, 42))
 const SAFE_141 = process.env.SAFE_141_BUILD ?? '/home/johba/winterlock.eth/contracts/lib/safe-smart-account-v1.4.1/build/forge-out'
 const MULTISEND = getAddress('0x9641d764fc13c8B624c04430C7356C1C7C8102e2')
+const ADD_OWNER_ABI = parseAbi(['function addOwnerWithThreshold(address owner, uint256 threshold)'])
 const TOKEN_ABI = parseAbi(['function allowance(address owner, address spender) view returns (uint256)', 'function balanceOf(address) view returns (uint256)'])
 // what the dapp asks for: the methods a dapp on wagmi lists, and a read
 const METHODS = ['eth_sendTransaction', 'personal_sign', 'eth_signTypedData_v4', 'wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_getCapabilities', 'wallet_switchEthereumChain', 'eth_chainId', 'eth_getTransactionReceipt', 'eth_getTransactionByHash', 'eth_getBalance']
@@ -37,6 +44,7 @@ let dapp: Awaited<ReturnType<typeof SignClient.init>>
 let topic = ''
 let safe: Address
 let token: Address
+let gas: Address
 const hosts = new Set<string>()
 const times: Record<string, number> = {}
 
@@ -53,6 +61,19 @@ async function sendAnvil(to: Address | undefined, data: Hex) {
   const r = await chain.client().waitForTransactionReceipt({ hash })
   if (r.status !== 'success') throw new Error(`reverted: ${hash}`)
   return r
+}
+
+/** The other owner's confirmation (ECDSA over the SafeTx hash), at the stand-in service as Safe's
+ * app would post it; returns both owners' signatures for an execution. */
+async function otherConfirms(hash: Hex) {
+  const rec = svc.txs.get(hash)!
+  const signature = await OTHER.sign({ hash })
+  rec.confirmations.push({ owner: OTHER.address, signature, signatureType: 'EOA', submissionDate: new Date().toISOString() })
+  const mine = parseSignature(rec.confirmations[0].signature)
+  return [
+    { owner: mine.owner!, data: mine.data, contract: true },
+    { owner: OTHER.address, data: hexToBytes(signature), contract: false },
+  ]
 }
 
 /** A request from the dapp. Its promise gets a handler at once: the answer may come before the
@@ -171,7 +192,8 @@ test.describe.serial('WalletConnect on a local chain', () => {
     const owner = getAddress((await t(page, 'owner-address').getAttribute('data-value'))!)
     await t(page, 'done-home').click()
     await page.goto('/#/settings')
-    await chain.setBalance((await t(page, 'gas-address').getAttribute('data-value')) as Address, 10n ** 19n)
+    gas = (await t(page, 'gas-address').getAttribute('data-value')) as Address
+    await chain.setBalance(gas, 10n ** 19n)
     await page.goto('/#/')
     await t(page, 'send-certificate').click()
     await waitDone(page, t(page, 'certificate-report'))
@@ -193,9 +215,10 @@ test.describe.serial('WalletConnect on a local chain', () => {
     expect(await ask('eth_chainId', [])).toBe('0xaa36a7')
   })
 
-  test('eth_sendTransaction: an ETH transfer, executed here, its receipt through the SafeTx hash', async () => {
+  test('threshold 1: eth_sendTransaction executes at once, and the dapp gets the transaction hash', async () => {
     const value = 625n * 10n ** 14n
     const before = await chain.client().getBalance({ address: BOB })
+    const nonce = await chain.nonceOf(safe)
     // the bar on another screen leads to the request
     await page.goto(`/#/safe/${CHAIN}/${safe}`)
     const pending = ask<Hex>('eth_sendTransaction', [{ from: safe, to: BOB, value: toHex(value), gas: '0x5208' }])
@@ -203,38 +226,105 @@ test.describe.serial('WalletConnect on a local chain', () => {
     await t(page, 'wc-bar').click()
     const { answer, hash, done } = await confirmNext(pending, async (card) => {
       await expect(card.getByTestId('tx-summary')).toContainText(`Send 0.0625 ETH to ${BOB}`)
+      await expect(card.getByTestId('wc-at-once')).toBeVisible()
+      await expect(card.getByTestId('wc-confirm')).toHaveText('Sign and execute')
     })
-    expect(answer).toBe(hash)
-    const nonce = await chain.nonceOf(safe)
+    log(`  answered ${times.confirmToAnswer} ms after the confirm (shown ${times.requestShown} ms after asking)`)
     expect(hash).toBe((await chain.hashOf(safe, BOB, value, '0x', 0, nonce)).toLowerCase())
     expect(svc.txs.get(hash)?.confirmations).toHaveLength(1)
-    log(`  answered ${times.confirmToAnswer} ms after the confirm (shown ${times.requestShown} ms after asking)`)
-    // before execution: no receipt, a pending placeholder
+    // the answer is the execution's transaction, which the dapp can follow on any node
+    await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
+    expect(answer).toBe(await done.getByTestId('wc-executed').getAttribute('data-tx'))
+    expect(answer).not.toBe(hash)
+    await expect(done.getByTestId('wc-done-text')).toContainText('The dapp got the transaction’s hash')
+    const mined = await chain.client().getTransactionReceipt({ hash: answer as Hex })
+    expect(mined.status).toBe('success')
+    expect(getAddress(mined.to!)).toBe(safe)
+    expect((await chain.client().getBalance({ address: BOB })) - before).toBe(value)
+    expect(await chain.nonceOf(safe)).toBe(nonce + 1)
+    expect(await ask('eth_getTransactionReceipt', [answer])).toMatchObject({ transactionHash: answer, status: '0x1' })
+    // the SafeTx hash leads to the same execution
+    expect(await ask('eth_getTransactionReceipt', [hash])).toMatchObject({ transactionHash: answer })
+    log(`  executed at once: ${mined.gasUsed} gas`)
+  })
+
+  test('threshold 1: wallet_sendCalls with one call gets its id, then executes at once', async () => {
+    const amount = 1_500_000n
+    const data = encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [BOB, amount] })
+    const pending = ask<{ id: Hex }>('wallet_sendCalls', [{ version: '2.0.0', from: safe, chainId: '0xaa36a7', atomicRequired: true, calls: [{ to: token, data }] }])
+    const { answer, hash, done } = await confirmNext(pending, async (card) => {
+      await expect(card.getByTestId('tx-summary')).toContainText(`Send 1.5 TST to ${BOB}`)
+      await expect(card.getByTestId('wc-confirm')).toHaveText('Sign and execute')
+    })
+    expect(answer).toEqual({ id: hash })
+    await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
+    const tx = (await done.getByTestId('wc-executed').getAttribute('data-tx')) as Hex
+    expect(await chain.client().readContract({ address: token, abi: TOKEN_ABI, functionName: 'balanceOf', args: [BOB] })).toBe(amount)
+    const status = await ask<any>('wallet_getCallsStatus', [hash])
+    expect(status).toMatchObject({ id: hash, status: 200 })
+    expect(status.receipts[0]).toMatchObject({ transactionHash: tx, status: '0x1' })
+  })
+
+  test('threshold 1, but the gas account is empty: the dapp gets the SafeTx hash, and the member executes later', async () => {
+    await chain.setBalance(gas, 0n)
+    const value = 3n * 10n ** 15n
+    const before = await chain.client().getBalance({ address: BOB })
+    const pending = ask<Hex>('eth_sendTransaction', [{ from: safe, to: BOB, value: toHex(value) }])
+    const { answer, hash, done } = await confirmNext(pending, async (card) => {
+      await expect(card.getByTestId('wc-confirm')).toHaveText('Sign and execute')
+    })
+    expect(answer).toBe(hash)
+    await expect(done.getByTestId('wc-execute-error')).toBeVisible()
+    log(`  not executed at once: ${(await done.getByTestId('wc-execute-error').textContent())?.slice(0, 160)}`)
+    await expect(done.getByTestId('wc-done-text')).toContainText('The dapp got the SafeTx hash')
     expect(await ask('eth_getTransactionReceipt', [hash])).toBeNull()
-    expect(await ask('eth_getTransactionByHash', [hash])).toMatchObject({ hash, blockNumber: null })
+    await chain.setBalance(gas, 10n ** 19n)
     await done.getByTestId('wc-execute').click()
     await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
     const tx = (await done.getByTestId('wc-executed').getAttribute('data-tx')) as Hex
     expect((await chain.client().getBalance({ address: BOB })) - before).toBe(value)
-    const receipt = await ask('eth_getTransactionReceipt', [hash])
-    expect(receipt).toMatchObject({ transactionHash: tx, status: '0x1' })
-    expect(await ask('eth_getTransactionByHash', [hash])).toMatchObject({ hash: tx })
+    expect(await ask('eth_getTransactionReceipt', [hash])).toMatchObject({ transactionHash: tx, status: '0x1' })
   })
 
-  test('eth_sendTransaction: an ERC-20 transfer', async () => {
-    const amount = 1_500_000n
-    const data = encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [BOB, amount] })
-    const pending = ask<Hex>('eth_sendTransaction', [{ from: safe, to: token, data }])
+  test('the Safe gets a second owner and threshold 2', async () => {
+    // the Safe calls itself, as its owners' transaction would (anvil lets the test send as the Safe)
+    await chain.client().request({ method: 'anvil_impersonateAccount' as any, params: [safe] as any })
+    try {
+      const w = createWalletClient({ account: safe, transport: http(chain.url), chain: anvilWallet().chain })
+      const h = await w.sendTransaction({ to: safe, data: encodeFunctionData({ abi: ADD_OWNER_ABI, functionName: 'addOwnerWithThreshold', args: [OTHER.address, 2n] }) })
+      expect((await chain.client().waitForTransactionReceipt({ hash: h })).status).toBe('success')
+    } finally {
+      await chain.client().request({ method: 'anvil_stopImpersonatingAccount' as any, params: [safe] as any })
+    }
+    expect(await chain.client().readContract({ address: safe, abi: SAFE_ABI, functionName: 'getThreshold' })).toBe(2n)
+  })
+
+  test('threshold 2: eth_sendTransaction gets the SafeTx hash, and its receipt once executed elsewhere', async () => {
+    const value = 10n ** 15n
+    const before = await chain.client().getBalance({ address: BOB })
+    const pending = ask<Hex>('eth_sendTransaction', [{ from: safe, to: BOB, value: toHex(value) }])
     const { answer, hash, done } = await confirmNext(pending, async (card) => {
-      await expect(card.getByTestId('tx-summary')).toContainText(`Send 1.5 TST to ${BOB}`)
+      await expect(card.getByTestId('tx-summary')).toContainText(`Send 0.001 ETH to ${BOB}`)
+      await expect(card.getByTestId('wc-at-once')).toHaveCount(0)
+      await expect(card.getByTestId('wc-confirm')).toHaveText('Sign and propose')
     })
     expect(answer).toBe(hash)
-    await done.getByTestId('wc-execute').click()
-    await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
-    expect(await chain.client().readContract({ address: token, abi: TOKEN_ABI, functionName: 'balanceOf', args: [BOB] })).toBe(amount)
+    expect(hash).toBe((await chain.hashOf(safe, BOB, value, '0x', 0, await chain.nonceOf(safe))).toLowerCase())
+    await expect(done.getByTestId('wc-done-text')).toContainText('The dapp got the SafeTx hash')
+    await expect(done.getByTestId('wc-execute')).toHaveCount(0)
+    // before execution: no receipt, a pending placeholder
+    expect(await ask('eth_getTransactionReceipt', [hash])).toBeNull()
+    expect(await ask('eth_getTransactionByHash', [hash])).toMatchObject({ hash, blockNumber: null })
+    // the other owner confirms, and anyone executes it (as in Safe's app); the service indexes it
+    const rec = svc.txs.get(hash)!
+    const r = await sendAnvil(safe, execCalldata(fromService(rec), pack(await otherConfirms(hash))))
+    rec.transactionHash = r.transactionHash
+    expect((await chain.client().getBalance({ address: BOB })) - before).toBe(value)
+    expect(await ask('eth_getTransactionReceipt', [hash])).toMatchObject({ transactionHash: r.transactionHash, status: '0x1' })
+    expect(await ask('eth_getTransactionByHash', [hash])).toMatchObject({ hash: r.transactionHash })
   })
 
-  test('wallet_sendCalls with a batch, then wallet_getCallsStatus through an execution elsewhere', async () => {
+  test('threshold 2: wallet_sendCalls with a batch, then wallet_getCallsStatus through an execution elsewhere', async () => {
     expect(await ask('wallet_getCapabilities', [safe, ['0xaa36a7']])).toEqual({ '0xaa36a7': { atomicBatch: { supported: true }, atomic: { status: 'supported' } } })
     const calls = [
       { to: BOB, value: toHex(10n ** 16n) },
@@ -256,10 +346,8 @@ test.describe.serial('WalletConnect on a local chain', () => {
     expect(getAddress(rec.to)).toBe(MULTISEND)
     // proposed, not executed: 100
     expect(await ask('wallet_getCallsStatus', [hash])).toMatchObject({ id: hash, status: 100, atomic: true })
-    // anyone executes it (as in Safe's app): here anvil's account, with the member's confirmation
-    const sig = parseSignature(rec.confirmations[0].signature)
-    const exec = execCalldata(fromService(rec), pack([{ owner: sig.owner!, data: sig.data, contract: true }]))
-    const r = await sendAnvil(safe, exec)
+    // the other owner confirms, and anyone executes it (as in Safe's app): here anvil's account
+    const r = await sendAnvil(safe, execCalldata(fromService(rec), pack(await otherConfirms(hash))))
     // the service indexes the execution
     rec.transactionHash = r.transactionHash
     const status = await ask<any>('wallet_getCallsStatus', [hash])

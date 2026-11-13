@@ -54,6 +54,9 @@ let mode: { batches: boolean; noBatches?: string } = { batches: true }
 
 /** How the member signs and proposes a Safe transaction (flows.proposeTx with this device). */
 export type Propose = (chain: number, safe: Address, tx: SafeTx, step: Step) => Promise<Proposed>
+/** How the member's gas account executes a proposal that is ready (flows.execute); `onSent` gets the
+ * transaction's hash before it is mined. */
+export type Execute = (chain: number, safe: Address, hash: Hex, step: Step, onSent: (tx: Hex) => void) => Promise<{ tx: Hex }>
 /** pasted links: pairing topic → the Safe whose screen took it */
 const targets = new Map<string, { chain: number; safe: Address }>()
 
@@ -305,7 +308,8 @@ async function onRequest(r: WalletKitTypes.SessionRequest) {
       // proposed before a reload, but not answered: answer now
       const before = (await all<DappTxRecord>(env.db, 'dapp')).find((x) => x.requestId === id && x.topic === topic)
       if (before) {
-        await respond(topic, id, { result: answerFor(request.method, before.safeTxHash) })
+        const executedAtOnce = request.method === 'eth_sendTransaction' && before.execution?.success
+        await respond(topic, id, { result: executedAtOnce ? before.execution!.tx : answerFor(request.method, before.safeTxHash) })
         await writeStrict(env.db, 'dapp', [{ ...before, answered: true }])
         return
       }
@@ -367,8 +371,14 @@ function update(id: number, f: (r: DappRequest) => DappRequest) {
  * checks and key log as any proposal), keep its SafeTx hash, and answer the dapp if it is still
  * waiting. A refusal by the app (the stale-log check, no key tree, ...) or a failure leaves the
  * request waiting, so the member can fix it and try again, or refuse it.
+ *
+ * If the member's confirmation is enough (threshold 1) and no earlier transaction waits in the
+ * queue, the gas account executes it at once, as Safe's app does with threshold 1:
+ * `eth_sendTransaction` is then answered with the execution's transaction hash once it is sent, which
+ * a dapp can follow on its own node. `wallet_sendCalls` gets its id first, as always. If executing
+ * fails, the dapp gets the SafeTx hash and the proposal stands, to be executed from the screen.
  */
-export async function confirmRequest(id: number, propose: Propose, step: Step) {
+export async function confirmRequest(id: number, propose: Propose, exec: Execute, step: Step) {
   const r = wcState().requests.find((x) => x.id === id)
   if (!r) throw new Error('That request is gone.')
   if (r.busy) throw new Error('That request is being signed already.')
@@ -382,7 +392,7 @@ export async function confirmRequest(id: number, propose: Propose, step: Step) {
     // a batch's MultiSendCallOnly code is checked with the rest, before signing (flows.ts, prepare)
     const tx = txFor(r.calls, BigInt(nonce))
     const p = await propose(r.chain, r.safe, tx, step)
-    const rec: DappTxRecord = {
+    let rec: DappTxRecord = {
       safeTxHash: p.hash.toLowerCase() as Hex,
       chain: r.chain,
       safe: r.safe,
@@ -396,26 +406,59 @@ export async function confirmRequest(id: number, propose: Propose, step: Step) {
       answered: false,
     }
     await writeStrict(env.db, 'dapp', [rec])
+    const waiting = () => !r.expiry || Date.now() < r.expiry
     let answered = false
-    if (!r.expiry || Date.now() < r.expiry) {
-      step('Answering the dapp')
+    let gotTx = false
+    /** answers the dapp once, while it still waits */
+    const answer = async (result: unknown, isTx = false) => {
+      if (answered || !waiting()) return
+      // while the execution is mined, the progress stays on it
+      if (!isTx) step('Answering the dapp')
       try {
-        await respond(r.topic, id, { result: answerFor(r.method, rec.safeTxHash) })
-        answered = !r.expiry || Date.now() < r.expiry
+        await respond(r.topic, id, { result })
+        answered = waiting()
       } catch {
         /* the session ended meanwhile */
       }
-      if (answered) await writeStrict(env.db, 'dapp', [{ ...rec, answered }])
+      if (answered) {
+        gotTx = isTx
+        rec = { ...rec, answered: true }
+        await writeStrict(env.db, 'dapp', [rec])
+      }
     }
     step('Counting the confirmations')
     const col = await collect(env, r.chain, r.safe, p.hash).catch(() => null)
     const isReady = !!col && col.sigs.length >= col.threshold && col.nonce === nonce
+    let executed: Hex | undefined
+    let executeError: string | undefined
+    if (isReady) {
+      if (r.method === 'wallet_sendCalls') await answer(answerFor(r.method, rec.safeTxHash))
+      let answering: Promise<void> | undefined
+      try {
+        step('Your confirmation is enough: executing it now')
+        const out = await exec(r.chain, r.safe, p.hash, step, (h) => {
+          if (r.method === 'eth_sendTransaction') answering = answer(h, true)
+        })
+        executed = out.tx
+      } catch (err) {
+        executeError = short(err)
+      }
+      await answering
+      if (executed) {
+        rec = { ...rec, execution: { tx: executed, success: true } }
+        await writeStrict(env.db, 'dapp', [rec])
+      }
+    }
+    await answer(answerFor(r.method, rec.safeTxHash))
     setWc((s) => ({
       ...s,
       requests: s.requests.filter((x) => x.id !== id),
-      done: [{ id, chain: r.chain, safe: r.safe, dapp: r.dapp, hash: rec.safeTxHash, nonce, answered, note: p.note, ready: isReady }, ...s.done].slice(0, 20),
+      done: [
+        { id, chain: r.chain, safe: r.safe, dapp: r.dapp, hash: rec.safeTxHash, nonce, answered, note: p.note, ready: isReady && !executed, executed, atOnce: !!executed, executeError, gotTx },
+        ...s.done,
+      ].slice(0, 20),
     }))
-    return { hash: rec.safeTxHash, nonce, answered, ready: isReady }
+    return { hash: rec.safeTxHash, nonce, answered, ready: isReady && !executed, executed, gotTx }
   } catch (err) {
     update(id, (x) => ({ ...x, busy: false }))
     throw err

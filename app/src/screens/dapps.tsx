@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { Address } from 'viem'
 import { useApp, useDevice } from '../app'
+import { ctxFor, safeState } from '../lib/chain'
 import { chainById } from '../lib/chains'
 import { type DappInfo, txFor } from '../lib/dapp'
 import { type DappTxRecord, all } from '../lib/db'
@@ -219,9 +220,24 @@ function RequestCard(props: { r: DappRequest; now: number }) {
   useEffect(() => {
     for (const t of tokensOf(decoding.decoded)) want(t)
   }, [r.id])
+  // with threshold 1 the app executes at once on the confirm (walletconnect.ts, confirmRequest)
+  const [threshold, setThreshold] = useState<number>()
+  useEffect(() => {
+    ctxFor(app.env.db, r.chain)
+      .then((c) => safeState(c, r.safe))
+      .then((s) => setThreshold(s.threshold))
+      .catch(() => {})
+  }, [r.id])
   const expired = r.expired || (r.expiry !== undefined && props.now >= r.expiry)
   async function confirm() {
-    await act.run(async (step) => (await wcModule()).confirmRequest(r.id, (chain, safe, tx, s) => proposeTx(app.env, dev, chain, safe, tx, s), step))
+    await act.run(async (step) =>
+      (await wcModule()).confirmRequest(
+        r.id,
+        (chain, safe, tx, s) => proposeTx(app.env, dev, chain, safe, tx, s),
+        (chain, safe, hash, s, onSent) => execute(app.env, dev, chain, safe, hash, s, onSent),
+        step,
+      ),
+    )
   }
   async function refuse() {
     await act.run(async () => (await wcModule()).refuseRequest(r.id))
@@ -242,6 +258,12 @@ function RequestCard(props: { r: DappRequest; now: number }) {
         <p class="muted small">
           From the Safe <code>{r.safe}</code> on {chainById(r.chain).name}, at the Safe’s next free nonce, with no refund fields ({r.method}).
         </p>
+        {threshold === 1 && (
+          <p class="small" data-testid="wc-at-once">
+            Your confirmation is enough (threshold 1): unless an earlier transaction waits in the queue, the app executes it right away, paid by your gas account
+            {r.method === 'eth_sendTransaction' ? ', and the dapp gets the transaction’s hash' : ''}.
+          </p>
+        )}
         {expired ? (
           <p class="error" data-testid="wc-expired">
             The dapp stopped waiting{r.expiry ? ` at ${clock(r.expiry)}` : ''}: it would no longer get the answer. Dismiss this and ask again from the dapp.
@@ -250,7 +272,7 @@ function RequestCard(props: { r: DappRequest; now: number }) {
           left !== undefined && (
             <p class="small">
               The dapp waits until {clock(r.expiry!)} ({Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')} left). Proposing and the other members’ confirmations may take
-              longer: the dapp gets the SafeTx hash once it is proposed.
+              longer: {threshold === 1 ? 'the dapp gets its answer as soon as the app has signed.' : 'the dapp gets the SafeTx hash once it is proposed.'}
             </p>
           )
         )}
@@ -262,7 +284,7 @@ function RequestCard(props: { r: DappRequest; now: number }) {
         <div class="actions row">
           {!expired && (
             <button type="button" data-testid="wc-confirm" onClick={confirm}>
-              Sign and propose
+              {threshold === 1 ? 'Sign and execute' : 'Sign and propose'}
             </button>
           )}
           <button type="button" class="secondary" data-testid="wc-refuse" onClick={refuse}>
@@ -290,10 +312,21 @@ function DoneCard(props: { d: DappDone }) {
   return (
     <Panel tone="ok" testid="wc-done">
       <p class="okline" data-testid="wc-done-text" data-hash={d.hash} data-answered={String(d.answered)} data-executed={d.executed ?? ''}>
-        Proposed for {d.dapp.name} at nonce {d.nonce}, with your confirmation.{' '}
-        {d.answered ? 'The dapp got the SafeTx hash.' : 'The dapp’s request had expired, so it didn’t get the answer; the proposal stands.'}
+        {d.atOnce ? `Signed and executed for ${d.dapp.name} at nonce ${d.nonce}: your confirmation was enough.` : `Proposed for ${d.dapp.name} at nonce ${d.nonce}, with your confirmation.`}{' '}
+        {d.answered
+          ? d.gotTx
+            ? 'The dapp got the transaction’s hash.'
+            : 'The dapp got the SafeTx hash.'
+          : d.atOnce
+            ? 'The dapp’s request had expired, so it didn’t get the answer.'
+            : 'The dapp’s request had expired, so it didn’t get the answer; the proposal stands.'}
         {d.note ? ` ${d.note}` : ''}
       </p>
+      {d.executeError && (
+        <p class="error" data-testid="wc-execute-error">
+          Not executed at once: {d.executeError}. The proposal stands; execute it below once that is fixed.
+        </p>
+      )}
       {d.executed ? (
         <p class="okline" data-testid="wc-executed" data-tx={d.executed}>
           Executed: <Explorer base={c.explorer} tx={d.executed} />
