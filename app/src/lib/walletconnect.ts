@@ -37,10 +37,10 @@ import {
   sessionSafe,
   txFor,
 } from './dapp'
-import { type DappTxRecord, type DeviceRecord, type Hex, all, get, putSetting, writeStrict } from './db'
-import { type Env, type Step, collect, nextNonce, proposeTx, service } from './flows'
+import { type DappTxRecord, type Hex, all, get, putSetting, writeStrict } from './db'
+import { type Env, type Proposed, type Step, collect, nextNonce, service } from './flows'
 import { Refused } from './keylog'
-import { MULTISEND, stripMetadata } from './safe'
+import { MULTISEND, type SafeTx, stripMetadata } from './safe'
 import { type DappRequest, type DappSession, PROJECT_ID, logWc, setWc, wcState } from './wc-state'
 
 export const RELAY = 'wss://relay.walletconnect.org'
@@ -51,14 +51,20 @@ const USER_DISCONNECTED = { code: 6000, message: 'User disconnected.' }
 let kit: IWalletKit | undefined
 let starting: Promise<IWalletKit> | undefined
 let env: Env
+/** whether the member's signer takes batches, and why not */
+let mode: { batches: boolean; noBatches?: string } = { batches: true }
+
+/** How the member signs and proposes a Safe transaction (flows.proposeTx with this device). */
+export type Propose = (chain: number, safe: Address, tx: SafeTx, step: Step) => Promise<Proposed>
 /** pasted links: pairing topic → the Safe whose screen took it */
 const targets = new Map<string, { chain: number; safe: Address }>()
 
 // --- no third parties ---
 
 const THIRD_PARTY = /(^|\.)(walletconnect\.(org|com)|reown\.com)$/i
-/** Hosts the guard refused, for the tests. */
+/** Hosts the guard refused (also on globalThis.__winterlockRefused, for the tests). */
 export const refused: string[] = []
+;(globalThis as unknown as { __winterlockRefused: string[] }).__winterlockRefused = refused
 
 /** Refuses fetches to WalletConnect's and Reown's servers. The relay is a WebSocket, not a fetch;
  * the RPC and Safe's service go through unchanged. */
@@ -102,8 +108,9 @@ function metadata() {
 }
 
 /** Starts WalletKit once: connects to the relay, restores sessions and pending requests. */
-export async function start(e: Env): Promise<void> {
+export async function start(e: Env, m?: { batches: boolean; noBatches?: string }): Promise<void> {
   env = e
+  if (m) mode = m
   if (kit) return
   if (!PROJECT_ID) {
     setWc((s) => ({ ...s, status: 'failed', error: 'This build has no WalletConnect project ID.' }))
@@ -164,6 +171,8 @@ function refreshSessions() {
     })
   }
   setWc((st) => ({ ...st, sessions: out }))
+  // the next start connects to the relay only while a session lasts
+  if (env) putSetting(env.db, 'wc:on', out.length > 0).catch(() => {})
 }
 
 const CHAINS_ON = (c: number) => {
@@ -210,13 +219,14 @@ function onProposal(p: WalletKitTypes.SessionProposal) {
 
 /** Approves a proposal for this Safe: it must be the member's, on an enabled chain, and the dapp
  * must offer that chain (otherwise the dapp gets 5100 and the member the reason). */
-export async function approve(id: number, dev: DeviceRecord, target: { chain: number; safe: Address }): Promise<{ notes: string[] }> {
+export async function approve(id: number, owner: Hex, target: { chain: number; safe: Address }): Promise<{ notes: string[] }> {
   const k = await ready()
-  const p = k.getPendingSessionProposals()[id]
+  // a list, whatever its type says
+  const p = Object.values(k.getPendingSessionProposals()).find((x) => x.id === id)
   if (!p) throw new Error('That proposal has expired: copy a fresh link from the dapp.')
   if (!chainById(target.chain).enabled) throw new Error(`${chainById(target.chain).name} isn’t enabled in the app.`)
   const st = await safeState(await usableCtx(env.db, env.core, target.chain), target.safe)
-  if (!st.owners.some((o) => o.toLowerCase() === dev.owner.toLowerCase())) throw new Error('Your owner isn’t an owner of this Safe: the dapp could see it, but you couldn’t sign for it.')
+  if (!st.owners.some((o) => o.toLowerCase() === owner.toLowerCase())) throw new Error('Your owner isn’t an owner of this Safe: the dapp could see it, but you couldn’t sign for it.')
   let ns
   try {
     ns = sessionNamespaces(p, target.chain, target.safe)
@@ -228,7 +238,7 @@ export async function approve(id: number, dev: DeviceRecord, target: { chain: nu
     }
     throw err
   }
-  await k.approveSession({ id, namespaces: ns.namespaces, sessionProperties: sessionProperties(target.chain, target.safe, true) })
+  await k.approveSession({ id, namespaces: ns.namespaces, sessionProperties: sessionProperties(target.chain, target.safe, mode.batches) })
   await putSetting(env.db, 'wc:on', true)
   setWc((s) => ({ ...s, proposals: s.proposals.filter((x) => x.id !== id) }))
   refreshSessions()
@@ -272,13 +282,18 @@ function sessionOf(topic: string) {
 }
 
 function planCtx(chain: number, safe: Address): PlanCtx {
-  return { chain, safe, batches: true }
+  return { chain, safe, ...mode }
 }
+
+/** Requests this page has taken: the SDK may hand one over twice (seen after a reload, for a read
+ * the relay delivered again), and a dapp must get one answer. */
+const taken = new Set<number>()
 
 async function onRequest(r: WalletKitTypes.SessionRequest) {
   const { id, topic } = r
   const { request, chainId } = r.params
-  if (wcState().requests.some((x) => x.id === id)) return
+  if (taken.has(id) || wcState().requests.some((x) => x.id === id)) return
+  taken.add(id)
   let s = sessionOf(topic)
   if (!s) {
     refreshSessions()
@@ -365,7 +380,7 @@ async function checkMultiSend(chain: number) {
  * waiting. A refusal by the app (the stale-log check, no key tree, ...) or a failure leaves the
  * request waiting, so the member can fix it and try again, or refuse it.
  */
-export async function confirmRequest(dev: DeviceRecord, id: number, step: Step) {
+export async function confirmRequest(id: number, propose: Propose, step: Step) {
   const r = wcState().requests.find((x) => x.id === id)
   if (!r) throw new Error('That request is gone.')
   if (r.busy) throw new Error('That request is being signed already.')
@@ -381,7 +396,7 @@ export async function confirmRequest(dev: DeviceRecord, id: number, step: Step) 
       step('Checking MultiSendCallOnly’s code')
       await checkMultiSend(r.chain)
     }
-    const p = await proposeTx(env, dev, r.chain, r.safe, tx, step)
+    const p = await propose(r.chain, r.safe, tx, step)
     const rec: DappTxRecord = {
       safeTxHash: p.hash.toLowerCase() as Hex,
       chain: r.chain,

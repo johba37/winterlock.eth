@@ -8,7 +8,7 @@ import { useApp, useDevice } from '../app'
 import { chainById } from '../lib/chains'
 import { type DappInfo, txFor } from '../lib/dapp'
 import { type DappTxRecord, all } from '../lib/db'
-import { execute } from '../lib/flows'
+import { execute, proposeTx } from '../lib/flows'
 import { decode, tokensOf } from '../lib/safe'
 import { type DappDone, type DappProposal, type DappRequest, PROJECT_ID, useWc, wcModule } from '../lib/wc-state'
 import { ErrorLine, Explorer, Panel, Progress, Screen, useAction } from '../ui'
@@ -178,7 +178,7 @@ function ProposalCard(props: { p: DappProposal; chain: number; safe: Address }) 
   async function approve() {
     await act.run(async (step) => {
       step('Connecting the dapp')
-      await (await wcModule()).approve(props.p.id, dev, { chain: props.chain, safe: props.safe })
+      await (await wcModule()).approve(props.p.id, dev.owner, { chain: props.chain, safe: props.safe })
       return true
     })
   }
@@ -210,6 +210,7 @@ function ProposalCard(props: { p: DappProposal; chain: number; safe: Address }) 
 }
 
 function RequestCard(props: { r: DappRequest; now: number }) {
+  const app = useApp()
   const dev = useDevice()
   const act = useAction()
   const r = props.r
@@ -220,7 +221,7 @@ function RequestCard(props: { r: DappRequest; now: number }) {
   }, [r.id])
   const expired = r.expired || (r.expiry !== undefined && props.now >= r.expiry)
   async function confirm() {
-    await act.run((step) => wcModule().then((m) => m.confirmRequest(dev, r.id, step)))
+    await act.run(async (step) => (await wcModule()).confirmRequest(r.id, (chain, safe, tx, s) => proposeTx(app.env, dev, chain, safe, tx, s), step))
   }
   async function refuse() {
     await act.run(async () => (await wcModule()).refuseRequest(r.id))
