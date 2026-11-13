@@ -10,7 +10,7 @@ import { type Address, encodeFunctionData, getAddress, hexToBytes, padHex, parse
 import { privateKeyToAccount } from 'viem/accounts'
 import { type BoardClient, type BoardStatus, type BoardTree, type Identity, type Waiting } from '../board/client'
 import { chainById } from './chains'
-import { type Ctx, FACTORY_ABI, OWNER_ABI, type OnchainTree, type SafeState, factoryAddress, isValidSignature, ownerDeployed, readTree, safeState, sendFromGas, short, usableCtx } from './chain'
+import { type Ctx, FACTORY_ABI, afterTx, OWNER_ABI, type OnchainTree, type SafeState, factoryAddress, isValidSignature, ownerDeployed, readTree, safeState, sendFromGas, short, usableCtx } from './chain'
 import { type BoardRecord, type Hex, type PendingEnrolment, getDevice, hasMember, putSetting, setting, writeStrict } from './db'
 import { type Env, type Step, type Transfer, keptCheck, nextNonce, safeTxHash, service } from './flows'
 import { Refused } from './keylog'
@@ -196,7 +196,7 @@ export async function boardEnrol(env: Env, rec: BoardRecord, client: BoardClient
   const what = deployed ? 'the key tree’s certificate' : 'your owner contract and the key tree’s certificate'
   step(`Sending ${what}, paid by your gas account`)
   const sent = await sendFromGas(ctx, rec.gasKey, to, data, { onSent: (h) => step(`Sending ${what} (${h.slice(0, 10)}…)`) })
-  const after = await readTree(ctx, rec.owner, safe, 0)
+  const after = await afterTx(sent.receipt, (b) => readTree(ctx, rec.owner, safe, 0, b))
   if (after.root?.toLowerCase() !== p.root.toLowerCase() || after.start !== p.start) throw new Error(`The enrolment was mined (${sent.hash}), but the Safe’s tree for your owner differs.`)
   await putSetting(env.db, enrolKey(chainId, safe), null)
   return { start: p.start, height: p.height, hash: sent.hash, gasUsed: sent.receipt.gasUsed, created: !deployed }
