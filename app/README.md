@@ -78,18 +78,21 @@ npm run build       # WebAssembly, type check, then dist/
 
 ## Published
 
-**`https://app.winterlock.eth.limo`** serves the build of commit `a20d51c`, IPFS hash `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth".
+**`https://app.winterlock.eth.limo`** serves the build of commit `494703c`, IPFS hash `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth". The build before it, of `a20d51c` (no WalletConnect), is `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`.
 
-To check that the hash comes from this code, build that commit and hash `dist/` with [kubo](https://docs.ipfs.tech/install/command-line/):
+To check that the hash comes from this code, build that commit and hash `dist/` with [kubo](https://docs.ipfs.tech/install/command-line/). The build holds WalletConnect's project ID, which isn't in the repository: it is the 32-character hex string in the published `assets/index-*.js` (`const …="<the ID>"`, just before WalletConnect's state).
 
 ```sh
-git checkout a20d51c && cd app && npm ci && npm run build
+git checkout 494703c && cd app && npm ci
+VITE_WALLETCONNECT_PROJECT_ID=<the ID> npm run build
 ipfs add -r -n -Q --cid-version=1 dist
 ```
 
-A second build on the same machine gave the same hash; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130 and Node 24.14.0.
+A second build on the same machine gave the same hash; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130, Node 24.14.0 and kubo 0.43.1.
 
 The site's storage belongs to its origin. Serving the app from another address gives an empty app, without the device keys stored at `app.winterlock.eth.limo`.
+
+**Updating from the build of `a20d51c`:** the app's database goes from version 1 to 2 (a store for dapps' transactions), keeping everything in it. A tab still open on the older build blocks that: the new one says to close it and reload.
 
 ## Rules it keeps (docs/notes/signer-app.md, "Risks a browser adds")
 
