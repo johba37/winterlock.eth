@@ -23,11 +23,12 @@ import {
   service,
   tokenInfo,
 } from '../lib/flows'
-import { type Decoded, decode, formatUnits, fromService, parseSignature, parseUnits, signatureDevice } from '../lib/safe'
+import { type Decoded, MAX_UINT256, decode, formatUnits, fromService, parseSignature, parseUnits, signatureDevice, tokensOf } from '../lib/safe'
 import type { ServiceTx } from '../lib/service'
+import { noteExecution } from '../lib/wc-state'
 import { Addr, ErrorLine, Explorer, Panel, Progress, Screen, go, useAction } from '../ui'
 
-function useTokens(chain: number) {
+export function useTokens(chain: number) {
   const app = useApp()
   const [tokens, setTokens] = useState<Record<string, { symbol: string; decimals: number }>>({})
   async function want(token: Address) {
@@ -66,6 +67,36 @@ export function Describe(props: { d: Decoded; tokens: Record<string, { symbol: s
       </p>
     )
   }
+  if (d.kind === 'allowance') {
+    const t = props.tokens[d.token.toLowerCase()]
+    const amount = d.amount === MAX_UINT256 ? 'any amount' : t ? `${formatUnits(d.amount, t.decimals)} ${t.symbol}` : `${d.amount} units`
+    return (
+      <p data-testid="tx-summary">
+        Allow <code>{d.spender}</code> to take <strong>{amount}</strong> of {t ? t.symbol : <>token <code>{d.token}</code></>} from the Safe
+        {t && (
+          <span class="muted small">
+            {' '}
+            (token <code>{d.token}</code>)
+          </span>
+        )}
+      </p>
+    )
+  }
+  if (d.kind === 'batch')
+    return (
+      <div data-testid="tx-summary">
+        <p>
+          <span class="tag">batch</span> {d.calls.length} calls, made in this order, all or none (a delegatecall to Safe’s MultiSendCallOnly, which can only make calls):
+        </p>
+        <ol class="calls">
+          {d.calls.map((c, i) => (
+            <li key={i} data-testid="batch-call">
+              <Describe d={c.decoding.decoded} tokens={props.tokens} safe={props.safe} />
+            </li>
+          ))}
+        </ol>
+      </div>
+    )
   if (d.kind === 'self')
     return (
       <p data-testid="tx-summary">
@@ -109,7 +140,7 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
         const q = await queue(app.env, dev, props.chain, props.safe, v.state.nonce)
         if (!live) return
         setItems(q)
-        for (const it of q) if (it.decoding.decoded.kind === 'erc20') want(it.decoding.decoded.token)
+        for (const it of q) for (const tk of tokensOf(it.decoding.decoded)) want(tk)
       } catch (e) {
         if (live) setLoadError(short(e))
       }
@@ -212,6 +243,9 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
           <button type="button" class="secondary" data-testid="refresh" onClick={() => setK(k + 1)}>
             Refresh
           </button>
+          <button type="button" class="secondary" data-testid="go-dapps" disabled={!view?.isOwner} onClick={() => go(`/safe/${props.chain}/${props.safe}/dapps`)}>
+            Dapps
+          </button>
         </div>
       </Panel>
       <p class="muted small">
@@ -241,8 +275,7 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
         setRec(r)
         const t = fromService(r)
         setHashOk((await safeTxHash(app.env.core, props.chain, props.safe, t)).toLowerCase() === props.hash.toLowerCase())
-        const d = decode(t, props.safe).decoded
-        if (d.kind === 'erc20') want(d.token)
+        for (const tk of tokensOf(decode(t, props.safe).decoded)) want(tk)
         setCol(await collect(app.env, props.chain, props.safe, props.hash, r))
       } catch (e) {
         setLoadError(short(e))
@@ -256,7 +289,12 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
     setK(k + 1)
   }
   async function doExecute() {
-    const r = await act.run((step) => execute(app.env, dev, props.chain, props.safe, props.hash, step))
+    const r = await act.run(async (step) => {
+      const x = await execute(app.env, dev, props.chain, props.safe, props.hash, step)
+      // a dapp that got this SafeTx hash asks for its receipt
+      await noteExecution(app.env.db, props.hash, x.tx).catch(() => {})
+      return x
+    })
     if (r) setDone({ text: `Executed (${r.gasUsed.toLocaleString()} gas).`, tx: r.tx })
     setK(k + 1)
   }

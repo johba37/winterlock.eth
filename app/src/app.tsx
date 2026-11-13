@@ -4,10 +4,12 @@ import { createContext } from 'preact'
 import { useContext, useEffect, useState } from 'preact/hooks'
 import { core } from './core/client'
 import { short } from './lib/chain'
-import { type DeviceRecord, getDevice, openDb } from './lib/db'
+import { DB_NAME, type DeviceRecord, getDevice, openDb } from './lib/db'
 import type { Env } from './lib/flows'
+import { resumeWc } from './lib/wc-state'
 import { Create, Install, Pair, Welcome } from './screens/onboarding'
 import { Devices, Home, Join, Revoke, Settings } from './screens/member'
+import { DappBar, DappsScreen } from './screens/dapps'
 import { SafeScreen, Send, TxScreen } from './screens/safe'
 import { Screen } from './ui'
 
@@ -55,10 +57,13 @@ export function App() {
       try {
         if (!globalThis.indexedDB) throw new Error('This browser has no IndexedDB (a private window?): the app can’t keep a device key here.')
         if (!navigator.locks) throw new Error('This browser has no Web Locks: update it to use the app.')
-        const db = await openDb()
+        const db = await openDb(indexedDB, DB_NAME, () => setFatal('A newer version of the app opened in another tab: reload this page to use it.'))
         const e = { db, core: core() }
         setEnv(e)
-        setDevice((await getDevice(db)) ?? null)
+        const d = (await getDevice(db)) ?? null
+        setDevice(d)
+        // a dapp session from before: reconnect, so its requests reach the app
+        if (d) resumeWc(e).catch(() => {})
       } catch (err) {
         setFatal(short(err))
       }
@@ -83,7 +88,12 @@ export function App() {
     device,
     reload: async () => setDevice((await getDevice(env.db)) ?? null),
   }
-  return <AppContext.Provider value={state}>{page(path, device)}</AppContext.Provider>
+  return (
+    <AppContext.Provider value={state}>
+      {device && <DappBar />}
+      {page(path, device)}
+    </AppContext.Provider>
+  )
 }
 
 function page(path: string, device: DeviceRecord | null) {
@@ -104,6 +114,7 @@ function page(path: string, device: DeviceRecord | null) {
     const safe = p[2] as `0x${string}`
     if (p[3] === 'tx' && p[4]) return <TxScreen chain={chain} safe={safe} hash={p[4] as `0x${string}`} />
     if (p[3] === 'send') return <Send chain={chain} safe={safe} />
+    if (p[3] === 'dapps') return <DappsScreen chain={chain} safe={safe} />
     return <SafeScreen chain={chain} safe={safe} />
   }
   return <Home />

@@ -1,9 +1,14 @@
+import { fileURLToPath } from 'node:url'
 import preact from '@preact/preset-vite'
 import { defineConfig, loadEnv, type Plugin } from 'vite'
 
 // The production page's Content Security Policy: scripts only from the app itself (and its
 // WebAssembly), no third-party code at run time. connect-src stays open to any https endpoint
-// because the RPC URL is the member's choice; localhost is for a local chain.
+// because the RPC URL is the member's choice; localhost is for a local chain. WalletConnect adds
+// one WebSocket origin, Reown's relay. Frames stay at 'self' (default-src): WalletConnect's Verify
+// API would load an iframe from verify.walletconnect.org, and the app switches it off
+// (src/lib/walletconnect.ts).
+const RELAY = 'wss://relay.walletconnect.org'
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
@@ -11,7 +16,7 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data:",
   "font-src 'self'",
-  "connect-src 'self' https: http://localhost:* http://127.0.0.1:*",
+  `connect-src 'self' https: http://localhost:* http://127.0.0.1:* ${RELAY}`,
   "manifest-src 'self'",
   "base-uri 'none'",
   "form-action 'none'",
@@ -37,6 +42,10 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     plugins: [preact(), csp()],
+    resolve: {
+      // WalletKit's payments client (api.pay.walletconnect.com, with its own WebAssembly) stays out
+      alias: { '@walletconnect/pay': fileURLToPath(new URL('src/lib/wc-pay-stub.ts', import.meta.url)) },
+    },
     worker: { format: 'es' },
     build: { target: 'es2022', sourcemap: true, assetsInlineLimit: 0 },
     server: {

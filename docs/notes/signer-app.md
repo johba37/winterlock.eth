@@ -65,7 +65,7 @@ Their use should find the edges before the normative spec fixes the formats. The
 3. **Join the Safe:** the members' existing Safe (decision 5). The app shows the owner address, and the Safe's current owners add it in Safe's app (Settings, Owners). The owner contract is deployed with the first certificate, paid by the gas account.
 4. **Enrol:** a key tree per Safe and chain, prompted when it's missing or running out.
 5. **Transactions:** a queue from Safe's service, decoded; confirm; propose a transfer; execute once confirmed.
-6. **Dapps over WalletConnect** (Reown's wallet SDK): sign-in, transactions, permits, with the rules of walletconnect.md, "Which path a message takes".
+6. **Dapps over WalletConnect** (Reown's wallet SDK): sign-in, transactions, permits, with the rules of walletconnect.md, "Which path a message takes". **Transactions are built (2026-11-13):** the member pastes the dapp's link on a Safe's dapps screen, and the dapp sees the Safe as its account. Each transaction it asks for, or batch of calls, is decoded and shown, and proposed with this device's confirmation once the member confirms. The dapp gets the SafeTx hash, and its status and receipt once the Safe has executed it; with threshold 1 the app executes at once and the dapp gets the transaction hash (walletconnect.md, "The app"). Messages, sign-ins and permits are refused until Safe's Transaction Service takes longer message signatures (decided 2026-11-13).
 7. **Revoke a device** with the phrase (later, from the board).
 
 **Not in the first round:** moves (device keys never move), several chains at once, the board.
@@ -134,6 +134,6 @@ Decided on 2026-11-06:
    - every rule under "Risks a browser adds": IndexedDB with persistent storage, no device key on iOS unless installed, record then sign in a strict-durability transaction under a Web Lock, the stale-log check at Safe's service and on-chain, no third-party code at run time
    - live on Sepolia through Safe's service without an API key, next to the Python signer: create, pair a second device, join a script-made Safe, enrol, propose, confirm and execute both ways, revoke the second device while its confirmation was pending, a copied browser that refuses, and the revoked device paired again
    - in Chromium's worker: the member key in about 0.12 s, a height-10 key tree in about 0.45 s, a stateless signature in about 0.07 s
-   - still to do: dapps over WalletConnect, Safari and phones, the fresh-eyes run
+   - still to do: Safari and phones, the fresh-eyes run, and messages over WalletConnect. Transactions over WalletConnect are built (2026-11-13; decisions.md, "2026-11-13: dapps over WalletConnect in the app")
 4. **Arbitrum One:** deploy (user-funded; a first measurement of Arbitrum's fees), the user and one other person end to end, then the rest of the round.
 5. **The normative spec,** after the round, from this note, owner-v2.md and the code.
