@@ -14,6 +14,7 @@ import { type BoardSafeView, adoptBoard, boardEnrol, boardMismatch, recoverBoard
 import { fmtEth, short, usableCtx, ownerDeployed } from '../lib/chain'
 import { chainById, enabledChains } from '../lib/chains'
 import { type BoardRecord, type SafeRecord, safes, wipe } from '../lib/db'
+import { forgetWc } from '../lib/wc-state'
 import { mayHoldKeys, persist } from '../lib/platform'
 import { Addr, ErrorLine, Panel, Progress, Screen, go, useAction } from '../ui'
 
@@ -529,7 +530,7 @@ export function BoardInfo() {
         </Panel>
       )}
       <Panel title="Forget this board here" tone="warn">
-        <p class="small">Deletes what this browser holds: the gas key and your list of Safes. The board keeps your member key{rec.link === 'virtual' ? ' (the virtual board’s storage stays in this browser)' : ''}.</p>
+        <p class="small">Deletes what this browser holds: the gas key, your list of Safes and your dapps’ sessions. The board keeps your member key{rec.link === 'virtual' ? ' (the virtual board’s storage stays in this browser)' : ''}.</p>
         {confirmForget ? (
           <div class="actions row">
             <button
@@ -538,6 +539,8 @@ export function BoardInfo() {
               data-testid="forget-confirm"
               onClick={async () => {
                 await link.disconnect()
+                // dapps too: their sessions end, and the SDK's storage goes
+                await forgetWc(app.env).catch(() => {})
                 await wipe(app.env.db)
                 await app.reload()
                 go('/')

@@ -57,7 +57,12 @@ export async function balance(a: Address) {
 
 /** A new Safe owned by `owner` alone (threshold 1). */
 export async function createSafe(owner: Address, salt: bigint): Promise<{ safe: Address; hash: Hex; gasUsed: bigint }> {
-  const init = encodeFunctionData({ abi: SAFE, functionName: 'setup', args: [[owner], 1n, zeroAddress, '0x', SAFE_141.fallbackHandler, zeroAddress, 0n, zeroAddress] })
+  return createSafeOf([owner], 1n, salt)
+}
+
+/** A new Safe with these owners and threshold. */
+export async function createSafeOf(owners: Address[], threshold: bigint, salt: bigint): Promise<{ safe: Address; hash: Hex; gasUsed: bigint }> {
+  const init = encodeFunctionData({ abi: SAFE, functionName: 'setup', args: [owners, threshold, zeroAddress, '0x', SAFE_141.fallbackHandler, zeroAddress, 0n, zeroAddress] })
   const c = client()
   const { result } = await c.simulateContract({ account: funder(), address: SAFE_141.factory, abi: FACTORY, functionName: 'createProxyWithNonce', args: [SAFE_141.singleton, init, salt] })
   const r = await send(secrets().fund, SAFE_141.factory, encodeFunctionData({ abi: FACTORY, functionName: 'createProxyWithNonce', args: [SAFE_141.singleton, init, salt] }))

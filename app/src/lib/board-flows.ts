@@ -4,7 +4,8 @@
 // the gas account, and holds no key but the gas key the board gives it.
 //
 // No device keys here: no pairing or revoking, no stale-log check (the key log is the board's
-// own), no messages, no dapps. Proposing, collecting and executing are flows.ts's.
+// own), no messages. A dapp's transaction goes through boardProposeTx like a transfer; a batch
+// doesn't. Proposing, collecting and executing are flows.ts's.
 
 import { type Address, encodeFunctionData, getAddress, hexToBytes, padHex, parseAbi, size, slice, toHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -12,7 +13,7 @@ import { type BoardClient, type BoardStatus, type BoardTree, type Identity, type
 import { chainById } from './chains'
 import { type Ctx, FACTORY_ABI, afterTx, OWNER_ABI, type OnchainTree, type SafeState, factoryAddress, isValidSignature, ownerDeployed, readTree, safeState, sendFromGas, short, usableCtx } from './chain'
 import { type BoardRecord, type Hex, type PendingEnrolment, getDevice, hasMember, putSetting, setting, writeStrict } from './db'
-import { type Env, type Step, type Transfer, keptCheck, nextNonce, safeTxHash, service } from './flows'
+import { type Env, type Proposed, type Step, type Transfer, keptCheck, nextNonce, safeTxHash, service } from './flows'
 import { Refused } from './keylog'
 import { ERC20_ABI, SAFE_ABI, type SafeTx, contractSignature, encodeForCore, fromService, parseSignature, safeTx } from './safe'
 import { writerFor } from './service'
@@ -278,20 +279,28 @@ async function boardSign(env: Env, rec: BoardRecord, client: BoardClient, chainI
   return { ...s, signature: contractSignature(rec.owner, s.data) }
 }
 
+/** Propose a Safe transaction, confirmed on the board, to Safe's service: the checks, the board's
+ * SIGN (it shows what the transaction does), the owner contract's check, the proposal, the kept
+ * check. A delegate call is refused here: the board refuses them by design. */
+export async function boardProposeTx(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, tx: SafeTx, step: Step, w: Waiting): Promise<Proposed> {
+  if (tx.operation !== 0) throw new Refused('The board refuses delegate calls, so it can’t sign this (a batch is one).')
+  const p = await prepare(env, rec, client, chainId, safe, tx, step)
+  const s = await boardSign(env, rec, client, chainId, safe, p, tx, step, w)
+  step('Proposing it at Safe’s service')
+  await writerFor(chainById(chainId).service).propose(safe, tx, p.hash, rec.owner, s.signature)
+  const note = await keptCheck(env, rec, chainId, safe, p.hash, s.signature)
+  return { hash: p.hash, nonce: Number(tx.nonce), slot: s.slot, note }
+}
+
 /** Propose an ETH or ERC-20 transfer, confirmed on the board, to Safe's service. */
-export async function boardPropose(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, t: Transfer, step: Step, w: Waiting): Promise<{ hash: Hex; nonce: number; slot: number }> {
+export async function boardPropose(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, t: Transfer, step: Step, w: Waiting): Promise<Proposed> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   const st = await safeState(ctx, safe)
   const nonce = await nextNonce(chainId, safe, st.nonce)
   const tx = t.token
     ? safeTx({ to: t.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [t.to, t.amount] }), nonce: BigInt(nonce) })
     : safeTx({ to: t.to, value: t.amount, nonce: BigInt(nonce) })
-  const p = await prepare(env, rec, client, chainId, safe, tx, step)
-  const s = await boardSign(env, rec, client, chainId, safe, p, tx, step, w)
-  step('Proposing it at Safe’s service')
-  await writerFor(chainById(chainId).service).propose(safe, tx, p.hash, rec.owner, s.signature)
-  await keptCheck(env, rec, chainId, safe, p.hash, s.signature)
-  return { hash: p.hash, nonce, slot: s.slot }
+  return boardProposeTx(env, rec, client, chainId, safe, tx, step, w)
 }
 
 /** Confirm a proposal from Safe's service on the board. */

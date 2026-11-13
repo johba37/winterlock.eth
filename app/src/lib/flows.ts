@@ -505,10 +505,11 @@ async function sign(env: Env, dev: DeviceRecord, p: Prepared, tx: SafeTx, step: 
   return { ...s, signature: contractSignature(dev.owner, s.data) }
 }
 
-/** The next free nonce: after the Safe's and the queue's. */
-export async function nextNonce(chainId: number, safe: Address, safeNonce: number): Promise<number> {
+/** The next free nonce: after the Safe's, the queue's, and any in `also` (proposals made here that
+ * the service may not list yet). */
+export async function nextNonce(chainId: number, safe: Address, safeNonce: number, also: number[] = []): Promise<number> {
   const pending = await service(chainId).pending(safe, safeNonce)
-  return Math.max(safeNonce, ...pending.map((p) => Number(p.nonce) + 1))
+  return Math.max(safeNonce, ...pending.map((p) => Number(p.nonce) + 1), ...also.filter((n) => n >= safeNonce).map((n) => n + 1))
 }
 
 export interface Transfer {
@@ -517,20 +518,34 @@ export interface Transfer {
   token?: Address
 }
 
+export interface Proposed {
+  hash: Hex
+  nonce: number
+  slot: number
+  /** what the kept check found, if the service didn't keep this signature as is */
+  note?: string
+}
+
+/** Propose a Safe transaction, signed by this device, to Safe's service: the checks, the stale-log
+ * check, record then sign, the owner contract's check, the proposal, the kept check. */
+export async function proposeTx(env: Env, dev: DeviceRecord, chainId: number, safe: Address, tx: SafeTx, step: Step): Promise<Proposed> {
+  const p = await prepare(env, dev, chainId, safe, tx, step)
+  const s = await sign(env, dev, p, tx, step)
+  step('Proposing it at Safe’s service')
+  await writerFor(chainById(chainId).service).propose(safe, tx, p.hash, dev.owner, s.signature)
+  const note = await keptCheck(env, dev, chainId, safe, p.hash, s.signature)
+  return { hash: p.hash, nonce: Number(tx.nonce), slot: s.slot, note }
+}
+
 /** Propose an ETH or ERC-20 transfer, signed by this device, to Safe's service. */
-export async function propose(env: Env, dev: DeviceRecord, chainId: number, safe: Address, t: Transfer, step: Step): Promise<{ hash: Hex; nonce: number; slot: number }> {
+export async function propose(env: Env, dev: DeviceRecord, chainId: number, safe: Address, t: Transfer, step: Step): Promise<Proposed> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   const st = await safeState(ctx, safe)
   const nonce = await nextNonce(chainId, safe, st.nonce)
   const tx = t.token
     ? safeTx({ to: t.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [t.to, t.amount] }), nonce: BigInt(nonce) })
     : safeTx({ to: t.to, value: t.amount, nonce: BigInt(nonce) })
-  const p = await prepare(env, dev, chainId, safe, tx, step)
-  const s = await sign(env, dev, p, tx, step)
-  step('Proposing it at Safe’s service')
-  await writerFor(chainById(chainId).service).propose(safe, tx, p.hash, dev.owner, s.signature)
-  await keptCheck(env, dev, chainId, safe, p.hash, s.signature)
-  return { hash: p.hash, nonce, slot: s.slot }
+  return proposeTx(env, dev, chainId, safe, tx, step)
 }
 
 /** Confirm a proposal from Safe's service with this device's next one-time key. */

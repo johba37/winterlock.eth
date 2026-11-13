@@ -30,6 +30,12 @@ export function secrets(): Secrets {
   return { alchemy: e.ALCHEMY_API_KEY, fund, safeApiKey: e.SAFE_API_KEY }
 }
 
+/** WalletConnect's project ID, for runs that pair through Reown's relay; undefined without one. */
+export function projectId(): string | undefined {
+  if (!process.env.WINTERLOCK_ENV_FILE) return undefined
+  return load().WALLETCONNECT_PROJECT_ID || undefined
+}
+
 export function rpcUrl(): string {
   return `https://eth-sepolia.g.alchemy.com/v2/${secrets().alchemy}`
 }

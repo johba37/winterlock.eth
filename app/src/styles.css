@@ -467,3 +467,27 @@ canvas.oled {
   gap: 0.5rem;
   align-items: baseline;
 }
+
+/* WalletConnect: the bar that says a dapp waits, and a batch's calls */
+.dappbar {
+  display: block;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 0.6rem 1rem;
+  background: var(--lamp);
+  color: var(--on-ink);
+  font-weight: 650;
+  text-align: center;
+  text-decoration: none;
+}
+ol.calls {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.4rem;
+}
+ol.calls li {
+  margin: 0.35rem 0;
+}
+ol.calls li p {
+  margin: 0;
+}

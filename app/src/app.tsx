@@ -7,9 +7,11 @@ import { core } from './core/client'
 import { short } from './lib/chain'
 import { type BoardRecord, type DeviceRecord, getBoard, getDevice, openDb } from './lib/db'
 import type { Env } from './lib/flows'
+import { resumeWc } from './lib/wc-state'
 import { BoardDock, BoardHome, BoardInfo, BoardStart } from './screens/board'
 import { Create, Install, Pair, Welcome } from './screens/onboarding'
 import { Devices, Home, Join, Revoke, Settings } from './screens/member'
+import { DappBar, DappsScreen } from './screens/dapps'
 import { SafeScreen, Send, TxScreen } from './screens/safe'
 import { Screen } from './ui'
 
@@ -81,11 +83,14 @@ export function App() {
         setEnv(e)
         const b = (await getBoard(db)) ?? null
         setBoard(b)
-        setDevice((await getDevice(db)) ?? null)
+        const d = (await getDevice(db)) ?? null
+        setDevice(d)
         // the member's board: the virtual one starts by itself, a USB one opens if this site may
         // use its port already (otherwise the board bar's Connect asks)
         if (__VIRTUAL_BOARD__ && b?.link === 'virtual') link.connectVirtual().catch(() => {})
         else if (b?.link === 'serial') link.connectGranted().catch(() => {})
+        // a dapp session from before: reconnect, so its requests reach the app
+        if (d || b) resumeWc(e, !!b).catch(() => {})
       } catch (err) {
         setFatal(short(err))
       }
@@ -118,6 +123,7 @@ export function App() {
   return (
     <AppContext.Provider value={state}>
       <div class={dock ? 'with-dock' : ''}>
+        {(device || board) && <DappBar />}
         {page(path, device, board)}
         {dock && <BoardDock />}
       </div>
@@ -136,7 +142,7 @@ function page(path: string, device: DeviceRecord | null, board: BoardRecord | nu
     return <Welcome />
   }
   if (board) {
-    // with a board: no device pairing or revoking, no messages, no dapps
+    // with a board: no device pairing or revoking, no messages; dapps send transactions only
     if (p[0] === 'join') return <Join />
     if (p[0] === 'board') return <BoardInfo />
     if (p[0] === 'settings') return <Settings />
@@ -157,5 +163,6 @@ function safePage(p: string[]) {
   // keyed, so going from one transaction or Safe to another starts the screen afresh
   if (p[3] === 'tx' && p[4]) return <TxScreen key={`${chain}/${safe}/${p[4]}`} chain={chain} safe={safe} hash={p[4] as `0x${string}`} />
   if (p[3] === 'send') return <Send key={`${chain}/${safe}/send`} chain={chain} safe={safe} />
+  if (p[3] === 'dapps') return <DappsScreen key={`${chain}/${safe}/dapps`} chain={chain} safe={safe} />
   return <SafeScreen key={`${chain}/${safe}`} chain={chain} safe={safe} />
 }

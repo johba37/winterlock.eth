@@ -12,6 +12,8 @@
 //   settings   RPC URLs and the like
 //   checked    executions whose signatures the stale-log check has already compared
 //   held       this owner's signatures the Transaction Service didn't keep (it keeps the first)
+//   dapp       (version 2) the SafeTx hashes the app gave dapps over WalletConnect, with what it
+//              learned of their execution: for receipts and wallet_getCallsStatus
 //
 // Writes that a signature depends on use a strict-durability transaction and wait for it to
 // complete: the record is on disk before the signature exists.
@@ -19,7 +21,7 @@
 export type Hex = `0x${string}`
 
 export const DB_NAME = 'winterlock'
-export const DB_VERSION = 1
+export const DB_VERSION = 2
 
 export interface DeviceRecord {
   id: 'this'
@@ -122,6 +124,28 @@ export interface CheckedRecord {
   at: number
 }
 
+/** A Safe transaction proposed for a dapp (lib/walletconnect.ts); the dapp got its SafeTx hash. */
+export interface DappTxRecord {
+  /** lower case */
+  safeTxHash: Hex
+  chain: number
+  safe: Hex
+  nonce: number
+  /** 1 for a call, more for a batch */
+  calls: number
+  method: string
+  /** the WalletConnect request and session it answered */
+  requestId: number
+  topic: string
+  /** the dapp as it described itself (unverified) */
+  dapp: { name: string; url: string }
+  at: number
+  /** whether the answer reached the relay before the request expired */
+  answered: boolean
+  /** the transaction that executed it, once known */
+  execution?: { tx: Hex; success: boolean }
+}
+
 export interface HeldRecord {
   safeTxHash: Hex
   chain: number
@@ -139,18 +163,21 @@ export function treeId(chain: number, safe: string, root: string): string {
 export function openDb(factory: IDBFactory = indexedDB, name = DB_NAME): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = factory.open(name, DB_VERSION)
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (e) => {
       const db = req.result
-      db.createObjectStore('device', { keyPath: 'id' })
-      db.createObjectStore('certs', { keyPath: 'chain' })
-      const trees = db.createObjectStore('trees', { keyPath: 'id' })
-      trees.createIndex('place', ['chain', 'safeLower'])
-      db.createObjectStore('uses', { keyPath: ['chain', 'safe', 'root', 'keyIndex'] })
-      db.createObjectStore('stateless', { keyPath: 'id', autoIncrement: true })
-      db.createObjectStore('safes', { keyPath: ['chain', 'safeLower'] })
-      db.createObjectStore('settings', { keyPath: 'key' })
-      db.createObjectStore('checked', { keyPath: 'txHash' })
-      db.createObjectStore('held', { keyPath: 'safeTxHash' })
+      if (e.oldVersion < 1) {
+        db.createObjectStore('device', { keyPath: 'id' })
+        db.createObjectStore('certs', { keyPath: 'chain' })
+        const trees = db.createObjectStore('trees', { keyPath: 'id' })
+        trees.createIndex('place', ['chain', 'safeLower'])
+        db.createObjectStore('uses', { keyPath: ['chain', 'safe', 'root', 'keyIndex'] })
+        db.createObjectStore('stateless', { keyPath: 'id', autoIncrement: true })
+        db.createObjectStore('safes', { keyPath: ['chain', 'safeLower'] })
+        db.createObjectStore('settings', { keyPath: 'key' })
+        db.createObjectStore('checked', { keyPath: 'txHash' })
+        db.createObjectStore('held', { keyPath: 'safeTxHash' })
+      }
+      if (e.oldVersion < 2) db.createObjectStore('dapp', { keyPath: 'safeTxHash' })
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)

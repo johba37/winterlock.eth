@@ -65,7 +65,7 @@ Their use should find the edges before the normative spec fixes the formats. The
 3. **Join the Safe:** the members' existing Safe (decision 5). The app shows the owner address, and the Safe's current owners add it in Safe's app (Settings, Owners). The owner contract is deployed with the first certificate, paid by the gas account.
 4. **Enrol:** a key tree per Safe and chain, prompted when it's missing or running out.
 5. **Transactions:** a queue from Safe's service, decoded; confirm; propose a transfer; execute once confirmed.
-6. **Dapps over WalletConnect** (Reown's wallet SDK): sign-in, transactions, permits, with the rules of walletconnect.md, "Which path a message takes".
+6. **Dapps over WalletConnect** (Reown's wallet SDK): sign-in, transactions, permits, with the rules of walletconnect.md, "Which path a message takes". **Transactions are built (2026-11-13):** the member pastes the dapp's link on a Safe's dapps screen, and the dapp sees the Safe as its account. Each transaction it asks for, or batch of calls, is decoded and shown, and proposed with this device's confirmation once the member confirms. The dapp gets the SafeTx hash, and its status and receipt once the Safe has executed it (walletconnect.md, "The app"). Messages, sign-ins and permits are refused until the next step.
 7. **Revoke a device** with the phrase (later, from the board).
 
 **With the board (decision 7):** the board makes the phrase, so step 1 happens on it; there are no devices to add or revoke (steps 2 and 7); the board signs every enrolment and confirmation after showing it (steps 4 and 5). The app holds no key but the gas account.
@@ -119,7 +119,8 @@ TypeScript, Vite, Preact (small enough for phones), viem for RPC, ABI and EIP-71
 - **The gas account:** the board derives its key and gives it to the app after an unlock. It holds a few dollars and reveals nothing about the phrase.
 - **Recovery:** the 24 words are entered on the board, letter by letter; the first four letters identify any word, and the checksum is checked. The old trees' salts were lost with the old board, so a recovered board can't rebuild their keys: it enrols new trees, which replace the old ones on-chain, before it signs.
 - **Erase:** from the menu, with a confirmation.
-- **Not in the round:** messages (ERC-1271), which need a stateless signature of 15 to 32 s; dapps.
+- **Dapps (2026-11-13):** a dapp's transaction over WalletConnect goes to the board's SIGN like any other: the board shows it and signs on confirm. A dapp's batch is refused before it reaches the board, which refuses delegate calls.
+- **Not in the round:** messages (ERC-1271), which need a stateless signature of 15 to 32 s.
 
 ### The USB link
 
@@ -174,7 +175,7 @@ Decided on 2026-11-10:
    - every rule under "Risks a browser adds": IndexedDB with persistent storage, no device key on iOS unless installed, record then sign in a strict-durability transaction under a Web Lock, the stale-log check at Safe's service and on-chain, no third-party code at run time
    - live on Sepolia through Safe's service without an API key, next to the Python signer: create, pair a second device, join a script-made Safe, enrol, propose, confirm and execute both ways, revoke the second device while its confirmation was pending, a copied browser that refuses, and the revoked device paired again
    - in Chromium's worker: the member key in about 0.12 s, a height-10 key tree in about 0.45 s, a stateless signature in about 0.07 s
-   - still to do: dapps over WalletConnect, Safari and phones, the fresh-eyes run
+   - still to do: Safari and phones, the fresh-eyes run, and messages over WalletConnect. Transactions over WalletConnect are built (2026-11-13; decisions.md, "2026-11-13: dapps over WalletConnect in the app")
 4. **The board's firmware** (decision 7): the parts in "Before the hardware is ready", then on the user's board once it is wired with the OLED and two buttons. **Built on 2026-11-10 before the hardware,** except the app's board backend (`hardware/board-signer/`; decisions.md, "2026-11-10: the board signer, before the hardware"), which followed on 2026-11-11 (decisions.md, "2026-11-11: the app with a board").
 5. **Arbitrum One:** deploy (user-funded; a first measurement of Arbitrum's fees), the user and one other person end to end, then the rest of the round.
 6. **The normative spec,** after the round, from this note, owner-v2.md and the code.

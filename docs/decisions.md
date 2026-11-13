@@ -1614,6 +1614,92 @@ So `deployAndEnroll` (a new owner contract and its storage) took 605,917 gas on 
 
 **Not done:** messages (ERC-1271) and dapps with a board; Bluetooth.
 
+**2026-11-13: dapps over WalletConnect in the app** (`app/src/lib/dapp.ts`, `walletconnect.ts`, `wc-state.ts`, `screens/dapps.tsx`; [notes/walletconnect.md](notes/walletconnect.md), "The app")
+
+Item 6 of [notes/signer-app.md](notes/signer-app.md), transactions first. The question: can a dapp on a member's laptop connect to the team's Safe through the app, with no ECDSA owner, as it would through Safe's own app? Yes, on a local chain through Reown's relay, and live on Sepolia with Safe's hosted service and the Python signer as the other member.
+
+**The flow:**
+1. In the dapp, the member chooses WalletConnect and copies the link.
+2. They paste it on the Safe's dapps screen. The proposal shows the dapp's name and URL, marked as not verified, and the Safe and chain it would get. Only enabled chains, Sepolia today.
+3. A transaction the dapp asks for shows decoded. On a confirm, the app proposes it to Safe's service with this device's confirmation, through the same checks as any proposal: record then sign, the stale-log check, the owner contract's check. The dapp gets the SafeTx hash.
+4. Other members confirm in their apps, Safe's app or the Python signer. The app offers to execute from the gas account once the threshold is met.
+5. The dapp asks for the receipt of the SafeTx hash, or for `wallet_getCallsStatus`, and gets the execution's.
+
+**Decided while building:**
+- **Reown's WalletKit, bundled, and nothing else from Reown's servers but the relay.** `@reown/walletkit` 1.6.0 with `@walletconnect/core` 2.25.0, exact versions. Telemetry, the Verify API and push registration are switched off, the payments client is replaced at build time, and a guard refuses fetches to WalletConnect's and Reown's servers. The Content Security Policy adds `wss://relay.walletconnect.org` to `connect-src` and nothing else.
+- **No Verify:** a dapp's name and URL are what it claims, as with the Python bridge. Verify would need an iframe from verify.walletconnect.org, which the app's CSP refuses, and a key fetched from there.
+- **The SDK loads only when needed:** a separate chunk of 425 KB (127 KB compressed), when a member opens a Safe's dapps or has a session. The main script grew from 381 KB to 411 KB.
+- **The answers are the bridge's.** `eth_sendTransaction` gets the SafeTx hash after the proposal. `wallet_sendCalls` gets `{id}`, with `wallet_getCallsStatus` (100, 200, 400, 500). A receipt or transaction lookup for a SafeTx hash the app gave out maps to the execution. Refusals are 4001 with a reason, 4200 for an unsupported method, 5100 for another chain.
+- **Messages are refused for now** (4001, "messages aren't supported yet"), sign-ins included.
+- **Expiry:** sign-client 2.25 and 2.26 give a request 15 minutes by default, not the 5 minutes of 2.21.0. The app shows when the dapp stops waiting; after that the member can only dismiss the request.
+- **Batches:** a delegatecall to MultiSendCallOnly v1.4.1 at its canonical address only, its code checked against the pinned hashes before signing (Sepolia's matches the release build). Each call is decoded and shown, and their warnings are the batch's. The queue and transaction screens decode such batches too.
+- **The decoder shows ERC-20 allowances,** and flags an unlimited one: a dapp's swap usually starts with one.
+- **No log scans for executions:** what this app executed, then the Safe's nonce and Safe's service. A status stays 100 until the service has indexed the execution.
+- **Sessions persist** in the SDK's IndexedDB in this origin, unencrypted like the device key. "Forget this device" disconnects them and deletes that database.
+- **The SafeTx hashes given to dapps** are in a new store of the app's database (version 2), with what the app learned of their execution.
+
+**Tests:**
+- **Unit** (26 new; the suite runs 51): see the note's "Tests". The batch encoding and its SafeTx hash match the Python signer's.
+- **End to end on anvil** (`e2e/walletconnect.spec.ts`, 11 steps, all pass, against the dev server and against the production build under its CSP): the dapp on `@walletconnect/sign-client` 2.26.0 in the test process, through Reown's live relay. Over six passing runs, three against each build: pairing in 0.7 to 3.8 s from the pasted link to the dapp's session; a request on the screen 0.01 to 0.2 s after the dapp asked; the dapp's answer 0.5 to 1.0 s after the member's confirm; a pending request back on the screen 0.5 to 2.9 s after a reload. A batch of three calls (an ETH transfer, an ERC-20 transfer, an unlimited allowance) executed for 237,352 to 237,448 gas. Two earlier runs failed in the test itself (an answer that came before the test awaited it), fixed. The page reached only the relay, the local RPC and Safe's service (stand-in), and the guard refused nothing: the SDK, as set up, tried no other host.
+
+**Live on Sepolia** (2026-11-13, `e2e/live-walletconnect.spec.ts`): a fresh 2-of-2 Safe `0xA5dA2Ab05Cb7EE8D3FBbB486Dee542dcCb5197E6`, v1.4.1 (SafeL2), owners A (the app, device 1, height-10 tree) and P (the Python signer, height-6 tree), made by script; Safe's hosted service without a key in the app; the dapp in the test process; base fee about 17 wei. All four steps passed on the first run.
+
+| Step | Gas used | Transaction |
+|---|---|---|
+| A's owner, created by the factory's `deploy` | 334,756 | `0xfa57be3afbadf84f67b625fbc8074c9b6c8fcb6a5ad92caca0e2f5b917defa94` |
+| A: `certifyDevice`, device 1 | 391,743 | `0xd5684e204e84a63ed2b6a7109256139ae166909872cb150a25b46edae8f8c8f2` |
+| script: the Safe, owners A and P, 2 of 2 | 1,371,933 | `0xeb481189818d46131f18d94f2baa1a081babec65720bbc898049ab6fa7af737e` |
+| P (Python): `deployAndEnroll`, height 6 | 605,789 | `0x06ca3412d690d24c0d03557eee11f333658166b57646ebeb982ad52d1435018e` |
+| A: `enroll`, height 10 | 394,136 | `0x6dc13b49b732b7d071cb3c7ba513896ec105eac36e5fab73dc2bf370e0b77448` |
+| the dapp's transfer: A proposed in the app, P confirmed, A executed in the app | 405,070 | `0xc20754681c28da82b7fa5ad64bc9636dc388af4659fb3a4462543035abccfd8e` |
+| the dapp's batch of two transfers: A proposed in the app, P confirmed and executed | 321,721 | `0xfb1ff79c9c76b93e5ebaf674563f5b496c0a2fa5c506e8350acce3132c33c368` |
+
+- **Pairing** took 3.2 s; the request showed 0.1 s after the dapp asked.
+- **The dapp's answer** came 1.9 s after A's confirm: the stale-log check at the service and on-chain, signing, the owner contract's check and the proposal.
+- **The receipt:** after A executed, the dapp's `eth_getTransactionReceipt` for the SafeTx hash returned the execution's.
+- **The batch's status:** P executed it outside the app, and `wallet_getCallsStatus` said 200, with the receipt, 6.0 s after the execution was mined: the time Safe's service took to index it.
+- **Sepolia's MultiSendCallOnly** matches the pinned code hash of the release build.
+- **Spent:** 0.00106 ETH left the funding account: 0.001 is in A's gas account and 0.00006 in the Safe. The fees came to about 5e10 wei.
+
+**With a real dapp** (2026-11-13): Reown's AppKit lab (lab.reown.com, its wagmi example), in a second tab of the browser that held member A's app, with the live run's Safe; P confirmed and executed with the Python signer. Driven by a script, which isn't in the repository.
+
+| What the lab did | What happened |
+|---|---|
+| WalletConnect, its link pasted into the app | The lab showed the Safe on Sepolia as its account, and the wallet as Winterlock. |
+| Fetch Capabilities | It showed `{"0xaa36a7": {"atomic": {"status": "supported"}}}`. |
+| Send Transaction to Vitalik (1e6 wei to vitalik.eth) | Decoded in the app; the lab got the SafeTx hash and said "Transaction Success" without waiting for a receipt. P executed it: 307,158 gas, `0x060d5f18656b462a440a8a4b2ece54765aac3c20fe6d65927a34c31417f91d56`. |
+| Send Batch Calls to Vitalik (1e5 wei, and a call with selector `0xdeadbeef`, which the app marked as not decoded) | The lab got the id. Its Get Calls Status showed "pending" (100) before the execution and "success" with the receipt after P executed it: 315,653 gas, `0xf089ff972338be74560b4af02b3634387e74a00a9769ea1c0f7a2f0d25717edf`. |
+| Sign Message, Sign Typed Data | Refused with 4001; the lab said "Failed to sign message". |
+| Disconnect | The session ended in the app too. |
+
+- **wagmi reads the app's EIP-5792 answers:** it turned status 100 into "pending" and 200 into "success".
+- **The lab's session outlived the page:** a second script run found it connected, and the app answered it.
+- **The lab doesn't verify anything:** it shows that the app's answers parse, not that a dapp acts on them.
+
+**With a board** (branch `board-app-walletconnect`: `board-app` with this merged):
+- **A dapp's transaction goes to the board's SIGN,** through `boardProposeTx`, the general form of `boardPropose`: the same checks of the Safe, the hash and the enrolled tree, then the board shows what the transaction does and signs on its own confirm, and the app proposes it.
+- **A batch is refused before anything reaches the board,** which refuses delegate calls by design. The dapp gets 4001: "batches aren't supported: this member signs on a board, which refuses delegate calls; send one call at a time". The session's properties and `wallet_getCapabilities` say atomic batches are unsupported, so a dapp that reads them sends one call at a time. `wallet_sendCalls` with one call works.
+- **Tested with the virtual board** (`e2e/walletconnect-board.spec.ts`, 5 steps, all pass; on the local chain through Reown's relay):
+  - pairing by link; the session's properties and the capabilities say atomic batches are unsupported
+  - a dapp's ETH transfer: the board showed "Send, To, From Safe, Sign?" and signed it; executed in the app; its receipt through the SafeTx hash
+  - a batch, refused with the reason before the board saw it; then one ERC-20 call through `wallet_sendCalls`, which the board showed as not decoded (the test token isn't in its list) and signed after the second confirm; status 100, then 200 once executed
+  - a message refused; the member disconnects
+- **board-app's own runs pass on the merge:** `npm test` (62 tests), the type check, `e2e/board.spec.ts` and `e2e/device-local.spec.ts`. The device's WalletConnect run (`e2e/walletconnect.spec.ts`) passes on the merge too, in the same worker as the board's.
+
+**Found on the way:**
+- **WalletKit's pending proposals are a list,** though its types say a record by id. The first run's approval failed on it.
+- **A request handed over twice:** after a reload, the SDK once delivered a read twice, and the dapp's SDK logged the second answer as unknown. The app now answers each request once.
+- **sign-client 2.26 folds a dapp's required chains into its optional ones,** so a session holds only the Safe's chain, and a request for another chain is refused by the dapp's own SDK before it reaches the app. The app's 5100 is for a transaction or batch that names another chain.
+- **WalletKit posts an INIT event to its telemetry server even with telemetry off;** the app switches that off itself.
+- **Reown's relay accepted this project's ID from any origin,** a made-up one included, so its allowed-origins list isn't enforced there, or is empty.
+
+**Not done:**
+- **Messages:** sign-ins, off-chain messages and permits, with the rules of notes/walletconnect.md, "Which path a message takes". The app needs those rules in TypeScript, the device key's message signature, a way to gather the other members' signatures (the bridge's message files or collection endpoint; between browsers, neither exists yet), and the on-chain path through SignMessageLib with the owners' approved answers.
+- **Scanning a QR code:** `BarcodeDetector` exists in Chrome on Android and macOS but not on iOS, Firefox or Chrome on Windows and Linux, so pasting stays the way in.
+- **The request's expiry** wasn't run to its end: the dapp's SDK allows no expiry under 5 minutes. The screen and the late answer are checked by types and reading, not by a test.
+- **Safari and phones,** as for the rest of the app.
+- **Waiting for execution** before answering `eth_sendTransaction` (the bridge's `--wait-for-execution`).
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
