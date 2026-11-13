@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'preact/hooks'
 import type { Address } from 'viem'
 import type { DappInfo } from './dapp'
-import { type Hex, putSetting, setting } from './db'
+import { type DappTxRecord, type Hex, get, putSetting, setting, writeStrict } from './db'
 import type { Env } from './flows'
 import type { Call } from './safe'
 
@@ -111,6 +111,14 @@ export function useWc(): WcState {
     }
   }, [])
   return state
+}
+
+/** After this app executed a Safe transaction (from a dapp's card or the transaction's screen): if a
+ * dapp got its SafeTx hash, keep the execution for its receipt and status. */
+export async function noteExecution(db: IDBDatabase, hash: Hex, tx: Hex) {
+  const rec = await get<DappTxRecord>(db, 'dapp', hash.toLowerCase())
+  if (rec) await writeStrict(db, 'dapp', [{ ...rec, execution: { tx, success: true } }])
+  setWc((s) => ({ ...s, done: s.done.map((d) => (d.hash === hash.toLowerCase() ? { ...d, ready: false, executed: tx } : d)) }))
 }
 
 /** The SDK's module, loaded on first use. */

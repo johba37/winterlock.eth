@@ -10,7 +10,7 @@ import { type DappInfo, txFor } from '../lib/dapp'
 import { type DappTxRecord, all } from '../lib/db'
 import { execute, proposeTx } from '../lib/flows'
 import { decode, tokensOf } from '../lib/safe'
-import { type DappDone, type DappProposal, type DappRequest, PROJECT_ID, useWc, wcModule } from '../lib/wc-state'
+import { type DappDone, type DappProposal, type DappRequest, PROJECT_ID, noteExecution, useWc, wcModule } from '../lib/wc-state'
 import { ErrorLine, Explorer, Panel, Progress, Screen, useAction } from '../ui'
 import { Describe, useTokens } from './safe'
 
@@ -283,7 +283,7 @@ function DoneCard(props: { d: DappDone }) {
   async function doExecute() {
     await act.run(async (step) => {
       const r = await execute(app.env, dev, d.chain, d.safe, d.hash, step)
-      await (await wcModule()).executed(d.hash, r.tx)
+      await noteExecution(app.env.db, d.hash, r.tx)
       return r
     })
   }

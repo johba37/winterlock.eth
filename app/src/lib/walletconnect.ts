@@ -21,7 +21,6 @@ import { chainById } from './chains'
 import {
   CODE,
   type Ctx as PlanCtx,
-  type DappInfo,
   type Execution,
   MEMBER_REFUSED,
   type RawReceipt,
@@ -445,17 +444,3 @@ export async function refuseRequest(id: number) {
   if (!r.expired) await respond(r.topic, id, { error: { code: CODE.rejected, message: MEMBER_REFUSED } }).catch(() => {})
   logWc({ chain: r.chain, safe: r.safe, dapp: r.dapp.name, text: r.expired ? 'Dismissed an expired request.' : `Refused ${r.method}: you rejected it.` })
 }
-
-/** After this app executed a dapp's transaction (flows.execute): keep the transaction hash. */
-export async function executed(hash: Hex, tx: Hex) {
-  const rec = await get<DappTxRecord>(env.db, 'dapp', hash.toLowerCase())
-  if (rec) await writeStrict(env.db, 'dapp', [{ ...rec, execution: { tx, success: true } }])
-  setWc((s) => ({ ...s, done: s.done.map((d) => (d.hash === hash.toLowerCase() ? { ...d, ready: false, executed: tx } : d)) }))
-}
-
-/** The SafeTx hashes given to dapps for a Safe, newest first. */
-export async function given(chain: number, safe: Address): Promise<DappTxRecord[]> {
-  return (await all<DappTxRecord>(env.db, 'dapp')).filter((x) => x.chain === chain && x.safe.toLowerCase() === safe.toLowerCase()).sort((a, b) => b.at - a.at)
-}
-
-export type { DappInfo }

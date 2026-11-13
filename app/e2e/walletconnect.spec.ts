@@ -55,7 +55,13 @@ async function sendAnvil(to: Address | undefined, data: Hex) {
   return r
 }
 
-const ask = <T = any>(method: string, params: unknown[], chainId = CAIP) => dapp.request<T>({ topic, chainId, request: { method, params } })
+/** A request from the dapp. Its promise gets a handler at once: the answer may come before the
+ * test awaits it, and an early refusal would otherwise count as unhandled. */
+const ask = <T = any>(method: string, params: unknown[], chainId = CAIP) => {
+  const p = dapp.request<T>({ topic, chainId, request: { method, params } })
+  p.catch(() => {})
+  return p
+}
 
 /** The dapp's error for a request: its code and message. */
 async function refusal(p: Promise<unknown>): Promise<{ code: number; message: string }> {

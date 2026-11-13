@@ -25,6 +25,7 @@ import {
 } from '../lib/flows'
 import { type Decoded, MAX_UINT256, decode, formatUnits, fromService, parseSignature, parseUnits, signatureDevice, tokensOf } from '../lib/safe'
 import type { ServiceTx } from '../lib/service'
+import { noteExecution } from '../lib/wc-state'
 import { Addr, ErrorLine, Explorer, Panel, Progress, Screen, go, useAction } from '../ui'
 
 export function useTokens(chain: number) {
@@ -288,7 +289,12 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
     setK(k + 1)
   }
   async function doExecute() {
-    const r = await act.run((step) => execute(app.env, dev, props.chain, props.safe, props.hash, step))
+    const r = await act.run(async (step) => {
+      const x = await execute(app.env, dev, props.chain, props.safe, props.hash, step)
+      // a dapp that got this SafeTx hash asks for its receipt
+      await noteExecution(app.env.db, props.hash, x.tx).catch(() => {})
+      return x
+    })
     if (r) setDone({ text: `Executed (${r.gasUsed.toLocaleString()} gas).`, tx: r.tx })
     setK(k + 1)
   }
