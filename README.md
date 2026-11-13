@@ -41,6 +41,7 @@ This repository also holds the landing page published at winterlock.eth: a singl
 | `fonts/` | Atkinson Hyperlegible Next and Mono (variable, Latin subset) with their SIL Open Font License texts |
 | `docs/brand/` | The look: mark, lockups, colours, and the stencil lettering generator |
 | `docs/overview.md` | Winterlock in one page: how it works, numbers, what's live, terms |
+| `docs/findings.md` | What building it showed, with the numbers: cost, Safe, dapps, one-time keys, native accounts, signing times |
 | `SECURITY.md` | How to report a vulnerability privately, and what's in scope |
 | `docs/decisions.md` | Design decisions, gas measurements and open questions |
 | `docs/notes/` | Longer notes, such as the message-signing options on the Safe route |
