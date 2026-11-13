@@ -16,6 +16,8 @@
     "icons": "node scripts/make-icons.mjs"
   },
   "dependencies": {
+    "@reown/walletkit": "1.6.0",
+    "@walletconnect/core": "2.25.0",
     "preact": "10.29.8",
     "qrcode-generator": "2.0.4",
     "viem": "2.57.7"
@@ -24,6 +26,7 @@
     "@playwright/test": "1.65.0",
     "@preact/preset-vite": "2.10.6",
     "@types/node": "24.19.0",
+    "@walletconnect/sign-client": "2.26.0",
     "fake-indexeddb": "6.2.5",
     "typescript": "5.9.3",
     "vite": "7.3.7",
