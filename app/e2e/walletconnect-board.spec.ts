@@ -60,12 +60,13 @@ async function refusal(p: Promise<unknown>): Promise<{ code: number; message: st
   throw new Error('the request was answered, not refused')
 }
 
-/** The request's card, confirmed in the app and on the board; the dapp's answer and the card's hash. */
+/** The request's card, confirmed in the app and on the board; the dapp's answer and the card's hash.
+ * The Safe's threshold is 1, so the app executes at once after the board signs. */
 async function confirmOnBoard<T>(pending: Promise<T>, check: (card: ReturnType<typeof t>) => Promise<void>) {
   const card = t(page, 'wc-request').first()
   await expect(card).toBeVisible({ timeout: 60_000 })
   await check(card)
-  await expect(card.getByTestId('wc-confirm')).toHaveText('Sign on the board and propose')
+  await expect(card.getByTestId('wc-confirm')).toHaveText('Sign on the board and execute')
   const before = await t(page, 'wc-done').count()
   await card.getByTestId('wc-confirm').click()
   const pages = await vb.confirm()
@@ -143,7 +144,7 @@ test.describe.serial('WalletConnect with the virtual board', () => {
     expect(await ask('wallet_getCapabilities', [safe])).toEqual({ '0xaa36a7': { atomicBatch: { supported: false }, atomic: { status: 'unsupported' } } })
   })
 
-  test('eth_sendTransaction: the board shows the transfer and signs; executed here; its receipt', async () => {
+  test('eth_sendTransaction: the board shows the transfer and signs; executed at once; the dapp gets the transaction hash', async () => {
     const value = 10n ** 17n
     const before = await chain.client().getBalance({ address: BOB })
     const pending = ask<Hex>('eth_sendTransaction', [{ from: safe, to: BOB, value: toHex(value) }])
@@ -152,12 +153,13 @@ test.describe.serial('WalletConnect with the virtual board', () => {
       await expect(card).toContainText('The board shows this transaction itself')
     })
     expect(pages[0]).toMatch(/^Send/)
-    expect(answer).toBe(hash)
-    expect(hash).toBe((await chain.hashOf(safe, BOB, value, '0x', 0, await chain.nonceOf(safe))).toLowerCase())
-    await done.getByTestId('wc-execute').click()
     await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
+    const tx = (await done.getByTestId('wc-executed').getAttribute('data-tx')) as Hex
+    expect(answer).toBe(tx)
+    expect(hash).toBe((await chain.hashOf(safe, BOB, value, '0x', 0, (await chain.nonceOf(safe)) - 1)).toLowerCase())
     expect((await chain.client().getBalance({ address: BOB })) - before).toBe(value)
-    expect(await ask('eth_getTransactionReceipt', [hash])).toMatchObject({ transactionHash: await done.getByTestId('wc-executed').getAttribute('data-tx'), status: '0x1' })
+    expect(await ask('eth_getTransactionReceipt', [tx])).toMatchObject({ transactionHash: tx, status: '0x1' })
+    expect(await ask('eth_getTransactionReceipt', [hash])).toMatchObject({ transactionHash: tx, status: '0x1' })
     log(`  board pages: ${pages.join(' | ')}`)
   })
 
@@ -176,8 +178,6 @@ test.describe.serial('WalletConnect with the virtual board', () => {
     log(`  board pages: ${pages.join(' | ')}`)
     expect(pages).toContain('Not decoded')
     expect(answer).toEqual({ id: hash })
-    expect(await ask('wallet_getCallsStatus', [hash])).toMatchObject({ status: 100 })
-    await done.getByTestId('wc-execute').click()
     await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
     expect(await ask('wallet_getCallsStatus', [hash])).toMatchObject({ status: 200 })
     expect(await chain.client().readContract({ address: token, abi: TOKEN_ABI, functionName: 'balanceOf', args: [BOB] })).toBe(2_000_000n)

@@ -11,7 +11,7 @@ The signer without a terminal: a browser app for members of a Safe whose owners 
 - **Join a Safe:** shows the owner address and the steps for the Safe's owners in Safe's app. The app doesn't create Safes.
 - **Enrol:** a key tree per Safe and chain, height 10 (512 one-time keys, two per nonce).
 - **Transactions:** the Safe's queue from Safe's Transaction Service, decoded (ETH, ERC-20 transfers, anything else marked raw); confirm; propose an ETH or ERC-20 transfer; execute once confirmed.
-- **Dapps over WalletConnect** (transactions; messages come later): paste a dapp's `wc:` link on a Safe's dapps screen, and the dapp sees the Safe as its account. Each transaction or batch it asks for shows decoded; on a confirm the app proposes it with this device's confirmation, and the dapp gets the SafeTx hash, then the execution's receipt and status. Message requests are refused for now.
+- **Dapps over WalletConnect** (transactions): paste a dapp's `wc:` link on a Safe's dapps screen, and the dapp sees the Safe as its account. Each transaction or batch it asks for shows decoded; on a confirm the app proposes it with this device's confirmation, and the dapp gets the SafeTx hash, then the execution's receipt and status. With threshold 1 the app executes it at once, and a transaction's answer is the execution's hash. Message requests are refused.
 - **Revoke a device,** with the phrase.
 - **Settings:** the RPC URL per chain, the gas account with its balance and a QR code.
 

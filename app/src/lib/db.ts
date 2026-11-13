@@ -160,7 +160,10 @@ export function treeId(chain: number, safe: string, root: string): string {
   return `${chain}:${safe.toLowerCase()}:${root.toLowerCase()}`
 }
 
-export function openDb(factory: IDBFactory = indexedDB, name = DB_NAME): Promise<IDBDatabase> {
+/** Opens the app's database, upgrading it if needed. An open tab of an older version blocks the
+ * upgrade (it has to close first); this version gives way to a newer one opened in another tab and
+ * calls `onNewer`. */
+export function openDb(factory: IDBFactory = indexedDB, name = DB_NAME, onNewer?: () => void): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = factory.open(name, DB_VERSION)
     req.onupgradeneeded = (e) => {
@@ -179,9 +182,17 @@ export function openDb(factory: IDBFactory = indexedDB, name = DB_NAME): Promise
       }
       if (e.oldVersion < 2) db.createObjectStore('dapp', { keyPath: 'safeTxHash' })
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onsuccess = () => {
+      const db = req.result
+      // a newer version in another tab waits for this connection: let it go
+      db.onversionchange = () => {
+        db.close()
+        onNewer?.()
+      }
+      resolve(db)
+    }
     req.onerror = () => reject(req.error)
-    req.onblocked = () => reject(new Error('the app is open in an older version in another tab: close it'))
+    req.onblocked = () => reject(new Error('the app is open in an older version in another tab: close that tab, then reload this page'))
   })
 }
 

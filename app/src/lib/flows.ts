@@ -674,8 +674,9 @@ export async function collect(env: Env, chainId: number, safe: Address, hash: He
   return { sigs, refused, verdicts, held: held?.signature, threshold: st.threshold, nonce: st.nonce }
 }
 
-/** Execute a fully confirmed transaction, paid by the gas account (cli.py's execute). */
-export async function execute(env: Env, dev: { gasKey: Hex; gasAddress: Hex }, chainId: number, safe: Address, hash: Hex, step: Step): Promise<{ tx: Hex; gasUsed: bigint }> {
+/** Execute a fully confirmed transaction, paid by the gas account (cli.py's execute). `onSent` gets
+ * the transaction's hash once it is sent, before it is mined. */
+export async function execute(env: Env, dev: { gasKey: Hex; gasAddress: Hex }, chainId: number, safe: Address, hash: Hex, step: Step, onSent?: (tx: Hex) => void): Promise<{ tx: Hex; gasUsed: bigint }> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   step('Fetching the proposal and its confirmations')
   const rec = await service(chainId).transaction(hash)
@@ -692,7 +693,12 @@ export async function execute(env: Env, dev: { gasKey: Hex; gasAddress: Hex }, c
     throw new Error(`execTransaction would revert: ${short(e)}`)
   })
   step('Executing, paid by your gas account')
-  const sent = await sendFromGas(ctx, dev.gasKey, safe, data, { onSent: (h) => step(`Executing (${h.slice(0, 10)}…)`) })
+  const sent = await sendFromGas(ctx, dev.gasKey, safe, data, {
+    onSent: (h) => {
+      step(`Executing (${h.slice(0, 10)}…)`)
+      onSent?.(h)
+    },
+  })
   const r = executionResult(sent.receipt, safe, hash)
   if (r === 'failure') throw new Error(`Executed, but the Safe's call failed (ExecutionFailure): ${sent.hash}`)
   if (r !== 'success') throw new Error(`No ExecutionSuccess event in ${sent.hash}`)

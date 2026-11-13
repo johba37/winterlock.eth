@@ -1698,7 +1698,13 @@ Item 6 of [notes/signer-app.md](notes/signer-app.md), transactions first. The qu
 - **Scanning a QR code:** `BarcodeDetector` exists in Chrome on Android and macOS but not on iOS, Firefox or Chrome on Windows and Linux, so pasting stays the way in.
 - **The request's expiry** wasn't run to its end: the dapp's SDK allows no expiry under 5 minutes. The screen and the late answer are checked by types and reading, not by a test.
 - **Safari and phones,** as for the rest of the app.
-- **Waiting for execution** before answering `eth_sendTransaction` (the bridge's `--wait-for-execution`).
+- **Waiting for execution** before answering `eth_sendTransaction` (the bridge's `--wait-for-execution`), apart from threshold 1 (below).
+
+**Decided by the user (2026-11-13):**
+- **Publish** the app with WalletConnect: the published build contains the project ID.
+- **Threshold 1 executes at once.** When the member's confirmation meets the threshold and the Safe is at the transaction's nonce, the gas account executes it as part of the confirm, and `eth_sendTransaction` is answered with the execution's transaction hash once it is sent. A dapp that follows the hash on its own node then sees the transaction; a SafeTx hash it would never find there. `wallet_sendCalls` gets its id first. If executing fails, the dapp gets the SafeTx hash, the card says why, and the member can execute later. The request card says so before the confirm ("Sign and execute"). End to end on anvil (`e2e/walletconnect.spec.ts`): the transfer executed at once for 227,274 to 227,286 gas (anvil's pricing), and the dapp's answer came 2.3 s after the confirm; with an empty gas account the dapp got the SafeTx hash, and Execute worked once the account was funded.
+- **Pasting the link only,** no QR scanning.
+- **Messages wait** until Safe's Transaction Service takes longer message signatures. It caps one at 5,000 hex characters; a Winterlock entry is 5,834 bytes ("2026-11-05: Safe owner spike", size limits, and "2026-11-05: Safe owner, live on Sepolia", request g). Until then dapps get 4001 for sign-ins, messages and permits.
 
 ## Integration notes: Kernel v3.3
 

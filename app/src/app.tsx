@@ -5,7 +5,7 @@ import { useContext, useEffect, useState } from 'preact/hooks'
 import { link, useLink } from './board/link'
 import { core } from './core/client'
 import { short } from './lib/chain'
-import { type BoardRecord, type DeviceRecord, getBoard, getDevice, openDb } from './lib/db'
+import { type BoardRecord, DB_NAME, type DeviceRecord, getBoard, getDevice, openDb } from './lib/db'
 import type { Env } from './lib/flows'
 import { resumeWc } from './lib/wc-state'
 import { BoardDock, BoardHome, BoardInfo, BoardStart } from './screens/board'
@@ -78,7 +78,7 @@ export function App() {
       try {
         if (!globalThis.indexedDB) throw new Error('This browser has no IndexedDB (a private window?): the app can’t keep a device key here.')
         if (!navigator.locks) throw new Error('This browser has no Web Locks: update it to use the app.')
-        const db = await openDb()
+        const db = await openDb(indexedDB, DB_NAME, () => setFatal('A newer version of the app opened in another tab: reload this page to use it.'))
         const e = { db, core: core() }
         setEnv(e)
         const b = (await getBoard(db)) ?? null
