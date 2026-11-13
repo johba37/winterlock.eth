@@ -146,6 +146,8 @@ test.describe.serial('WalletConnect live on Sepolia', () => {
       projectId: projectId()!,
       telemetryEnabled: false,
       logger: 'silent',
+      // its own core: specs in one worker would otherwise share the SDK's global one
+      customStoragePrefix: 'e2e-live',
       storageOptions: { database: ':memory:' },
       metadata: { name: 'Winterlock live dapp', description: 'a scripted dapp', url: 'https://dapp.example.org', icons: [] },
     })

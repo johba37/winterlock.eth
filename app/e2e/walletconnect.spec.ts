@@ -130,6 +130,8 @@ test.describe.serial('WalletConnect on a local chain', () => {
       projectId: projectId()!,
       telemetryEnabled: false,
       logger: 'silent',
+      // its own core: specs in one worker would otherwise share the SDK's global one
+      customStoragePrefix: 'e2e-device',
       storageOptions: { database: ':memory:' },
       metadata: { name: 'Winterlock e2e dapp', description: 'a scripted dapp', url: 'https://dapp.example.org', icons: [] },
     })
