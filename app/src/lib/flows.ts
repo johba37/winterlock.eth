@@ -5,6 +5,7 @@ import { type Address, encodeFunctionData, getAddress, hexToBytes, isAddress, pa
 import { privateKeyToAccount } from 'viem/accounts'
 import { CHAINS, chainById, enabledChains } from './chains'
 import {
+  afterTx,
   type Ctx,
   FACTORY_ABI,
   OWNER_ABI,
@@ -195,6 +196,7 @@ export async function submitCertificates(env: Env, dev: DeviceRecord, step: Step
     if (!c.enabled || cert.status === 'submitted') continue
     try {
       const ctx = await usableCtx(env.db, env.core, c.id)
+      let created: { blockNumber: bigint } | undefined
       if (!(await ownerDeployed(ctx, env.core, dev.owner, dev.memberKey))) {
         step(`Creating your owner contract on ${c.name}`)
         const factory = await factoryAddress(env.core)
@@ -202,10 +204,11 @@ export async function submitCertificates(env: Env, dev: DeviceRecord, step: Step
         const { result } = await ctx.client.simulateContract({ account: gasAddressOf(dev.gasKey), address: factory, abi: FACTORY_ABI, functionName: 'deploy', args: [dev.memberKey] })
         if (getAddress(result) !== dev.owner) throw new Error('The factory would create another owner: refusing.')
         const sent = await sendFromGas(ctx, dev.gasKey, factory, data, { onSent: (h) => step(`Creating your owner contract on ${c.name} (${h.slice(0, 10)}…)`) })
-        if (!(await ownerDeployed(ctx, env.core, dev.owner, dev.memberKey))) throw new Error(`The factory's deploy was mined (${sent.hash}), but there is no owner at ${dev.owner}.`)
+        if (!(await afterTx(sent.receipt, (b) => ownerDeployed(ctx, env.core, dev.owner, dev.memberKey, b)))) throw new Error(`The factory's deploy was mined (${sent.hash}), but there is no owner at ${dev.owner}.`)
         report.push(`${c.name}: owner created (${sent.receipt.gasUsed.toLocaleString()} gas, ${sent.hash})`)
+        created = sent.receipt
       }
-      const now = await readDevice(ctx, dev.owner, dev.device)
+      const now = created ? await afterTx(created, (b) => readDevice(ctx, dev.owner, dev.device, b)) : await readDevice(ctx, dev.owner, dev.device)
       if (now.active && now.key.toLowerCase() === dev.publicKey.toLowerCase()) {
         await writeStrict(env.db, 'certs', [{ ...cert, status: 'submitted' }])
         report.push(`${c.name}: device ${dev.device} is already certified (generation ${now.generation})`)
@@ -222,7 +225,7 @@ export async function submitCertificates(env: Env, dev: DeviceRecord, step: Step
         throw new Error(`certifyDevice would revert: ${short(e)}`)
       })
       const sent = await sendFromGas(ctx, dev.gasKey, dev.owner, data, { onSent: (h) => step(`Certifying this device on ${c.name} (${h.slice(0, 10)}…)`) })
-      const after = await readDevice(ctx, dev.owner, dev.device)
+      const after = await afterTx(sent.receipt, (b) => readDevice(ctx, dev.owner, dev.device, b))
       if (!after.active || after.key.toLowerCase() !== dev.publicKey.toLowerCase() || after.generation !== cert.generation) {
         throw new Error(`certifyDevice was mined (${sent.hash}), but device ${dev.device} doesn't read as certified.`)
       }
@@ -410,7 +413,7 @@ export async function enrol(env: Env, dev: DeviceRecord, chainId: number, safe: 
   })
   step('Sending the key tree’s certificate')
   const sent = await sendFromGas(ctx, dev.gasKey, dev.owner, data, { onSent: (h) => step(`Sending the key tree’s certificate (${h.slice(0, 10)}…)`) })
-  const after = await readTree(ctx, dev.owner, safe, dev.device)
+  const after = await afterTx(sent.receipt, (b) => readTree(ctx, dev.owner, safe, dev.device, b))
   if (after.root?.toLowerCase() !== tree.root.toLowerCase() || after.start !== tree.start || after.generation !== gen) {
     throw new Error(`enroll was mined (${sent.hash}), but the Safe's tree for this device differs.`)
   }
@@ -682,7 +685,7 @@ export async function revokeDevice(env: Env, dev: DeviceRecord, session: Session
       })
       step(`Sending the revocation on ${c.name}`)
       const sent = await sendFromGas(ctx, dev.gasKey, dev.owner, data, { onSent: (h) => step(`Sending the revocation on ${c.name} (${h.slice(0, 10)}…)`) })
-      if ((await readDevice(ctx, dev.owner, target)).active) throw new Error(`revokeDevice was mined (${sent.hash}), but device ${target} still reads as active.`)
+      if ((await afterTx(sent.receipt, (b) => readDevice(ctx, dev.owner, target, b))).active) throw new Error(`revokeDevice was mined (${sent.hash}), but device ${target} still reads as active.`)
       report.push(`${c.name}: device ${target} REVOKED at generation ${s.generation} (${sent.hash})`)
     }
   } finally {
