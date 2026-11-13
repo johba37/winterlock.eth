@@ -15,7 +15,7 @@
 
 import { type IWalletKit, WalletKit, type WalletKitTypes } from '@reown/walletkit'
 import { Core } from '@walletconnect/core'
-import { type Address, hexToBytes, keccak256 } from 'viem'
+import type { Address } from 'viem'
 import { ctxFor, safeState, short, usableCtx } from './chain'
 import { chainById } from './chains'
 import {
@@ -38,8 +38,7 @@ import {
 } from './dapp'
 import { type DappTxRecord, type Hex, all, get, putSetting, writeStrict } from './db'
 import { type Env, type Proposed, type Step, collect, nextNonce, service } from './flows'
-import { Refused } from './keylog'
-import { MULTISEND, type SafeTx, stripMetadata } from './safe'
+import type { SafeTx } from './safe'
 import { type DappRequest, type DappSession, PROJECT_ID, logWc, setWc, wcState } from './wc-state'
 
 export const RELAY = 'wss://relay.walletconnect.org'
@@ -363,16 +362,6 @@ function update(id: number, f: (r: DappRequest) => DappRequest) {
   setWc((s) => ({ ...s, requests: s.requests.map((r) => (r.id === id ? f(r) : r)) }))
 }
 
-/** A batch delegatecalls MultiSendCallOnly: its code here must be Safe v1.4.1's (safelibs.py). */
-async function checkMultiSend(chain: number) {
-  const ctx = await ctxFor(env.db, chain)
-  const code = await ctx.client.getCode({ address: MULTISEND.address })
-  if (!code || code === '0x') throw new Refused(`There is no MultiSendCallOnly at ${MULTISEND.address} on ${ctx.chain.name}: the app can’t build a batch here.`)
-  if (keccak256(code) !== MULTISEND.codeHash && keccak256(stripMetadata(hexToBytes(code))) !== MULTISEND.codeWithoutMetadataHash) {
-    throw new Refused(`The code at ${MULTISEND.address} isn’t Safe’s MultiSendCallOnly v1.4.1: the app won’t delegatecall it.`)
-  }
-}
-
 /**
  * The member confirms a transaction request: propose it with this device's confirmation (the same
  * checks and key log as any proposal), keep its SafeTx hash, and answer the dapp if it is still
@@ -390,11 +379,8 @@ export async function confirmRequest(id: number, propose: Propose, step: Step) {
     const st = await safeState(ctx, r.safe)
     const mine = (await all<DappTxRecord>(env.db, 'dapp')).filter((x) => x.chain === r.chain && x.safe.toLowerCase() === r.safe.toLowerCase())
     const nonce = await nextNonce(r.chain, r.safe, st.nonce, mine.map((x) => x.nonce))
+    // a batch's MultiSendCallOnly code is checked with the rest, before signing (flows.ts, prepare)
     const tx = txFor(r.calls, BigInt(nonce))
-    if (r.calls.length > 1) {
-      step('Checking MultiSendCallOnly’s code')
-      await checkMultiSend(r.chain)
-    }
     const p = await propose(r.chain, r.safe, tx, step)
     const rec: DappTxRecord = {
       safeTxHash: p.hash.toLowerCase() as Hex,

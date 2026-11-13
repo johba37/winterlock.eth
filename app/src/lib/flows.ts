@@ -1,7 +1,7 @@
 // What the app does, step by step, following the Python signer (cli.py, cli_devices.py) where it
 // has a counterpart. Screens call these; they report progress through `step`.
 
-import { type Address, encodeFunctionData, getAddress, hexToBytes, isAddress, padHex, toHex } from 'viem'
+import { type Address, encodeFunctionData, getAddress, hexToBytes, isAddress, keccak256, padHex, toHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { CHAINS, chainById, enabledChains } from './chains'
 import {
@@ -38,7 +38,23 @@ import {
   writeStrict,
 } from './db'
 import { type Core, Refused, recordThenSign } from './keylog'
-import { ERC20_ABI, SAFE_ABI, type SafeTx, contractSignature, decode, encodeForCore, execCalldata, fromService, pack, parseSignature, safeTx, signatureDevice } from './safe'
+import {
+  ERC20_ABI,
+  MULTISEND,
+  SAFE_ABI,
+  type SafeTx,
+  batchCalls,
+  contractSignature,
+  decode,
+  encodeForCore,
+  execCalldata,
+  fromService,
+  pack,
+  parseSignature,
+  safeTx,
+  signatureDevice,
+  stripMetadata,
+} from './safe'
 import { Service, type ServiceTx, writerFor } from './service'
 import { sources, staleLogCheck } from './stale'
 
@@ -470,6 +486,16 @@ interface Prepared {
   tree: TreeRecord
 }
 
+/** A batch delegatecalls MultiSendCallOnly: its code on this chain must be Safe v1.4.1's
+ * (safelibs.py). The decoder trusts the canonical address; this checks what is there. */
+export async function checkMultiSend(ctx: Ctx): Promise<void> {
+  const code = await ctx.client.getCode({ address: MULTISEND.address })
+  if (!code || code === '0x') throw new Refused(`There is no MultiSendCallOnly at ${MULTISEND.address} on ${ctx.chain.name}: the app won’t sign a batch here.`)
+  if (keccak256(code) !== MULTISEND.codeHash && keccak256(stripMetadata(hexToBytes(code))) !== MULTISEND.codeWithoutMetadataHash) {
+    throw new Refused(`The code at ${MULTISEND.address} isn’t Safe’s MultiSendCallOnly v1.4.1: the app won’t sign a delegatecall to it.`)
+  }
+}
+
 /** The checks before a one-time signature (cli.py's prepare), then the stale-log check. */
 async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Address, tx: SafeTx, step: Step, expect?: Hex): Promise<Prepared> {
   const ctx = await usableCtx(env.db, env.core, chainId)
@@ -486,6 +512,12 @@ async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Addre
     args: [tx.to, tx.value, tx.data, tx.operation, tx.safeTxGas, tx.baseGas, tx.gasPrice, tx.gasToken, tx.refundReceiver, tx.nonce],
   })
   if (onchain.toLowerCase() !== hash.toLowerCase()) throw new Refused(`The Safe computes ${onchain} for these fields, not ${hash}: refusing.`)
+  // a batch, from a dapp or from the queue, shows as its calls: the code it delegatecalls must be
+  // the MultiSendCallOnly those calls were decoded for
+  if (batchCalls(tx)) {
+    step('Checking MultiSendCallOnly’s code')
+    await checkMultiSend(ctx)
+  }
   const gen = await requireActive(env, dev, ctx)
   const tree = await signingTree(env, dev, ctx, safe, gen)
   const cap = 2 ** (tree.height - 1)
