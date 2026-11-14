@@ -1,9 +1,12 @@
-// Before this browser holds a device: welcome, create a member, pair this device, install on iOS.
+// Before this browser holds a device: welcome, create a member, pair this device, install on iOS;
+// and a device that an earlier build set up, with keys from before ERC-8499.
 
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { useApp } from '../app'
 import { type MemberSession, memberSession } from '../core/client'
-import { createDevice, pairDevice } from '../lib/flows'
+import { type DeviceRecord, EARLIER_BUILD, wipe } from '../lib/db'
+import { type PairQuestion, createDevice, pairDevice } from '../lib/flows'
+import { forgetWc } from '../lib/wc-state'
 import { isIOS, mayHoldKeys, persist } from '../lib/platform'
 import { Addr, ErrorLine, Panel, Progress, Screen, go, useAction } from '../ui'
 
@@ -249,6 +252,8 @@ export function Pair() {
   const [text, setText] = useState('')
   const [report, setReport] = useState<string[] | null>(null)
   const [paired, setPaired] = useState<{ device: number; owner: string } | null>(null)
+  // set while pairing waits for the member: is this the owner they meant (or none at all)?
+  const [ask, setAsk] = useState<{ q: PairQuestion; answer: (goOn: boolean) => void } | null>(null)
   const area = useRef<HTMLTextAreaElement>(null)
   const act = useAction()
 
@@ -269,7 +274,17 @@ export function Pair() {
       setText('')
       if (area.current) area.current.value = ''
       try {
-        return await pairDevice(app.env, s, step)
+        const confirm = (q: PairQuestion) =>
+          new Promise<boolean>((resolve) =>
+            setAsk({
+              q,
+              answer: (goOn: boolean) => {
+                setAsk(null)
+                resolve(goOn)
+              },
+            }),
+          )
+        return await pairDevice(app.env, s, step, confirm)
       } catch (err) {
         const rep = (err as { report?: string[] }).report
         if (rep) {
@@ -341,7 +356,13 @@ export function Pair() {
         </label>
         <p class="muted small">Case, numbering and commas don’t matter; the first four letters of a word are enough.</p>
         <ErrorLine error={act.error} />
-        {act.busy ? (
+        {ask ? (
+          ask.q.chains.length ? (
+            <PairOwner q={ask.q} answer={ask.answer} />
+          ) : (
+            <NoAccount answer={ask.answer} />
+          )
+        ) : act.busy ? (
           <Progress step={act.step} started={act.started} />
         ) : (
           <div class="actions">
@@ -352,6 +373,121 @@ export function Pair() {
         )}
       </form>
       <p class="muted small">Pairing sends one transaction from your gas account, which your phrase also gives this device.</p>
+    </Screen>
+  )
+}
+
+/** Pairing found the phrase's owner: the member compares its full address before this device joins
+ * it, so that another member's phrase, typed by mistake, pairs nothing. */
+function PairOwner(props: { q: PairQuestion; answer: (goOn: boolean) => void }) {
+  const { q } = props
+  return (
+    <Panel title="Is this your owner?" testid="pair-owner">
+      <p>
+        Your phrase gives this owner, which exists on {q.chains.join(', ')}. This device would become its device{' '}
+        <span data-testid="pair-owner-device">{q.device}</span>.
+      </p>
+      <Addr value={q.owner} full testid="pair-owner-address" />
+      <p class="muted small">
+        Compare it in full with the owner on your other device’s home screen or in your Safe’s owners. If it isn’t yours, stop: these words may be another
+        member’s phrase.
+      </p>
+      <div class="actions row">
+        <button type="button" data-testid="pair-confirm" onClick={() => props.answer(true)}>
+          Pair with this owner
+        </button>
+        <button type="button" class="secondary" data-testid="pair-stop" onClick={() => props.answer(false)}>
+          Stop
+        </button>
+      </div>
+    </Panel>
+  )
+}
+
+/** Pairing found no owner for the phrase's member key: ask before going on (ERC-8499 asks wallets to
+ * warn before deriving keys from a phrase they didn't make). */
+function NoAccount(props: { answer: (goOn: boolean) => void }) {
+  return (
+    <Panel title="No Winterlock account uses this phrase" tone="warn" testid="no-account">
+      <ul class="list small">
+        <li>If you made it in this app on another device, and that device hasn’t sent its first transaction yet, pair this one too.</li>
+        <li>If the words belong to another wallet, stop: keep that phrase out of this app, and create a new one here instead.</li>
+        <li>
+          If you made it before 14 November 2026, the app now makes other keys from it. Its Safes are in the{' '}
+          <a href={EARLIER_BUILD.url} target="_blank" rel="noopener noreferrer">
+            earlier version
+          </a>
+          .
+        </li>
+      </ul>
+      <div class="actions row">
+        <button type="button" data-testid="pair-anyway" onClick={() => props.answer(true)}>
+          Pair anyway
+        </button>
+        <button type="button" class="secondary" data-testid="pair-stop" onClick={() => props.answer(false)}>
+          Stop
+        </button>
+      </div>
+    </Panel>
+  )
+}
+
+/** A device that a build before ERC-8499 set up. Its keys came from the phrase's entropy under
+ * Keccak labels; this build neither makes nor uses them, so the device can only be forgotten here. */
+export function EarlierKeys(props: { device: DeviceRecord }) {
+  const app = useApp()
+  const [confirm, setConfirm] = useState(false)
+  const d = props.device
+  return (
+    <Screen title="Keys of an earlier version" testid="earlier-keys">
+      <Panel tone="warn">
+        <p>
+          Since 14 November 2026 the app makes its keys by ERC-8499, the proposed standard for hash-based keys from a recovery phrase. This device was set up
+          before. Its keys don’t work in this version, and your phrase now gives a new member key and a new owner.
+        </p>
+        <p>
+          Your Safes from before stay with the{' '}
+          <a href={EARLIER_BUILD.url} target="_blank" rel="noopener noreferrer" data-testid="earlier-link">
+            earlier version
+          </a>
+          , which still opens. Pair a browser there with your phrase to use them, for example to move test funds out.
+        </p>
+        <Addr label="Earlier owner" value={d.owner} testid="earlier-owner" />
+        <Addr label="Earlier gas account" value={d.gasAddress} />
+        <p class="muted small">
+          Earlier version: build {EARLIER_BUILD.commit}, IPFS {EARLIER_BUILD.cid}
+        </p>
+      </Panel>
+      <Panel title="Start again with this version" tone="warn">
+        <p class="small">
+          Deletes this device’s earlier key, key log and gas key from this browser, and disconnects its dapps. Your phrase still opens the earlier Safes in the
+          earlier version. Then create a new member here.
+        </p>
+        {confirm ? (
+          <div class="actions row">
+            <button
+              type="button"
+              class="danger"
+              data-testid="earlier-forget-confirm"
+              onClick={async () => {
+                await forgetWc(app.env).catch(() => {})
+                await wipe(app.env.db)
+                await app.reload()
+                go('/')
+              }}
+            >
+              Delete it from this browser
+            </button>
+            <button type="button" class="secondary" onClick={() => setConfirm(false)}>
+              Keep it
+            </button>
+          </div>
+        ) : (
+          <button type="button" class="secondary" data-testid="earlier-forget" onClick={() => setConfirm(true)}>
+            Start again
+          </button>
+        )}
+      </Panel>
     </Screen>
   )
 }

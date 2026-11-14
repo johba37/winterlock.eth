@@ -13,14 +13,19 @@
 //!    recorded and returns the core's `Recorded`, which is the only thing that signs. If the use
 //!    isn't in what was read back, the append fails and nothing is signed.
 //!
-//! Secrets: wrappers zero their own copies of seeds when dropped. The core's leanSphincs key keeps
+//! Keys follow ERC-8499 (`derive::erc8499`): a phrase's seed (its BIP-39 entropy) gives the phrase
+//! root, from which come the member key and the gas key; a device's 32 random bytes give its random
+//! root, from which come its device key and its trees. The earlier derivation (`derive`'s own
+//! functions, the app's builds up to 494703c) isn't reachable from here.
+//!
+//! Secrets: wrappers zero their own copies of seeds and roots when dropped. The core's leanSphincs key keeps
 //! its own copy, which this crate can't reach; the app holds the member key only in a worker it
 //! terminates afterwards, which discards the whole WebAssembly memory.
 
 #![forbid(unsafe_code)]
 
 use wasm_bindgen::prelude::*;
-use winterlock_core::derive::{self, TreePlace};
+use winterlock_core::derive::{self, TreePlace, erc8499};
 use winterlock_core::keylog::{self, KeyLogStore, KeyUse, TreeRef};
 use winterlock_core::leansphincs::{self, Node};
 use winterlock_core::safe::{Operation, SafeTx};
@@ -37,6 +42,38 @@ fn arr<const N: usize>(b: &[u8], what: &str) -> Result<[u8; N], JsError> {
 fn wipe(b: &mut [u8]) {
     b.fill(0);
     core::hint::black_box(b);
+}
+
+/// The phrase root of a phrase's seed; the caller's copy of the seed is untouched.
+fn phrase_root(phrase_seed: &[u8]) -> Result<erc8499::Root, JsError> {
+    let mut s = arr::<32>(phrase_seed, "seed")?;
+    let r = erc8499::phrase_root(&s).map_err(js);
+    wipe(&mut s);
+    r
+}
+
+/// The random root of a device's 32 random bytes.
+fn device_root(device_seed: &[u8]) -> Result<erc8499::Root, JsError> {
+    let mut s = arr::<32>(device_seed, "seed")?;
+    let r = erc8499::device_root(&s);
+    wipe(&mut s);
+    Ok(r)
+}
+
+/// The stateless key seed of a root, wiping the root.
+fn stateless_seed(mut root: erc8499::Root) -> Result<[u8; 32], JsError> {
+    let k = erc8499::stateless_key_seed(&root).map_err(js);
+    wipe(&mut root);
+    k
+}
+
+/// A tree's secret seed from its device's random bytes.
+fn tree_secret(device_seed: &[u8], at: &TreePlace, height: u32, salt: &[u8]) -> Result<[u8; 32], JsError> {
+    let salt = arr::<32>(salt, "salt")?;
+    let mut root = device_root(device_seed)?;
+    let sk = erc8499::tree_secret_seed(&root, at, height, &salt).map_err(js);
+    wipe(&mut root);
+    sk
 }
 
 // --- phrase ---
@@ -84,9 +121,9 @@ pub fn check_code(owner_addr: &[u8], device: u8, key: &[u8]) -> Result<String, J
 /// The gas account's private key for a phrase's seed (refused if zero or not below n).
 #[wasm_bindgen]
 pub fn gas_key(phrase_seed: &[u8]) -> Result<Vec<u8>, JsError> {
-    let mut s = arr::<32>(phrase_seed, "seed")?;
-    let k = derive::gas_key(&s).map_err(js);
-    wipe(&mut s);
+    let mut root = phrase_root(phrase_seed)?;
+    let k = erc8499::gas_key(&root).map_err(js);
+    wipe(&mut root);
     Ok(k?.to_vec())
 }
 
@@ -115,18 +152,12 @@ impl KeyBuilder {
 
     /// The member key of a recovery phrase's seed.
     pub fn member(phrase_seed: &[u8]) -> Result<KeyBuilder, JsError> {
-        let mut s = arr::<32>(phrase_seed, "seed")?;
-        let b = KeyBuilder::with_seed(derive::member_key_seed(&s));
-        wipe(&mut s);
-        b
+        KeyBuilder::with_seed(stateless_seed(phrase_root(phrase_seed)?)?)
     }
 
     /// The device key of a device's random seed.
     pub fn device(device_seed: &[u8]) -> Result<KeyBuilder, JsError> {
-        let mut s = arr::<32>(device_seed, "seed")?;
-        let b = KeyBuilder::with_seed(derive::device_key_seed(&s));
-        wipe(&mut s);
-        b
+        KeyBuilder::with_seed(stateless_seed(device_root(device_seed)?)?)
     }
 
     pub fn total(&self) -> u32 {
@@ -168,14 +199,14 @@ impl StatelessKey {
     /// A device key from its seed and its cached kept leaves (public values), checked against the
     /// public key it must have.
     pub fn device_from_cache(device_seed: &[u8], kept: &[u8], public_key: &[u8]) -> Result<StatelessKey, JsError> {
-        let mut s = arr::<32>(device_seed, "seed")?;
-        let ls_seed = derive::device_key_seed(&s);
-        wipe(&mut s);
+        let mut ls_seed = stateless_seed(device_root(device_seed)?)?;
         if kept.len() != 16 << derive::STATELESS_B {
             return Err(JsError::new("the kept leaves have the wrong size"));
         }
         let leaves: Vec<Node> = kept.chunks_exact(16).map(|c| c.try_into().unwrap()).collect();
-        let key = leansphincs::Key::from_leaves(&ls_seed, derive::STATELESS_B, leaves).map_err(js)?;
+        let key = leansphincs::Key::from_leaves(&ls_seed, derive::STATELESS_B, leaves).map_err(js);
+        wipe(&mut ls_seed);
+        let key = key?;
         if key.public_key()[..] != *public_key {
             return Err(JsError::new("the cached key leaves give another public key"));
         }
@@ -282,9 +313,7 @@ impl TreeBuilder {
             return Err(JsError::new("a key tree here is 1 to 20 high"));
         }
         let at = place(chain, owner_addr, safe_addr, device, generation, start)?;
-        let mut s = arr::<32>(device_seed, "seed")?;
-        let sk = derive::tree_secret_seed(&s, &at, &arr(salt, "salt")?);
-        wipe(&mut s);
+        let sk = tree_secret(device_seed, &at, height, salt)?;
         Ok(TreeBuilder { seed: derive::tree_public_seed(&at), sk, height, leaves: vec![[0u8; wots::N]; 1 << height], done: 0 })
     }
 
@@ -436,9 +465,7 @@ pub fn sign_transaction(
     let tref = TreeRef { chain, safe: at.safe, root: tree.root, start, height: tree.height };
     let mut store = DurableUses { chain, safe: at.safe, root: tree.root, uses };
     let rec = keylog::record(&mut store, &tref, nonce, &hash).map_err(js)?;
-    let mut s = arr::<32>(device_seed, "seed")?;
-    let mut sk = derive::tree_secret_seed(&s, &at, &arr(salt, "salt")?);
-    wipe(&mut s);
+    let mut sk = tree_secret(device_seed, &at, tree.height, salt)?;
     let out = owner::sign_transaction(&rec, &tree, &sk, device, &t).map_err(js);
     wipe(&mut sk);
     out

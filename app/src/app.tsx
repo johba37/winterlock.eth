@@ -4,10 +4,10 @@ import { createContext } from 'preact'
 import { useContext, useEffect, useState } from 'preact/hooks'
 import { core } from './core/client'
 import { short } from './lib/chain'
-import { DB_NAME, type DeviceRecord, getDevice, openDb } from './lib/db'
+import { DB_NAME, type DeviceRecord, KEYS, getDevice, openDb } from './lib/db'
 import type { Env } from './lib/flows'
 import { resumeWc } from './lib/wc-state'
-import { Create, Install, Pair, Welcome } from './screens/onboarding'
+import { Create, EarlierKeys, Install, Pair, Welcome } from './screens/onboarding'
 import { Devices, Home, Join, Revoke, Settings } from './screens/member'
 import { DappBar, DappsScreen } from './screens/dapps'
 import { SafeScreen, Send, TxScreen } from './screens/safe'
@@ -63,7 +63,7 @@ export function App() {
         const d = (await getDevice(db)) ?? null
         setDevice(d)
         // a dapp session from before: reconnect, so its requests reach the app
-        if (d) resumeWc(e).catch(() => {})
+        if (d?.keys === KEYS) resumeWc(e).catch(() => {})
       } catch (err) {
         setFatal(short(err))
       }
@@ -88,6 +88,13 @@ export function App() {
     device,
     reload: async () => setDevice((await getDevice(env.db)) ?? null),
   }
+  // a device from a build before ERC-8499: this build can't use its keys
+  if (device && device.keys !== KEYS)
+    return (
+      <AppContext.Provider value={state}>
+        <EarlierKeys device={device} />
+      </AppContext.Provider>
+    )
   return (
     <AppContext.Provider value={state}>
       {device && <DappBar />}

@@ -134,6 +134,10 @@ export async function pair(d: Device, words: string[]): Promise<string[]> {
   await t(p, 'phrase-input').fill(words.map((w, i) => `${i + 1}. ${i % 3 === 0 ? w.slice(0, 4).toUpperCase() : w}`).join('\n'))
   await screens(d, '09-pair')
   await t(p, 'pair-submit').click()
+  // the phrase finds the member's owner: the app shows it in full and asks
+  await t(p, 'pair-owner').waitFor({ timeout: 10 * 60_000 })
+  await screens(d, '09b-pair-owner')
+  await t(p, 'pair-confirm').click()
   await waitDone(p, 'pair-report')
   await screens(d, '10-pair-done')
   return t(p, 'pair-report').locator('li').allTextContents()

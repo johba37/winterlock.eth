@@ -175,10 +175,11 @@ fn check_device(device: u8) -> Result<(), Error> {
     Ok(())
 }
 
-/// The seed of a device's tree for a Safe: the first 16 bytes of keccak256(abi.encode(TREE_SEED_DOMAIN,
-/// chain, owner, safe, device, generation, start)).
-pub fn tree_seed(chain_id: u64, owner: &[u8; 20], safe: &[u8; 20], device: u8, generation: u16, start: u64) -> wots::Seed {
-    let d = keccak256_parts(&[
+/// Where a device's tree for a Safe belongs: keccak256(abi.encode(TREE_SEED_DOMAIN, chain, owner,
+/// safe, device, generation, start)). Its first 16 bytes are the tree's seed ([`tree_seed`]); the
+/// signer app's ERC-8499 trees take all 32 as their context (`derive::erc8499`).
+pub fn tree_place_digest(chain_id: u64, owner: &[u8; 20], safe: &[u8; 20], device: u8, generation: u16, start: u64) -> [u8; 32] {
+    keccak256_parts(&[
         &TREE_SEED_DOMAIN,
         &word_u64(chain_id),
         &word_address(owner),
@@ -186,8 +187,12 @@ pub fn tree_seed(chain_id: u64, owner: &[u8; 20], safe: &[u8; 20], device: u8, g
         &word_u64(device as u64),
         &word_u64(generation as u64),
         &word_u64(start),
-    ]);
-    d[..16].try_into().unwrap()
+    ])
+}
+
+/// The seed of a device's tree for a Safe: the first 16 bytes of [`tree_place_digest`].
+pub fn tree_seed(chain_id: u64, owner: &[u8; 20], safe: &[u8; 20], device: u8, generation: u16, start: u64) -> wots::Seed {
+    tree_place_digest(chain_id, owner, safe, device, generation, start)[..16].try_into().unwrap()
 }
 
 /// A tree root (24 bytes) high-aligned in a bytes32.

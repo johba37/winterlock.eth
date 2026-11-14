@@ -1,5 +1,5 @@
-//! Hash-Based Key Derivation from BIP-39 (HBKD; draft ERC: "Hash-Based Key Derivation from
-//! BIP-39"), as in hbkd.py: the secret seeds of hash-based keys from a BIP-39 phrase, through
+//! Hash-Based Key Derivation from BIP-39 (HBKD; ERC-8499, a draft: "Hash-Based Key Derivation
+//! from BIP-39"), as in hbkd.py: the secret seeds of hash-based keys from a BIP-39 phrase, through
 //! HMAC-SHA512 only (BIP-39's PBKDF2, then HKDF-SHA512), never BIP-32 or elliptic-curve
 //! arithmetic.
 //!
@@ -44,10 +44,11 @@
 //! ASCII: words of the English list, separated by single spaces. Labels are not normalised by
 //! either side, so any label is taken.
 //!
-//! Library code only: nothing in the core derives keys this way yet. Winterlock's own keys
-//! ([`crate::derive`]: member key, device keys, tree secret seeds, gas key) come from the phrase's
-//! entropy and are unrelated. [`winterlock_root`] is the bridge: a Winterlock seed is the BIP-39
-//! entropy of its 24 words, so those words have an HBKD root too.
+//! The signer app's keys come from here since 2026-11-14 ([`crate::derive::erc8499`]: member key,
+//! device keys, tree secret seeds, gas key). The command-line signer's come from the phrase's
+//! entropy under Keccak labels ([`crate::derive`]'s own functions) and are unrelated.
+//! [`winterlock_root`] is the bridge: a Winterlock seed is the BIP-39 entropy of its 24 words, so
+//! those words have a root here too.
 
 use alloc::string::String;
 use alloc::vec;

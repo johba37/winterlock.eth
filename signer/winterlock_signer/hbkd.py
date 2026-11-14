@@ -1,4 +1,4 @@
-"""Hash-Based Key Derivation from BIP-39 (HBKD, a draft ERC): the secret seeds of hash-based keys from a BIP-39 phrase,
+"""Hash-Based Key Derivation from BIP-39 (HBKD, ERC-8499, a draft): the secret seeds of hash-based keys from a BIP-39 phrase,
 through HMAC-SHA512 only (BIP-39's PBKDF2, then HKDF-SHA512), never BIP-32 or any elliptic-curve step.
 
     M     = the mnemonic's words as they appear in the BIP-39 wordlist, joined by single spaces
@@ -26,8 +26,8 @@ here.
 
 Every refusal is a ValueError. Byte inputs may be bytes or bytearray.
 
-Library code only: nothing in the signer derives keys this way. Winterlock's own keys (member.py: the member key,
-device keys, tree secret seeds, the gas key) come from the phrase's entropy and are unrelated to these.
+The signer app's keys come from here since 2026-11-14 (erc8499.py: the member key, device keys, tree secret seeds, the
+gas key). The command line's (member.py) come from the phrase's entropy under Keccak labels and are unrelated to these.
 `winterlock_root` is the bridge: Winterlock's seed is a 24-word phrase's BIP-39 entropy (phrase.py), so the same
 words also have an HBKD root.
 """

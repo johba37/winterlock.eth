@@ -28,6 +28,7 @@ import {
   type Hex,
   type StatelessRecord,
   type TreeRecord,
+  KEYS,
   certs,
   get,
   getDevice,
@@ -137,6 +138,7 @@ export async function createDevice(env: Env, session: Session, step: Step): Prom
     session.end()
     const rec: DeviceRecord = {
       id: 'this',
+      keys: KEYS,
       owner: d.owner,
       memberKey: d.memberKey,
       gasKey: d.gasKey,
@@ -158,22 +160,45 @@ function gasAddressOf(gasKey: Hex): Address {
   return privateKeyToAccount(gasKey).address
 }
 
+/** What pairing found, shown to the member before the member key certifies this device. */
+export interface PairQuestion {
+  /** the owner that the phrase's member key gives: the same address on every chain */
+  owner: Address
+  /** the enabled chains where that owner exists; none when no Winterlock account uses the phrase */
+  chains: string[]
+  /** the device number this device would get */
+  device: number
+}
+
 /**
  * Pair this device from the phrase: a device key for the next free device number, certified by
  * the member key on each enabled chain, then sent from the gas account. The session ends once the
  * member key has signed.
+ *
+ * Before the member key certifies anything, `confirm` is shown the owner the phrase gives and the
+ * chains where it exists, and nothing is paired unless it answers true. A phrase that no owner uses
+ * may be another wallet's (ERC-8499 asks wallets to warn before deriving from it); a phrase that
+ * finds an owner may still be another member's, typed by mistake, and the member compares the
+ * full address before this device joins it.
  */
-export async function pairDevice(env: Env, session: Session, step: Step): Promise<{ device: DeviceRecord; report: string[] }> {
+export async function pairDevice(
+  env: Env,
+  session: Session,
+  step: Step,
+  confirm: (q: PairQuestion) => Promise<boolean>,
+): Promise<{ device: DeviceRecord; report: string[] }> {
   let rec: DeviceRecord
   try {
     if (await getDevice(env.db)) throw new Error('This browser already holds a device.')
     const d = await derive(session, step)
     // the device number: the lowest one that isn't active on any enabled chain
     const gens = new Map<number, number[]>()
+    const found: string[] = []
     for (const c of enabledChains()) {
       step(`Reading your devices on ${c.name}`)
       const ctx = await usableCtx(env.db, env.core, c.id)
       const deployed = await ownerDeployed(ctx, env.core, d.owner, d.memberKey)
+      if (deployed) found.push(c.name)
       const states = []
       for (let n = 1; n <= MAX_DEVICE; n++) states.push(deployed ? await readDevice(ctx, d.owner, n) : { key: '0x' as Hex, generation: 0, active: false })
       gens.set(c.id, states.map((s) => (s.active ? -1 : s.generation)))
@@ -183,6 +208,9 @@ export async function pairDevice(env: Env, session: Session, step: Step): Promis
       if ([...gens.values()].every((g) => g[n - 1] >= 0)) device = n
     }
     if (!device) throw new Error('All three device numbers are in use. Revoke a device you no longer use (Devices), then pair this one.')
+    if (!(await confirm({ owner: d.owner, chains: found, device }))) {
+      throw new Error(found.length ? 'Nothing was paired.' : 'Nothing was paired: no Winterlock account uses this phrase.')
+    }
     const k = await newDeviceKey(env, step)
     const out: CertRecord[] = []
     for (const c of enabledChains()) {
@@ -190,7 +218,7 @@ export async function pairDevice(env: Env, session: Session, step: Step): Promis
       out.push(await certifyWithMemberKey(env, session, c.id, device, gens.get(c.id)![device - 1] + 1, k.publicKey))
     }
     session.end()
-    rec = { id: 'this', owner: d.owner, memberKey: d.memberKey, gasKey: d.gasKey, gasAddress: gasAddressOf(d.gasKey), device, ...k, how: 'pair', createdAt: Date.now() }
+    rec = { id: 'this', keys: KEYS, owner: d.owner, memberKey: d.memberKey, gasKey: d.gasKey, gasAddress: gasAddressOf(d.gasKey), device, ...k, how: 'pair', createdAt: Date.now() }
     await writeStrict(env.db, 'device', [rec])
     await writeStrict(env.db, 'certs', out)
   } finally {

@@ -24,7 +24,7 @@ if [ -f "$HOME/export-esp.sh" ]; then
   # shellcheck disable=SC1091
   . "$HOME/export-esp.sh"
 fi
-# the last one adds hbkd (PBKDF2 and HKDF through RustCrypto's hmac), which core-wasm and the board leave out
+# the last one adds hbkd (PBKDF2 and HKDF through RustCrypto's hmac: ERC-8499), which core-wasm and the board enable
 for features in "tiny-keccak" "sha3" "tiny-keccak,sha3,count" "tiny-keccak,sha3,count,hbkd"; do
   cargo +esp build --quiet --release --target xtensa-esp32-none-elf -Z build-std=core,alloc \
     --no-default-features --features "$features"
