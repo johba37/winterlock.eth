@@ -1726,6 +1726,10 @@ Item 6 of [notes/signer-app.md](notes/signer-app.md), transactions first. The qu
 - **End to end on anvil** (`e2e/keys.spec.ts`, dev server and production build): pairing the ERC's test phrase, which no owner uses, asks first; Stop pairs nothing; Pair anyway creates the owner the Python reference names for that phrase, from the gas account it names, and a second browser then pairs as device 2 without the question. A device record without the new marker gets the earlier-keys screen on every route, with no dapp bar, and Start again leaves the welcome screen. `walletconnect.spec.ts` passes unchanged (14/14, dev and production).
 - **Checks:** `core/check.sh` on all three targets; the Python signer's 196 tests; the app's 58 unit tests.
 - **The earlier build's link** (`https://<CID>.ipfs.inbrowser.link/`, IPFS's service-worker gateway; dweb.link now redirects there) opened build `494703c`, and its core answered a short phrase with its error, in headless Chromium. Its own origin per CID keeps its storage apart from other builds.
+- **The board** (`hardware/board-signer/logic/src/keys.rs`): the same derivation on the board, which is device 0, so its key trees come from the phrase's root with the tree's salt as instance. The board makes the root at setup, recovery and unlock and keeps it for the session in place of the seed; the seed stays in flash, as before.
+  - **Natively:** the board's flows, the 658 power cuts and the Python vectors (`board_vectors.py`, now through erc8499.py) pass, and clippy is clean. The firmware's release checks pass (a 415,328-byte image).
+  - **In QEMU** (`qemu_flows.py`, the test image, checked against erc8499.py): every flow passed in four runs, in 39 to 62 s, the first enrolment after an unlock taking 7.6 to 11.0 s. One earlier run, while the host was busy with other builds, got no answer to that enrolment within 600 s, and the board printed nothing. Not explained; QEMU's two cores are emulated, so it is one to watch on the chip.
+  - **Not measured:** PBKDF2's time on the chip at unlock (QEMU's timing isn't the chip's).
 
 ## Integration notes: Kernel v3.3
 
