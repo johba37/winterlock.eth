@@ -1,10 +1,11 @@
 // What the app does, step by step, following the Python signer (cli.py, cli_devices.py) where it
 // has a counterpart. Screens call these; they report progress through `step`.
 
-import { type Address, encodeFunctionData, getAddress, hexToBytes, isAddress, padHex, toHex } from 'viem'
+import { type Address, encodeFunctionData, getAddress, hexToBytes, isAddress, keccak256, padHex, toHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { CHAINS, chainById, enabledChains } from './chains'
 import {
+  afterTx,
   type Ctx,
   FACTORY_ABI,
   OWNER_ABI,
@@ -27,6 +28,7 @@ import {
   type Hex,
   type StatelessRecord,
   type TreeRecord,
+  KEYS,
   certs,
   get,
   getDevice,
@@ -37,7 +39,23 @@ import {
   writeStrict,
 } from './db'
 import { type Core, Refused, recordThenSign } from './keylog'
-import { ERC20_ABI, SAFE_ABI, type SafeTx, contractSignature, decode, encodeForCore, execCalldata, fromService, pack, parseSignature, safeTx, signatureDevice } from './safe'
+import {
+  ERC20_ABI,
+  MULTISEND,
+  SAFE_ABI,
+  type SafeTx,
+  batchCalls,
+  contractSignature,
+  decode,
+  encodeForCore,
+  execCalldata,
+  fromService,
+  pack,
+  parseSignature,
+  safeTx,
+  signatureDevice,
+  stripMetadata,
+} from './safe'
 import { Service, type ServiceTx, writerFor } from './service'
 import { sources, staleLogCheck } from './stale'
 
@@ -120,6 +138,7 @@ export async function createDevice(env: Env, session: Session, step: Step): Prom
     session.end()
     const rec: DeviceRecord = {
       id: 'this',
+      keys: KEYS,
       owner: d.owner,
       memberKey: d.memberKey,
       gasKey: d.gasKey,
@@ -145,22 +164,34 @@ function gasAddressOf(gasKey: Hex): Address {
  * Pair this device from the phrase: a device key for the next free device number, certified by
  * the member key on each enabled chain, then sent from the gas account. The session ends once the
  * member key has signed.
+ *
+ * If no enabled chain has an owner for the phrase's member key, `noAccount` is asked whether to go
+ * on (ERC-8499: warn before deriving from a phrase that may be another wallet's); without it, or
+ * when it answers false, nothing is paired.
  */
-export async function pairDevice(env: Env, session: Session, step: Step): Promise<{ device: DeviceRecord; report: string[] }> {
+export async function pairDevice(
+  env: Env,
+  session: Session,
+  step: Step,
+  noAccount?: () => Promise<boolean>,
+): Promise<{ device: DeviceRecord; report: string[] }> {
   let rec: DeviceRecord
   try {
     if (await getDevice(env.db)) throw new Error('This browser already holds a device.')
     const d = await derive(session, step)
     // the device number: the lowest one that isn't active on any enabled chain
     const gens = new Map<number, number[]>()
+    let found = false
     for (const c of enabledChains()) {
       step(`Reading your devices on ${c.name}`)
       const ctx = await usableCtx(env.db, env.core, c.id)
       const deployed = await ownerDeployed(ctx, env.core, d.owner, d.memberKey)
+      found ||= deployed
       const states = []
       for (let n = 1; n <= MAX_DEVICE; n++) states.push(deployed ? await readDevice(ctx, d.owner, n) : { key: '0x' as Hex, generation: 0, active: false })
       gens.set(c.id, states.map((s) => (s.active ? -1 : s.generation)))
     }
+    if (!found && !(await noAccount?.())) throw new Error('Nothing was paired: no Winterlock account uses this phrase.')
     let device = 0
     for (let n = 1; n <= MAX_DEVICE && !device; n++) {
       if ([...gens.values()].every((g) => g[n - 1] >= 0)) device = n
@@ -173,7 +204,7 @@ export async function pairDevice(env: Env, session: Session, step: Step): Promis
       out.push(await certifyWithMemberKey(env, session, c.id, device, gens.get(c.id)![device - 1] + 1, k.publicKey))
     }
     session.end()
-    rec = { id: 'this', owner: d.owner, memberKey: d.memberKey, gasKey: d.gasKey, gasAddress: gasAddressOf(d.gasKey), device, ...k, how: 'pair', createdAt: Date.now() }
+    rec = { id: 'this', keys: KEYS, owner: d.owner, memberKey: d.memberKey, gasKey: d.gasKey, gasAddress: gasAddressOf(d.gasKey), device, ...k, how: 'pair', createdAt: Date.now() }
     await writeStrict(env.db, 'device', [rec])
     await writeStrict(env.db, 'certs', out)
   } finally {
@@ -195,6 +226,7 @@ export async function submitCertificates(env: Env, dev: DeviceRecord, step: Step
     if (!c.enabled || cert.status === 'submitted') continue
     try {
       const ctx = await usableCtx(env.db, env.core, c.id)
+      let created: { blockNumber: bigint } | undefined
       if (!(await ownerDeployed(ctx, env.core, dev.owner, dev.memberKey))) {
         step(`Creating your owner contract on ${c.name}`)
         const factory = await factoryAddress(env.core)
@@ -202,10 +234,11 @@ export async function submitCertificates(env: Env, dev: DeviceRecord, step: Step
         const { result } = await ctx.client.simulateContract({ account: gasAddressOf(dev.gasKey), address: factory, abi: FACTORY_ABI, functionName: 'deploy', args: [dev.memberKey] })
         if (getAddress(result) !== dev.owner) throw new Error('The factory would create another owner: refusing.')
         const sent = await sendFromGas(ctx, dev.gasKey, factory, data, { onSent: (h) => step(`Creating your owner contract on ${c.name} (${h.slice(0, 10)}…)`) })
-        if (!(await ownerDeployed(ctx, env.core, dev.owner, dev.memberKey))) throw new Error(`The factory's deploy was mined (${sent.hash}), but there is no owner at ${dev.owner}.`)
+        if (!(await afterTx(sent.receipt, (b) => ownerDeployed(ctx, env.core, dev.owner, dev.memberKey, b)))) throw new Error(`The factory's deploy was mined (${sent.hash}), but there is no owner at ${dev.owner}.`)
         report.push(`${c.name}: owner created (${sent.receipt.gasUsed.toLocaleString()} gas, ${sent.hash})`)
+        created = sent.receipt
       }
-      const now = await readDevice(ctx, dev.owner, dev.device)
+      const now = created ? await afterTx(created, (b) => readDevice(ctx, dev.owner, dev.device, b)) : await readDevice(ctx, dev.owner, dev.device)
       if (now.active && now.key.toLowerCase() === dev.publicKey.toLowerCase()) {
         await writeStrict(env.db, 'certs', [{ ...cert, status: 'submitted' }])
         report.push(`${c.name}: device ${dev.device} is already certified (generation ${now.generation})`)
@@ -222,7 +255,7 @@ export async function submitCertificates(env: Env, dev: DeviceRecord, step: Step
         throw new Error(`certifyDevice would revert: ${short(e)}`)
       })
       const sent = await sendFromGas(ctx, dev.gasKey, dev.owner, data, { onSent: (h) => step(`Certifying this device on ${c.name} (${h.slice(0, 10)}…)`) })
-      const after = await readDevice(ctx, dev.owner, dev.device)
+      const after = await afterTx(sent.receipt, (b) => readDevice(ctx, dev.owner, dev.device, b))
       if (!after.active || after.key.toLowerCase() !== dev.publicKey.toLowerCase() || after.generation !== cert.generation) {
         throw new Error(`certifyDevice was mined (${sent.hash}), but device ${dev.device} doesn't read as certified.`)
       }
@@ -410,7 +443,7 @@ export async function enrol(env: Env, dev: DeviceRecord, chainId: number, safe: 
   })
   step('Sending the key tree’s certificate')
   const sent = await sendFromGas(ctx, dev.gasKey, dev.owner, data, { onSent: (h) => step(`Sending the key tree’s certificate (${h.slice(0, 10)}…)`) })
-  const after = await readTree(ctx, dev.owner, safe, dev.device)
+  const after = await afterTx(sent.receipt, (b) => readTree(ctx, dev.owner, safe, dev.device, b))
   if (after.root?.toLowerCase() !== tree.root.toLowerCase() || after.start !== tree.start || after.generation !== gen) {
     throw new Error(`enroll was mined (${sent.hash}), but the Safe's tree for this device differs.`)
   }
@@ -467,6 +500,16 @@ interface Prepared {
   tree: TreeRecord
 }
 
+/** A batch delegatecalls MultiSendCallOnly: its code on this chain must be Safe v1.4.1's
+ * (safelibs.py). The decoder trusts the canonical address; this checks what is there. */
+export async function checkMultiSend(ctx: Ctx): Promise<void> {
+  const code = await ctx.client.getCode({ address: MULTISEND.address })
+  if (!code || code === '0x') throw new Refused(`There is no MultiSendCallOnly at ${MULTISEND.address} on ${ctx.chain.name}: the app won’t sign a batch here.`)
+  if (keccak256(code) !== MULTISEND.codeHash && keccak256(stripMetadata(hexToBytes(code))) !== MULTISEND.codeWithoutMetadataHash) {
+    throw new Refused(`The code at ${MULTISEND.address} isn’t Safe’s MultiSendCallOnly v1.4.1: the app won’t sign a delegatecall to it.`)
+  }
+}
+
 /** The checks before a one-time signature (cli.py's prepare), then the stale-log check. */
 async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Address, tx: SafeTx, step: Step, expect?: Hex): Promise<Prepared> {
   const ctx = await usableCtx(env.db, env.core, chainId)
@@ -483,6 +526,12 @@ async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Addre
     args: [tx.to, tx.value, tx.data, tx.operation, tx.safeTxGas, tx.baseGas, tx.gasPrice, tx.gasToken, tx.refundReceiver, tx.nonce],
   })
   if (onchain.toLowerCase() !== hash.toLowerCase()) throw new Refused(`The Safe computes ${onchain} for these fields, not ${hash}: refusing.`)
+  // a batch, from a dapp or from the queue, shows as its calls: the code it delegatecalls must be
+  // the MultiSendCallOnly those calls were decoded for
+  if (batchCalls(tx)) {
+    step('Checking MultiSendCallOnly’s code')
+    await checkMultiSend(ctx)
+  }
   const gen = await requireActive(env, dev, ctx)
   const tree = await signingTree(env, dev, ctx, safe, gen)
   const cap = 2 ** (tree.height - 1)
@@ -502,10 +551,11 @@ async function sign(env: Env, dev: DeviceRecord, p: Prepared, tx: SafeTx, step: 
   return { ...s, signature: contractSignature(dev.owner, s.data) }
 }
 
-/** The next free nonce: after the Safe's and the queue's. */
-export async function nextNonce(chainId: number, safe: Address, safeNonce: number): Promise<number> {
+/** The next free nonce: after the Safe's, the queue's, and any in `also` (proposals made here that
+ * the service may not list yet). */
+export async function nextNonce(chainId: number, safe: Address, safeNonce: number, also: number[] = []): Promise<number> {
   const pending = await service(chainId).pending(safe, safeNonce)
-  return Math.max(safeNonce, ...pending.map((p) => Number(p.nonce) + 1))
+  return Math.max(safeNonce, ...pending.map((p) => Number(p.nonce) + 1), ...also.filter((n) => n >= safeNonce).map((n) => n + 1))
 }
 
 export interface Transfer {
@@ -514,20 +564,34 @@ export interface Transfer {
   token?: Address
 }
 
+export interface Proposed {
+  hash: Hex
+  nonce: number
+  slot: number
+  /** what the kept check found, if the service didn't keep this signature as is */
+  note?: string
+}
+
+/** Propose a Safe transaction, signed by this device, to Safe's service: the checks, the stale-log
+ * check, record then sign, the owner contract's check, the proposal, the kept check. */
+export async function proposeTx(env: Env, dev: DeviceRecord, chainId: number, safe: Address, tx: SafeTx, step: Step): Promise<Proposed> {
+  const p = await prepare(env, dev, chainId, safe, tx, step)
+  const s = await sign(env, dev, p, tx, step)
+  step('Proposing it at Safe’s service')
+  await writerFor(chainById(chainId).service).propose(safe, tx, p.hash, dev.owner, s.signature)
+  const note = await keptCheck(env, dev, chainId, safe, p.hash, s.signature)
+  return { hash: p.hash, nonce: Number(tx.nonce), slot: s.slot, note }
+}
+
 /** Propose an ETH or ERC-20 transfer, signed by this device, to Safe's service. */
-export async function propose(env: Env, dev: DeviceRecord, chainId: number, safe: Address, t: Transfer, step: Step): Promise<{ hash: Hex; nonce: number; slot: number }> {
+export async function propose(env: Env, dev: DeviceRecord, chainId: number, safe: Address, t: Transfer, step: Step): Promise<Proposed> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   const st = await safeState(ctx, safe)
   const nonce = await nextNonce(chainId, safe, st.nonce)
   const tx = t.token
     ? safeTx({ to: t.token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [t.to, t.amount] }), nonce: BigInt(nonce) })
     : safeTx({ to: t.to, value: t.amount, nonce: BigInt(nonce) })
-  const p = await prepare(env, dev, chainId, safe, tx, step)
-  const s = await sign(env, dev, p, tx, step)
-  step('Proposing it at Safe’s service')
-  await writerFor(chainById(chainId).service).propose(safe, tx, p.hash, dev.owner, s.signature)
-  await keptCheck(env, dev, chainId, safe, p.hash, s.signature)
-  return { hash: p.hash, nonce, slot: s.slot }
+  return proposeTx(env, dev, chainId, safe, tx, step)
 }
 
 /** Confirm a proposal from Safe's service with this device's next one-time key. */
@@ -624,8 +688,9 @@ export async function collect(env: Env, chainId: number, safe: Address, hash: He
   return { sigs, refused, verdicts, held: held?.signature, threshold: st.threshold, nonce: st.nonce }
 }
 
-/** Execute a fully confirmed transaction, paid by the gas account (cli.py's execute). */
-export async function execute(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, step: Step): Promise<{ tx: Hex; gasUsed: bigint }> {
+/** Execute a fully confirmed transaction, paid by the gas account (cli.py's execute). `onSent` gets
+ * the transaction's hash once it is sent, before it is mined. */
+export async function execute(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, step: Step, onSent?: (tx: Hex) => void): Promise<{ tx: Hex; gasUsed: bigint }> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   step('Fetching the proposal and its confirmations')
   const rec = await service(chainId).transaction(hash)
@@ -642,7 +707,12 @@ export async function execute(env: Env, dev: DeviceRecord, chainId: number, safe
     throw new Error(`execTransaction would revert: ${short(e)}`)
   })
   step('Executing, paid by your gas account')
-  const sent = await sendFromGas(ctx, dev.gasKey, safe, data, { onSent: (h) => step(`Executing (${h.slice(0, 10)}…)`) })
+  const sent = await sendFromGas(ctx, dev.gasKey, safe, data, {
+    onSent: (h) => {
+      step(`Executing (${h.slice(0, 10)}…)`)
+      onSent?.(h)
+    },
+  })
   const r = executionResult(sent.receipt, safe, hash)
   if (r === 'failure') throw new Error(`Executed, but the Safe's call failed (ExecutionFailure): ${sent.hash}`)
   if (r !== 'success') throw new Error(`No ExecutionSuccess event in ${sent.hash}`)
@@ -682,7 +752,7 @@ export async function revokeDevice(env: Env, dev: DeviceRecord, session: Session
       })
       step(`Sending the revocation on ${c.name}`)
       const sent = await sendFromGas(ctx, dev.gasKey, dev.owner, data, { onSent: (h) => step(`Sending the revocation on ${c.name} (${h.slice(0, 10)}…)`) })
-      if ((await readDevice(ctx, dev.owner, target)).active) throw new Error(`revokeDevice was mined (${sent.hash}), but device ${target} still reads as active.`)
+      if ((await afterTx(sent.receipt, (b) => readDevice(ctx, dev.owner, target, b))).active) throw new Error(`revokeDevice was mined (${sent.hash}), but device ${target} still reads as active.`)
       report.push(`${c.name}: device ${target} REVOKED at generation ${s.generation} (${sent.hash})`)
     }
   } finally {

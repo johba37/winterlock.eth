@@ -2,7 +2,8 @@
 // rest (docs/notes/signer-app.md, decision 3): the device's own screen lock protects it.
 //
 // Stores:
-//   device     "this": the member's owner, this device's number, seed and key, the gas key
+//   device     "this": the member's owner, this device's number, seed and key, the gas key, and which
+//              derivation made them (KEYS; a record without it is from a build before ERC-8499)
 //   certs      device certificates this device holds, per chain (signed by the member key)
 //   trees      key trees: where they belong, the salt (secret), the root, the public cache
 //   uses       the key log: one record per one-time key used, unique per (chain, Safe, root, key)
@@ -11,6 +12,8 @@
 //   settings   RPC URLs and the like
 //   checked    executions whose signatures the stale-log check has already compared
 //   held       this owner's signatures the Transaction Service didn't keep (it keeps the first)
+//   dapp       (version 2) the SafeTx hashes the app gave dapps over WalletConnect, with what it
+//              learned of their execution: for receipts and wallet_getCallsStatus
 //
 // Writes that a signature depends on use a strict-durability transaction and wait for it to
 // complete: the record is on disk before the signature exists.
@@ -18,10 +21,23 @@
 export type Hex = `0x${string}`
 
 export const DB_NAME = 'winterlock'
-export const DB_VERSION = 1
+export const DB_VERSION = 2
+
+/** The derivation this build's keys follow: ERC-8499 (core: derive::erc8499), since 2026-11-14. */
+export const KEYS = 'erc-8499'
+
+/** The last build before ERC-8499, which still opens the Safes of devices it set up. */
+export const EARLIER_BUILD = {
+  commit: '494703c',
+  cid: 'bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja',
+  url: 'https://bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja.ipfs.inbrowser.link/',
+} as const
 
 export interface DeviceRecord {
   id: 'this'
+  /** KEYS. Absent in a record of an earlier build, whose keys came from the phrase's entropy under Keccak labels: this
+   * build neither makes nor uses those. */
+  keys?: typeof KEYS
   owner: Hex
   memberKey: Hex
   gasKey: Hex
@@ -94,6 +110,28 @@ export interface CheckedRecord {
   at: number
 }
 
+/** A Safe transaction proposed for a dapp (lib/walletconnect.ts); the dapp got its SafeTx hash. */
+export interface DappTxRecord {
+  /** lower case */
+  safeTxHash: Hex
+  chain: number
+  safe: Hex
+  nonce: number
+  /** 1 for a call, more for a batch */
+  calls: number
+  method: string
+  /** the WalletConnect request and session it answered */
+  requestId: number
+  topic: string
+  /** the dapp as it described itself (unverified) */
+  dapp: { name: string; url: string }
+  at: number
+  /** whether the answer reached the relay before the request expired */
+  answered: boolean
+  /** the transaction that executed it, once known */
+  execution?: { tx: Hex; success: boolean }
+}
+
 export interface HeldRecord {
   safeTxHash: Hex
   chain: number
@@ -108,25 +146,39 @@ export function treeId(chain: number, safe: string, root: string): string {
   return `${chain}:${safe.toLowerCase()}:${root.toLowerCase()}`
 }
 
-export function openDb(factory: IDBFactory = indexedDB, name = DB_NAME): Promise<IDBDatabase> {
+/** Opens the app's database, upgrading it if needed. An open tab of an older version blocks the
+ * upgrade (it has to close first); this version gives way to a newer one opened in another tab and
+ * calls `onNewer`. */
+export function openDb(factory: IDBFactory = indexedDB, name = DB_NAME, onNewer?: () => void): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = factory.open(name, DB_VERSION)
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (e) => {
       const db = req.result
-      db.createObjectStore('device', { keyPath: 'id' })
-      db.createObjectStore('certs', { keyPath: 'chain' })
-      const trees = db.createObjectStore('trees', { keyPath: 'id' })
-      trees.createIndex('place', ['chain', 'safeLower'])
-      db.createObjectStore('uses', { keyPath: ['chain', 'safe', 'root', 'keyIndex'] })
-      db.createObjectStore('stateless', { keyPath: 'id', autoIncrement: true })
-      db.createObjectStore('safes', { keyPath: ['chain', 'safeLower'] })
-      db.createObjectStore('settings', { keyPath: 'key' })
-      db.createObjectStore('checked', { keyPath: 'txHash' })
-      db.createObjectStore('held', { keyPath: 'safeTxHash' })
+      if (e.oldVersion < 1) {
+        db.createObjectStore('device', { keyPath: 'id' })
+        db.createObjectStore('certs', { keyPath: 'chain' })
+        const trees = db.createObjectStore('trees', { keyPath: 'id' })
+        trees.createIndex('place', ['chain', 'safeLower'])
+        db.createObjectStore('uses', { keyPath: ['chain', 'safe', 'root', 'keyIndex'] })
+        db.createObjectStore('stateless', { keyPath: 'id', autoIncrement: true })
+        db.createObjectStore('safes', { keyPath: ['chain', 'safeLower'] })
+        db.createObjectStore('settings', { keyPath: 'key' })
+        db.createObjectStore('checked', { keyPath: 'txHash' })
+        db.createObjectStore('held', { keyPath: 'safeTxHash' })
+      }
+      if (e.oldVersion < 2) db.createObjectStore('dapp', { keyPath: 'safeTxHash' })
     }
-    req.onsuccess = () => resolve(req.result)
+    req.onsuccess = () => {
+      const db = req.result
+      // a newer version in another tab waits for this connection: let it go
+      db.onversionchange = () => {
+        db.close()
+        onNewer?.()
+      }
+      resolve(db)
+    }
     req.onerror = () => reject(req.error)
-    req.onblocked = () => reject(new Error('the app is open in an older version in another tab: close it'))
+    req.onblocked = () => reject(new Error('the app is open in an older version in another tab: close that tab, then reload this page'))
   })
 }
 

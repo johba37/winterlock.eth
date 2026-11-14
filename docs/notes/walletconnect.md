@@ -2,6 +2,8 @@
 
 **Owner v2 (2026-11-06):** a device home connects like the member key's home, signing with its device key. On-chain approvals now answer with the owners' approved signatures, which viem accepts (below, "Approved answers"). Sizes below are v2's unless marked v1.
 
+**The app (2026-11-13):** the signer app (`app/`) answers dapps too, for transactions so far. It follows this note's answers on Reown's own SDK; see "The app" below.
+
 D14 needs the signer to answer apps itself, because Safe's app doesn't reliably pass message results back. `winterlock-signer connect` does this. A member pairs the signer with a dapp over WalletConnect v2, and the dapp sees the team's Safe as its account, as with Safe's own WalletConnect support. Each request is decoded and shown, and is signed only after the member agrees.
 
 Code: `signer/winterlock_signer/` `walletconnect.py` and `ws.py` (protocol), `bridge.py` (requests, the `connect` and `message` commands), `messages.py` and `eip712.py` (D14's decision), `safelibs.py` (delegatecall targets), `collect.py` (collection endpoint).
@@ -202,6 +204,53 @@ signer/.venv/bin/python signer/tools/live_walletconnect.py --dir DIR --safe SAFE
 - **Executing in Safe's app:** one of the transactions was executed there, from a MetaMask account that isn't an owner.
 - **The lab doesn't verify the signatures it gets,** so this shows compatibility, not acceptance by a verifying dapp.
 - **Details:** decisions.md, "2026-11-06: a real dapp, and Safe's app".
+
+## The app (2026-11-13)
+
+The signer app is a wallet a dapp connects to, for transactions. Messages wait until Safe's Transaction Service takes longer message signatures (decided by the user, 2026-11-13; decisions.md). Code: `app/src/lib/dapp.ts` (what each request gets, without the SDK), `walletconnect.ts` (the SDK), `screens/dapps.tsx` (a Safe's dapps screen). Decisions: decisions.md, "2026-11-13: dapps over WalletConnect in the app".
+
+**The answers are the bridge's** ("What the dapp gets"):
+- `eth_sendTransaction` gets the SafeTx hash once the member has confirmed and the app has proposed it. When the member's confirmation is enough (threshold 1) and no earlier transaction waits in the queue, the app executes it at once and the dapp gets the execution's transaction hash instead, as Safe's app does with threshold 1.
+- `wallet_sendCalls` gets `{id}`, and `wallet_getCallsStatus` reports 100, 200, 400 or 500.
+- `eth_getTransactionReceipt` and `eth_getTransactionByHash` for a SafeTx hash the app gave out map to the execution.
+- Reads go to the member's RPC. Refusals are 4001 with a reason, 4200 for an unsupported method, 5100 for another chain, and 4902 for `wallet_switchEthereumChain` to another chain.
+- Messages (`personal_sign`, `eth_sign`, `eth_signTypedData*`) are refused: 4001, "messages aren't supported yet". A sign-in arrives as `personal_sign`, so it is refused too.
+- Batches are a delegatecall to MultiSendCallOnly v1.4.1 at its canonical address. The app checks its code against the pinned hashes before signing, and decodes and shows each call.
+- A call that changes the Safe's owners, threshold, modules, guard or fallback handler is refused, alone or in a batch. The app adds `disableModule` to the bridge's list.
+
+**Where it differs from the bridge:**
+- **Reown's WalletKit,** not its own protocol code: `@reown/walletkit` 1.6.0 with `@walletconnect/core` 2.25.0, bundled. It approves sessions with the relay method `wc_approveSession`, which the bridge still lists as open.
+- **Several sessions, kept across reloads,** in the SDK's IndexedDB. A session belongs to the Safe whose dapps screen took the link. A request shows on that screen, and a bar on every other screen says a dapp is waiting.
+- **Requests in parallel:** the SDK's request queue is off, so reads and status polls are answered while a transaction waits for the member.
+- **The nonce** is the next one after the Safe's, the service's queue, and the app's own proposals for dapps. The gas fields are zero.
+- **No log scans.** An execution is found from what this app executed itself, then from the Safe's nonce and Safe's service: the SafeTx's own record, or another transaction executed at its nonce (400). While the service hasn't indexed an execution, the status stays 100.
+- **Threshold 1 executes at once** (decided by the user, 2026-11-13). If the member's confirmation meets the threshold and the Safe is at the transaction's nonce, the gas account executes it as part of the confirm. `eth_sendTransaction` is answered with the execution's hash as soon as it is sent, which a dapp can follow on its own node; `wallet_sendCalls` gets its id first, as always. If executing fails (an empty gas account, a revert), the dapp gets the SafeTx hash, the member sees why, and the Execute button stays. With a higher threshold the dapp gets the SafeTx hash, and an execution from the app's card or the transaction's screen is kept for the dapp's receipt. The bridge waits for execution only with `--wait-for-execution`.
+- **Expiry:** sign-client 2.25 and 2.26 give a request 15 minutes by default (2.21.0, which this note measured, gave 5). The request shows when the dapp stops waiting. After that, the member can only dismiss it. A confirmation that finishes late still stands at Safe's service, and the app says the dapp didn't get the answer.
+- **One-click auth:** the app doesn't take `wc_sessionAuthenticate`, so the dapp's SDK falls back to the session proposal.
+
+**What the SDK reaches.** Read from the SDK's code and checked in the end-to-end run (below):
+- **The relay,** `wss://relay.walletconnect.org`, a WebSocket. The Content Security Policy adds this one origin to `connect-src`. Chromium's `https:` source doesn't cover `wss:`.
+- **Switched off in the app:**
+  - telemetry to `pulse.walletconnect.org`: WalletKit posts an INIT event even with telemetry off
+  - the Verify API: a key and attestations from `verify.walletconnect.org`, and for dapps an iframe, which the CSP's `default-src 'self'` blocks anyway
+  - push registration at `echo.walletconnect.com`
+- **Left out of the build:** WalletKit's payments client (`@walletconnect/pay`, which calls `api.pay.walletconnect.com` and carries its own WebAssembly), replaced by a stub.
+- **A guard** refuses any fetch to WalletConnect's or Reown's servers, in case a later SDK version adds one. The `https:` in `connect-src`, kept for the member's RPC, would let such a fetch through.
+- **Never called:** `rpc.walletconnect.org`, which the SDK uses only to check one-click auth signatures.
+- **The project ID** is read at build time (`VITE_WALLETCONNECT_PROJECT_ID`). A published build contains it, as every dapp's does. On 2026-11-13, Reown's relay accepted this project's ID from any origin, a made-up one included.
+
+**Size:** the SDK is a separate chunk of 425 KB (127 KB compressed), loaded only when a member opens a Safe's dapps or has a session.
+
+**Tests:**
+- **Unit** (`app/test/dapp.test.ts`, 26): the session's namespaces, each request's plan and refusals, a batch encoded as the Python signer encodes it and hashed as it hashes it, batch decoding and what isn't a batch, executions found or not, the 5792 status, the database's upgrade.
+- **End to end** (`app/e2e/walletconnect.spec.ts`, 14): the app on anvil with Sepolia's chain id and a stand-in for Safe's service, a dapp on `@walletconnect/sign-client` 2.26.0 in the test process, Reown's live relay. Pairing by a pasted link; with threshold 1, an ETH transfer executed at once and answered with its transaction hash, a one-call `wallet_sendCalls` executed at once, and an empty gas account (the SafeTx hash, then Execute); then a second owner and threshold 2: an ETH transfer answered with the SafeTx hash and its receipt after an execution elsewhere, a batch of three calls with its status through an execution elsewhere, refused messages, requests for another chain, a reload with a live session and a pending request, a disconnect from each side, and no host reached but the relay, the RPC and Safe's service. All pass against the dev server and against the production build under its CSP: pairing in 0.7 to 3.8 s, and the dapp's answer 0.5 to 1.0 s after the member's confirm (about 2.3 s when the app executes at once: the dry run and sending come first).
+- **Live** (`app/e2e/live-walletconnect.spec.ts`): 2026-11-13, Sepolia, a fresh 2-of-2 Safe (`0xA5dA2Ab05Cb7EE8D3FBbB486Dee542dcCb5197E6`) of member A's owner, in the app, and member P's, the Python signer, with Safe's hosted service and Reown's relay.
+  - **Pairing:** 3.2 s from the pasted link to the dapp's session.
+  - **A transfer:** the dapp got the SafeTx hash 1.9 s after A's confirm, which covers the stale-log check, signing and the proposal. P confirmed, A executed in the app (405,070 gas, the Safe's first execution), and the dapp's receipt lookup for the SafeTx hash returned the execution's.
+  - **A batch of two transfers:** A proposed it in the app, P confirmed and executed it with the Python signer (321,721 gas). `wallet_getCallsStatus` said 200 6.0 s after the execution was mined, through Safe's service. Sepolia's MultiSendCallOnly matches the pinned code hash.
+  - **A sign-in request** was refused with 4001.
+  - **Spent:** 0.00106 ETH, nearly all of it into A's gas account and the Safe.
+- **With a real dapp:** Reown's AppKit lab (its wagmi example) paired by link, with the live run's Safe. Its transaction got the SafeTx hash; its batch got an id, and its Get Calls Status showed "pending", then "success" with the receipt once the Python signer had executed it. Its message and typed-data requests were refused. Details: decisions.md, "2026-11-13: dapps over WalletConnect in the app".
 
 ## Tests
 

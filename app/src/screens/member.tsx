@@ -11,6 +11,7 @@ import { CHAINS, chainById, enabledChains, safeUrl } from '../lib/chains'
 import { type CertRecord, type SafeRecord, certs, putSetting, safes, wipe } from '../lib/db'
 import { type DeviceOnChain, addSafe, deviceState, devicesOn, parseAddress, revokeDevice, submitCertificates } from '../lib/flows'
 import { persisted } from '../lib/platform'
+import { forgetWc } from '../lib/wc-state'
 import { Addr, ErrorLine, Explorer, Panel, Progress, Qr, Screen, go, useAction } from '../ui'
 
 interface ChainStatus {
@@ -386,7 +387,7 @@ export function Devices() {
         )
       })}
       <Panel title="Forget this device" tone="warn">
-        <p class="small">Deletes this device’s key, key log and gas key from this browser. Revoke it first if it was certified: forgetting doesn’t revoke. You can pair this browser again with your phrase.</p>
+        <p class="small">Deletes this device’s key, key log and gas key from this browser, and disconnects its dapps. Revoke it first if it was certified: forgetting doesn’t revoke. You can pair this browser again with your phrase.</p>
         {confirmForget ? (
           <div class="actions row">
             <button
@@ -394,6 +395,8 @@ export function Devices() {
               class="danger"
               data-testid="forget-confirm"
               onClick={async () => {
+                // dapps first: their sessions end, and the SDK's storage goes too
+                await forgetWc(app.env).catch(() => {})
                 await wipe(app.env.db)
                 await app.reload()
                 go('/')

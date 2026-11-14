@@ -105,6 +105,19 @@ Open:
   - a revocation library, if the team wants to withdraw approvals
 - **Not covered:** EIP-2612 permits that accept only ECDSA, which no smart account can sign.
 
+**D15. The signer app's keys follow ERC-8499** (2026-11-14)
+The app derives its keys by [ERC-8499](https://github.com/ethereum/ERCs/pull/2172) (Hash-Based Key Derivation from BIP-39, a draft): the BIP-39 seed of the phrase's 24 words (no passphrase), then HKDF-SHA512, never an elliptic-curve step. Code: `core/src/derive.rs` (module `erc8499`), with `signer/winterlock_signer/erc8499.py` as its reference.
+- **Member key and device keys:** stateless, key type `leanSphincs-keccak/wambsgans-keccak/b10` (the ERC's own example string), 32-byte seed, account 0. A device key comes from the device's random root, made from the 32 random bytes the app already keeps; a device holds no phrase.
+- **Key trees:** stateful, key type `winterlock-wots-d6-keccak/tree-h<height>`, from the root of the device that holds the tree. The context is keccak256(abi.encode(TREE_SEED_DOMAIN, chain, owner, safe, device, generation, start)), whose first 16 bytes are the tree's public seed; the instance is the tree's salt, 32 random bytes made with the tree and kept with it.
+- **Gas key:** the application secret `winterlock.eth/gas`, refused unless it is a secp256k1 private key.
+- **One phrase, one member:** account 0 throughout.
+- **Decided by the user (2026-11-14):**
+  - **A clean break.** The same words give another member key and owner than before, and this build doesn't make or use the earlier keys. A device that an earlier build set up is told so, shown its earlier owner and gas account, linked to the last earlier build (`494703c`, IPFS `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`, through a service-worker gateway), and can only be forgotten here.
+  - **The app makes the phrase,** 24 words as before. Pairing warns when no owner uses the typed phrase (another wallet's words, or a phrase from before), and goes on only when the member says so.
+  - **These names,** as above.
+  - **The board follows in the same step.**
+- **The command-line signer keeps the earlier derivation** (the phrase's entropy under Keccak labels, member.py) for the homes it has; its vectors stay in `keys.json`.
+
 ## Constraints that every design must respect
 
 - **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all. Under D12 the stateless key is shared by all chains and accounts; it signs their certificates and messages, up to its proved signature budget (D11).
@@ -1565,6 +1578,96 @@ Step 4 of [notes/signer-app.md](notes/signer-app.md), "Order": the parts of "Bef
 **Not verified until the board runs it:** the OLED, the buttons and how the screens read at 0.96 inch; Web Serial through the CP2102 from Chrome or Edge; the generator with the ADC source on the chip (QEMU neither has it nor keeps DPORT's clock bit); real flash under real power cuts (the tests used QEMU's flash and a simulated NOR flash); the times on the chip, where the two-core stateless signature should beat the core check's 15 s average; a v1.0 chip (QEMU emulates v0.0).
 
 **Not done:** the app's board backend (a virtual board in WebAssembly), messages (ERC-1271), BLE.
+
+**2026-11-13: dapps over WalletConnect in the app** (`app/src/lib/dapp.ts`, `walletconnect.ts`, `wc-state.ts`, `screens/dapps.tsx`; [notes/walletconnect.md](notes/walletconnect.md), "The app")
+
+Item 6 of [notes/signer-app.md](notes/signer-app.md), transactions first. The question: can a dapp on a member's laptop connect to the team's Safe through the app, with no ECDSA owner, as it would through Safe's own app? Yes, on a local chain through Reown's relay, and live on Sepolia with Safe's hosted service and the Python signer as the other member.
+
+**The flow:**
+1. In the dapp, the member chooses WalletConnect and copies the link.
+2. They paste it on the Safe's dapps screen. The proposal shows the dapp's name and URL, marked as not verified, and the Safe and chain it would get. Only enabled chains, Sepolia today.
+3. A transaction the dapp asks for shows decoded. On a confirm, the app proposes it to Safe's service with this device's confirmation, through the same checks as any proposal: record then sign, the stale-log check, the owner contract's check. The dapp gets the SafeTx hash.
+4. Other members confirm in their apps, Safe's app or the Python signer. The app offers to execute from the gas account once the threshold is met.
+5. The dapp asks for the receipt of the SafeTx hash, or for `wallet_getCallsStatus`, and gets the execution's.
+
+**Decided while building:**
+- **Reown's WalletKit, bundled, and nothing else from Reown's servers but the relay.** `@reown/walletkit` 1.6.0 with `@walletconnect/core` 2.25.0, exact versions. Telemetry, the Verify API and push registration are switched off, the payments client is replaced at build time, and a guard refuses fetches to WalletConnect's and Reown's servers. The Content Security Policy adds `wss://relay.walletconnect.org` to `connect-src` and nothing else.
+- **No Verify:** a dapp's name and URL are what it claims, as with the Python bridge. Verify would need an iframe from verify.walletconnect.org, which the app's CSP refuses, and a key fetched from there.
+- **The SDK loads only when needed:** a separate chunk of 425 KB (127 KB compressed), when a member opens a Safe's dapps or has a session. The main script grew from 381 KB to 411 KB.
+- **The answers are the bridge's.** `eth_sendTransaction` gets the SafeTx hash after the proposal. `wallet_sendCalls` gets `{id}`, with `wallet_getCallsStatus` (100, 200, 400, 500). A receipt or transaction lookup for a SafeTx hash the app gave out maps to the execution. Refusals are 4001 with a reason, 4200 for an unsupported method, 5100 for another chain.
+- **Messages are refused for now** (4001, "messages aren't supported yet"), sign-ins included.
+- **Expiry:** sign-client 2.25 and 2.26 give a request 15 minutes by default, not the 5 minutes of 2.21.0. The app shows when the dapp stops waiting; after that the member can only dismiss the request.
+- **Batches:** a delegatecall to MultiSendCallOnly v1.4.1 at its canonical address only, its code checked against the pinned hashes before signing (Sepolia's matches the release build). Each call is decoded and shown, and their warnings are the batch's. The queue and transaction screens decode such batches too, so the code check is part of the checks before any one-time signature: a batch another member proposed gets it as well (`flows.ts`, `checkMultiSend`).
+- **The decoder shows ERC-20 allowances,** and flags an unlimited one: a dapp's swap usually starts with one.
+- **No log scans for executions:** what this app executed, then the Safe's nonce and Safe's service. A status stays 100 until the service has indexed the execution.
+- **Sessions persist** in the SDK's IndexedDB in this origin, unencrypted like the device key. "Forget this device" disconnects them and deletes that database.
+- **The SafeTx hashes given to dapps** are in a new store of the app's database (version 2), with what the app learned of their execution.
+
+**Tests:**
+- **Unit** (26 new; the suite runs 51): see the note's "Tests". The batch encoding and its SafeTx hash match the Python signer's.
+- **End to end on anvil** (`e2e/walletconnect.spec.ts`, 11 steps, all pass, against the dev server and against the production build under its CSP): the dapp on `@walletconnect/sign-client` 2.26.0 in the test process, through Reown's live relay. Over six passing runs, three against each build: pairing in 0.7 to 3.8 s from the pasted link to the dapp's session; a request on the screen 0.01 to 0.2 s after the dapp asked; the dapp's answer 0.5 to 1.0 s after the member's confirm; a pending request back on the screen 0.5 to 2.9 s after a reload. A batch of three calls (an ETH transfer, an ERC-20 transfer, an unlimited allowance) executed for 237,352 to 237,448 gas. Two earlier runs failed in the test itself (an answer that came before the test awaited it), fixed. The page reached only the relay, the local RPC and Safe's service (stand-in), and the guard refused nothing: the SDK, as set up, tried no other host.
+
+**Live on Sepolia** (2026-11-13, `e2e/live-walletconnect.spec.ts`): a fresh 2-of-2 Safe `0xA5dA2Ab05Cb7EE8D3FBbB486Dee542dcCb5197E6`, v1.4.1 (SafeL2), owners A (the app, device 1, height-10 tree) and P (the Python signer, height-6 tree), made by script; Safe's hosted service without a key in the app; the dapp in the test process; base fee about 17 wei. All four steps passed on the first run.
+
+| Step | Gas used | Transaction |
+|---|---|---|
+| A's owner, created by the factory's `deploy` | 334,756 | `0xfa57be3afbadf84f67b625fbc8074c9b6c8fcb6a5ad92caca0e2f5b917defa94` |
+| A: `certifyDevice`, device 1 | 391,743 | `0xd5684e204e84a63ed2b6a7109256139ae166909872cb150a25b46edae8f8c8f2` |
+| script: the Safe, owners A and P, 2 of 2 | 1,371,933 | `0xeb481189818d46131f18d94f2baa1a081babec65720bbc898049ab6fa7af737e` |
+| P (Python): `deployAndEnroll`, height 6 | 605,789 | `0x06ca3412d690d24c0d03557eee11f333658166b57646ebeb982ad52d1435018e` |
+| A: `enroll`, height 10 | 394,136 | `0x6dc13b49b732b7d071cb3c7ba513896ec105eac36e5fab73dc2bf370e0b77448` |
+| the dapp's transfer: A proposed in the app, P confirmed, A executed in the app | 405,070 | `0xc20754681c28da82b7fa5ad64bc9636dc388af4659fb3a4462543035abccfd8e` |
+| the dapp's batch of two transfers: A proposed in the app, P confirmed and executed | 321,721 | `0xfb1ff79c9c76b93e5ebaf674563f5b496c0a2fa5c506e8350acce3132c33c368` |
+
+- **Pairing** took 3.2 s; the request showed 0.1 s after the dapp asked.
+- **The dapp's answer** came 1.9 s after A's confirm: the stale-log check at the service and on-chain, signing, the owner contract's check and the proposal.
+- **The receipt:** after A executed, the dapp's `eth_getTransactionReceipt` for the SafeTx hash returned the execution's.
+- **The batch's status:** P executed it outside the app, and `wallet_getCallsStatus` said 200, with the receipt, 6.0 s after the execution was mined: the time Safe's service took to index it.
+- **Sepolia's MultiSendCallOnly** matches the pinned code hash of the release build.
+- **Spent:** 0.00106 ETH left the funding account: 0.001 is in A's gas account and 0.00006 in the Safe. The fees came to about 5e10 wei.
+
+**With a real dapp** (2026-11-13): Reown's AppKit lab (lab.reown.com, its wagmi example), in a second tab of the browser that held member A's app, with the live run's Safe; P confirmed and executed with the Python signer. Driven by a script, which isn't in the repository.
+
+| What the lab did | What happened |
+|---|---|
+| WalletConnect, its link pasted into the app | The lab showed the Safe on Sepolia as its account, and the wallet as Winterlock. |
+| Fetch Capabilities | It showed `{"0xaa36a7": {"atomic": {"status": "supported"}}}`. |
+| Send Transaction to Vitalik (1e6 wei to vitalik.eth) | Decoded in the app; the lab got the SafeTx hash and said "Transaction Success" without waiting for a receipt. P executed it: 307,158 gas, `0x060d5f18656b462a440a8a4b2ece54765aac3c20fe6d65927a34c31417f91d56`. |
+| Send Batch Calls to Vitalik (1e5 wei, and a call with selector `0xdeadbeef`, which the app marked as not decoded) | The lab got the id. Its Get Calls Status showed "pending" (100) before the execution and "success" with the receipt after P executed it: 315,653 gas, `0xf089ff972338be74560b4af02b3634387e74a00a9769ea1c0f7a2f0d25717edf`. |
+| Sign Message, Sign Typed Data | Refused with 4001; the lab said "Failed to sign message". |
+| Disconnect | The session ended in the app too. |
+
+- **wagmi reads the app's EIP-5792 answers:** it turned status 100 into "pending" and 200 into "success".
+- **The lab's session outlived the page:** a second script run found it connected, and the app answered it.
+- **The lab doesn't verify anything:** it shows that the app's answers parse, not that a dapp acts on them.
+
+**Found on the way:**
+- **WalletKit's pending proposals are a list,** though its types say a record by id. The first run's approval failed on it.
+- **A request handed over twice:** after a reload, the SDK once delivered a read twice, and the dapp's SDK logged the second answer as unknown. The app now answers each request once.
+- **sign-client 2.26 folds a dapp's required chains into its optional ones,** so a session holds only the Safe's chain, and a request for another chain is refused by the dapp's own SDK before it reaches the app. The app's 5100 is for a transaction or batch that names another chain.
+- **WalletKit posts an INIT event to its telemetry server even with telemetry off;** the app switches that off itself.
+- **Reown's relay accepted this project's ID from any origin,** a made-up one included, so its allowed-origins list isn't enforced there, or is empty.
+
+**Not done:**
+- **Messages:** sign-ins, off-chain messages and permits, with the rules of notes/walletconnect.md, "Which path a message takes". The app needs those rules in TypeScript, the device key's message signature, a way to gather the other members' signatures (the bridge's message files or collection endpoint; between browsers, neither exists yet), and the on-chain path through SignMessageLib with the owners' approved answers.
+- **Scanning a QR code:** `BarcodeDetector` exists in Chrome on Android and macOS but not on iOS, Firefox or Chrome on Windows and Linux, so pasting stays the way in.
+- **The request's expiry** wasn't run to its end: the dapp's SDK allows no expiry under 5 minutes. The screen and the late answer are checked by types and reading, not by a test.
+- **Safari and phones,** as for the rest of the app.
+- **Waiting for execution** before answering `eth_sendTransaction` (the bridge's `--wait-for-execution`), apart from threshold 1 (below).
+
+**Decided by the user (2026-11-13):**
+- **Publish** the app with WalletConnect: the published build contains the project ID. Built from `494703c` (main with this work merged) in a clean checkout: IPFS hash `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`, 21 files, 4.6 MB, the same hash from a second build. Pinned on Pinata as a folder, which reported the same hash. The name's content hash is set by the user's `setContenthash` on winterlock.eth's resolver, as before (56,445 gas estimated for the update). The project ID is the only value from the git-ignored `.env` in the build.
+- **Threshold 1 executes at once.** When the member's confirmation meets the threshold and the Safe is at the transaction's nonce, the gas account executes it as part of the confirm, and `eth_sendTransaction` is answered with the execution's transaction hash once it is sent. A dapp that follows the hash on its own node then sees the transaction; a SafeTx hash it would never find there. `wallet_sendCalls` gets its id first. If executing fails, the dapp gets the SafeTx hash, the card says why, and the member can execute later. The request card says so before the confirm ("Sign and execute"). End to end on anvil (`e2e/walletconnect.spec.ts`): the transfer executed at once for 227,274 to 227,286 gas (anvil's pricing), and the dapp's answer came 2.3 s after the confirm; with an empty gas account the dapp got the SafeTx hash, and Execute worked once the account was funded.
+- **Pasting the link only,** no QR scanning.
+- **Messages wait** until Safe's Transaction Service takes longer message signatures. It caps one at 5,000 hex characters; a Winterlock entry is 5,834 bytes ("2026-11-05: Safe owner spike", size limits, and "2026-11-05: Safe owner, live on Sepolia", request g). Until then dapps get 4001 for sign-ins, messages and permits.
+
+**2026-11-14: the app's keys follow ERC-8499** (D15; `core/src/derive.rs`, module `erc8499`; `signer/winterlock_signer/erc8499.py`; `core-wasm/`; `app/src/screens/onboarding.tsx`)
+- **Reference and core agree.** `core_vectors.py` writes `erc8499.json`: for four phrase seeds the root, member key, owner, gas key and address, and for the same bytes as a device's random input its root and device key; four trees (heights 1, 10, 40, 20) with key type, context and secret seed; one tree of height 4 down to its root. The core reproduces all of it natively and in WebAssembly. Every other vector file is unchanged, byte for byte.
+- **The ERC's own values.** The all-zero seed is the ERC's first test phrase ("abandon" 23 times, then "art"), so its member key's seed is the ERC's stateless seed of account 0, `fe1de503…6879`: checked in Python and in the core.
+- **Cost in the browser.** Under Node, the phrase root (PBKDF2 with 2,048 rounds, then HKDF) takes 3.0 ms in WebAssembly (median of 20). The WebAssembly module grows from 184,418 to 222,040 bytes: core-wasm now enables the `hbkd` feature, which adds `hmac` 0.12.1 and `subtle` 2.6.1 to its lock file.
+- **End to end on anvil** (`e2e/keys.spec.ts`, dev server and production build): pairing the ERC's test phrase, which no owner uses, asks first; Stop pairs nothing; Pair anyway creates the owner the Python reference names for that phrase, from the gas account it names, and a second browser then pairs as device 2 without the question. A device record without the new marker gets the earlier-keys screen on every route, with no dapp bar, and Start again leaves the welcome screen. `walletconnect.spec.ts` passes unchanged (14/14, dev and production).
+- **Checks:** `core/check.sh` on all three targets; the Python signer's 196 tests; the app's 58 unit tests.
+- **The earlier build's link** (`https://<CID>.ipfs.inbrowser.link/`, IPFS's service-worker gateway; dweb.link now redirects there) opened build `494703c`, and its core answered a short phrase with its error, in headless Chromium. Its own origin per CID keeps its storage apart from other builds.
 
 ## Integration notes: Kernel v3.3
 

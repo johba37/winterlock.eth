@@ -5,7 +5,8 @@ Writes JSON to core/tests/vectors/: phrase.json (the word list and parser cases,
 device and gas keys, tree secret seeds), leansphincs.json (signatures), wots.json (trees, signatures, paths),
 owner.json (v2 digests, key indices, layouts, addresses), safe.json (SafeTx and SafeMessage hashes, amounts),
 keylog.json (sign requests and what the key log answers), board.json, the compact subset the ESP32 firmware
-embeds, and hbkd.json (hash-based key derivation from BIP-39, a draft ERC: library code nothing uses yet). Every input
+embeds, hbkd.json (ERC-8499, hash-based key derivation from BIP-39) and erc8499.json (Winterlock's keys under ERC-8499,
+which the signer app uses since 2026-11-14: roots, member, device and gas keys, tree secret seeds). Every input
 is a fixed public test value: no randomness, so the files only change when the signer does.
 
 usage: signer/.venv/bin/python signer/tools/core_vectors.py [OUT_DIR]
@@ -19,7 +20,7 @@ import tempfile
 import unicodedata
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from winterlock_signer import abi, eip712, hbkd, leansphincs, member, messages, owner, phrase, safe, wots  # noqa: E402
+from winterlock_signer import abi, eip712, erc8499, hbkd, leansphincs, member, messages, owner, phrase, safe, wots  # noqa: E402
 from winterlock_signer.abi import b2h, checksum, h2b  # noqa: E402
 from winterlock_signer.ethtx import Account  # noqa: E402
 from winterlock_signer.keccak import keccak256  # noqa: E402
@@ -617,6 +618,46 @@ def hbkd_vectors():
             "bad_ikm_lengths": HBKD_BAD_IKM, "non_ascii": non_ascii}
 
 
+# --- Winterlock's keys under ERC-8499 ---
+
+def erc8499_vectors():
+    keys = []
+    for s in SEEDS[:4]:
+        root = erc8499.phrase_root(s)
+        mk = erc8499.stateless_key(root)
+        gk = erc8499.gas_key(root)
+        droot = erc8499.device_root(s)  # the same 32 bytes as a device's random input
+        keys.append({
+            "seed": b2h(s), "phrase_root": b2h(root),
+            "member_key_seed": b2h(erc8499.stateless_key_seed(root)), "member_key": b2h(mk.public_key),
+            "member_leaves_hash": b2h(keccak256(mk.kept_leaves_bytes())), "owner": owner.owner_address(mk.public_key),
+            "gas_key": b2h(gk), "gas_address": Account(b2h(gk)).address,
+            "device_root": b2h(droot), "device_key_seed": b2h(erc8499.stateless_key_seed(droot)),
+            "device_key": b2h(erc8499.stateless_key(droot).public_key),
+        })
+    trees = []
+    for i, (dev, gen, start, height) in enumerate([(0, 0, 0, 1), (1, 1, 7, 10), (3, 65535, (1 << 40) - 1, 40),
+                                                     (2, 2, 12345, 20)]):
+        rec = {"chain": CHAIN + i, "owner": addr(f"owner {i}"), "safe": addr(f"safe {i}"), "device": dev, "gen": gen,
+               "start": start, "salt": b2h(k(f"salt {i}"))}
+        random_input = k(f"winterlock core vectors device random {i}")
+        root = erc8499.device_root(random_input)
+        trees.append({**rec, "height": height, "device_random": b2h(random_input), "root": b2h(root),
+                      "key_type": erc8499.tree_key_type(height),
+                      "context": b2h(erc8499.tree_context(rec["chain"], rec["owner"], rec["safe"], dev, gen, start)),
+                      "sk_seed": b2h(erc8499.tree_secret_seed(root, rec, height))})
+    # one small tree end to end: the app's TreeBuilder from the device's random input to the tree's root
+    rec = {"chain": 11155111, "owner": keys[3]["owner"], "safe": SAFE, "device": 1, "gen": 1, "start": 0,
+           "salt": b2h(SALT)}
+    root = erc8499.device_root(SEED)
+    sk = erc8499.tree_secret_seed(root, rec, 4)
+    seed = owner.tree_seed(rec["chain"], rec["owner"], rec["safe"], 1, 1, 0)
+    small = {**rec, "height": 4, "device_random": b2h(SEED), "sk_seed": b2h(sk),
+             "tree_root": b2h(wots.Tree.create(seed, sk, 4, workers=1).root)}
+    return {"key_type": erc8499.KEY_TYPE, "gas_label": erc8499.GAS_LABEL, "keys": keys, "tree_secrets": trees,
+            "small_tree": small}
+
+
 # --- the board's subset ---
 
 def board_vectors(ph, keys, ls, wv, sv, ov, kl):
@@ -661,6 +702,7 @@ def main():
     write("keylog.json", kl)
     write("board.json", board_vectors(ph, keys, ls, wv, sv, ov, kl))
     write("hbkd.json", hbkd_vectors())
+    write("erc8499.json", erc8499_vectors())
     print(f"Python {sys.version.split()[0]}, Unicode {unicodedata.unidata_version}")
 
 

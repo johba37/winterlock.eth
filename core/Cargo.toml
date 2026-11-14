@@ -18,9 +18,9 @@ sha3        = ["dep:keccak"]
 std         = []
 # Counts Keccak-f permutations (keccak::permutations), for measurements.
 count       = []
-# Hash-based key derivation from BIP-39 (the hbkd module, draft ERC): library code that nothing
-# uses yet. A feature so that crates built without default features (core-wasm, the ESP32 images)
-# keep their dependencies and lock files as they are.
+# ERC-8499, hash-based key derivation from BIP-39: the hbkd module and derive::erc8499, the signer
+# app's derivation since 2026-11-14. A feature so that crates built without default features (the
+# ESP32 check images) keep their dependencies and lock files; core-wasm and the board enable it.
 hbkd        = ["dep:hmac"]
 
 [dependencies]

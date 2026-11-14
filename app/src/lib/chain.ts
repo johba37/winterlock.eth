@@ -1,7 +1,8 @@
 // The chain: reads, the owner contract's views, and transactions from the gas account.
 //
-// The gas account is an ordinary account whose key comes from the phrase (core: derive::gas_key),
-// so every paired device holds the same one. It pays for the owner's deployment, certificates,
+// The gas account is an ordinary account whose key comes from the phrase (core:
+// derive::erc8499::gas_key, ERC-8499's application secret "winterlock.eth/gas"), so every paired
+// device holds the same one. It pays for the owner's deployment, certificates,
 // enrolments and executions. Fees follow the Python signer (ethtx.py's send): a gas limit of the
 // node's estimate × 1.2 under EIP-7825's cap, a fee cap of twice the base fee plus the tip.
 // No log scans: free RPC tiers limit them (10 blocks on Alchemy's, 2.5 s on Arbitrum).
@@ -125,8 +126,8 @@ export interface DeviceState {
   active: boolean
 }
 
-export async function readDevice(ctx: Ctx, owner: Address, device: number): Promise<DeviceState> {
-  const [key, generation, active] = await ctx.client.readContract({ address: owner, abi: OWNER_ABI, functionName: 'devices', args: [device] })
+export async function readDevice(ctx: Ctx, owner: Address, device: number, blockNumber?: bigint): Promise<DeviceState> {
+  const [key, generation, active] = await ctx.client.readContract({ address: owner, abi: OWNER_ABI, functionName: 'devices', args: [device], blockNumber })
   return { key, generation, active }
 }
 
@@ -137,16 +138,16 @@ export interface OnchainTree {
   generation: number
 }
 
-export async function readTree(ctx: Ctx, owner: Address, safe: Address, device: number): Promise<OnchainTree> {
-  const [root, , height, start, generation] = await ctx.client.readContract({ address: owner, abi: OWNER_ABI, functionName: 'tree', args: [safe, device] })
+export async function readTree(ctx: Ctx, owner: Address, safe: Address, device: number, blockNumber?: bigint): Promise<OnchainTree> {
+  const [root, , height, start, generation] = await ctx.client.readContract({ address: owner, abi: OWNER_ABI, functionName: 'tree', args: [safe, device], blockNumber })
   if (BigInt(root) === 0n) return { root: null, height: 0, start: 0, generation: 0 }
   return { root: toHex(hexToBytes(root).slice(0, 24)), height, start: Number(start), generation }
 }
 
 /** Whether the member's owner exists here: the code at its address must be the v2 proxy of the
  * pinned implementation with this member key (cli.py's owner_deployed). */
-export async function ownerDeployed(ctx: Ctx, core: Core, owner: Address, memberKey: Hex): Promise<boolean> {
-  const code = await ctx.client.getCode({ address: owner })
+export async function ownerDeployed(ctx: Ctx, core: Core, owner: Address, memberKey: Hex, blockNumber?: bigint): Promise<boolean> {
+  const code = await ctx.client.getCode({ address: owner, blockNumber })
   if (!code || code === '0x') return false
   const key = await core.call<Uint8Array | null>('memberKeyOf', { address: hexToBytes(owner), code: hexToBytes(code) })
   if (!key || toHex(key).toLowerCase() !== memberKey.toLowerCase()) {
@@ -201,6 +202,27 @@ export interface Sent {
  * Signs and sends a transaction from the gas account and waits for its receipt; throws if it
  * reverts. The caller dry-runs it with eth_call first, as the Python signer does.
  */
+/**
+ * A read for the check after a transaction, at the block that mined it. A public endpoint can
+ * spread requests over several nodes, and one that hasn't reached that block yet answers a read
+ * of the latest state with the state from before the transaction (as on Sepolia's publicnode
+ * endpoint on 2026-11-13: "enroll was mined, but the Safe's tree for this device differs", for an
+ * enrolment that had worked). Asked for the block itself, such a node refuses, and the read is
+ * tried again, for up to about 30 s.
+ */
+export async function afterTx<T>(receipt: { blockNumber: bigint }, read: (blockNumber: bigint) => Promise<T>, tries = 15, waitMs = 2000): Promise<T> {
+  let last: unknown
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await read(receipt.blockNumber)
+    } catch (e) {
+      last = e
+      if (i + 1 < tries) await new Promise((r) => setTimeout(r, waitMs))
+    }
+  }
+  throw last
+}
+
 export async function sendFromGas(
   ctx: Ctx,
   gasKey: Hex,
