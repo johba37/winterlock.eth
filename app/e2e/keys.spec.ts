@@ -3,6 +3,8 @@
 // - pairing the ERC's own test phrase, which no owner uses: the app asks first, and once told to go
 //   on it creates the owner that the Python reference names for that phrase (erc8499.py, through
 //   core/tests/vectors/erc8499.json), from the gas account the reference names;
+// - pairing it again in a second browser, now that the owner exists: the app shows the owner's full
+//   address and the device number, and pairs only once told to;
 // - a device that a build before ERC-8499 set up: the app shows what it was and only forgets it.
 //
 // Needs anvil and the Python signer's virtualenv (local.ts). With E2E_PREVIEW=1 the app is the
@@ -12,7 +14,7 @@ import { type Browser, type BrowserContext, type Page, expect, test } from '@pla
 import { readFileSync } from 'node:fs'
 import { type Address, getAddress } from 'viem'
 import { EARLIER_BUILD } from '../src/lib/db'
-import { LocalChain, boardRecord, haveChainTools, tid as t, useLocalRpc, waitDone } from './local'
+import { LocalChain, boardRecord, haveChainTools, shot, tid as t, useLocalRpc, waitDone } from './local'
 
 const BASE = `http://localhost:${process.env.E2E_PORT ?? 5190}`
 const VECTORS = JSON.parse(readFileSync(new URL('../../core/tests/vectors/erc8499.json', import.meta.url), 'utf8'))
@@ -68,15 +70,28 @@ test.describe.serial('ERC-8499 keys on a local chain', () => {
     await t(page, 'done-home').click()
     await expect(t(page, 'earlier-keys')).toHaveCount(0)
 
-    // a second browser: now an owner uses the phrase, so no question
+    // a second browser: now an owner uses the phrase, so the question shows it in full
     const other = await ctx.browser()!.newContext({ baseURL: BASE })
     const p2 = await other.newPage()
     await useLocalRpc(p2, BASE, chain.url)
     await p2.goto('/#/pair')
     await t(p2, 'phrase-input').fill(ABANDON)
     await t(p2, 'pair-submit').click()
-    await waitDone(p2, t(p2, 'pair-done'))
+    await expect(t(p2, 'pair-owner')).toBeVisible({ timeout: 120_000 })
     await expect(t(p2, 'no-account')).toHaveCount(0)
+    await expect(t(p2, 'pair-owner-address')).toHaveAttribute('data-value', ZERO.owner)
+    await expect(t(p2, 'pair-owner-address')).toHaveText(ZERO.owner)
+    await expect(t(p2, 'pair-owner-device')).toHaveText('2')
+    if (process.env.E2E_DIR) await shot(p2, process.env.E2E_DIR, 'pair-owner')
+    await t(p2, 'pair-stop').click()
+    await expect(t(p2, 'error')).toHaveText(/^Nothing was paired\.$/)
+    expect(await boardRecord(p2)).toBeUndefined()
+
+    await t(p2, 'phrase-input').fill(ABANDON)
+    await t(p2, 'pair-submit').click()
+    await expect(t(p2, 'pair-owner')).toBeVisible({ timeout: 120_000 })
+    await t(p2, 'pair-confirm').click()
+    await waitDone(p2, t(p2, 'pair-done'))
     expect((await boardRecord(p2)).device).toBe(2)
     await other.close()
   })
