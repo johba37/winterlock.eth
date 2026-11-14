@@ -145,7 +145,7 @@ A flash partition holds the seed, the PIN's check value and its try count, each 
 
 - **Nothing online holds a key** but the gas account. A compromised computer or a bad build of the app can't sign. It can only ask the board, which shows what it computed itself. Transactions it can't decode are signed blind, after a second confirmation.
 - **No secure element.** Whoever holds the board and knows the PIN signs as the member. Without the PIN, a thief can still read the flash, and published fault-injection attacks read keys out of early ESP32 revisions even with flash encryption. The round's boards don't use flash encryption: it can't be undone and it complicates updates. A stolen board means a member replacement, as a leaked phrase does. Fine for play money, not more.
-- **The derivation sits in one place,** so it can change before the round without touching the rest.
+- **The derivation sits in one place,** so it can change before the round without touching the rest. It did: since 2026-11-14 the board's keys follow ERC-8499, as the app's (decisions.md, D15).
 - **The ESP32 accelerates SHA-256, not keccak.** Changing the hash changes the contracts (D9), so it stays a last resort.
 
 ## Decisions
@@ -171,7 +171,7 @@ Decided on 2026-11-10:
    - natively about 3 to 4 times as fast as the Python signer
    - `hardware/esp32-core-check/` checks the core on the board and times the real operations with both backends: all 54 checks pass in QEMU and on a v1.0 board (2026-11-10). With `tiny-keccak`, the faster backend on the chip: a member key in 11.7 s on both cores, a stateless signature in 15 s on average (32 s at most), a height-10 tree in 42 s, a WOTS signature in 0.3 s
 3. **The app, on Ethereum Sepolia,** without a board: create, add a device, join a Safe, enrol, transfer, confirm, execute, dapps, revoke. A fresh-eyes run by an agent through the app's screens. Then the board's firmware, with the board's screens on the user's board. **First build on 2026-11-07, everything but dapps** (`app/`, `core-wasm/`; decisions.md, "2026-11-07: the signer app, first build"):
-   - the core in WebAssembly through a bindings crate, in Web Workers; the member key only in a worker that is terminated after it signs; the gas key derived from the phrase (`winterlock.app.gas.v1`, with a Python vector)
+   - the core in WebAssembly through a bindings crate, in Web Workers; the member key only in a worker that is terminated after it signs; the gas key derived from the phrase (`winterlock.app.gas.v1`, with a Python vector; since 2026-11-14 ERC-8499's application secret `winterlock.eth/gas`, decisions.md D15)
    - every rule under "Risks a browser adds": IndexedDB with persistent storage, no device key on iOS unless installed, record then sign in a strict-durability transaction under a Web Lock, the stale-log check at Safe's service and on-chain, no third-party code at run time
    - live on Sepolia through Safe's service without an API key, next to the Python signer: create, pair a second device, join a script-made Safe, enrol, propose, confirm and execute both ways, revoke the second device while its confirmation was pending, a copied browser that refuses, and the revoked device paired again
    - in Chromium's worker: the member key in about 0.12 s, a height-10 key tree in about 0.45 s, a stateless signature in about 0.07 s

@@ -689,6 +689,63 @@ fn keylog_store_failure_refuses() {
     assert!(matches!(keylog::record(&mut Broken, &tr, 0, &[3; 32]), Err(Refused::Store("disk full"))));
 }
 
+// --- Winterlock's keys under ERC-8499 ---
+
+#[cfg(feature = "hbkd")]
+#[test]
+fn erc8499_member_device_and_gas_keys() {
+    use derive::erc8499;
+    let v = load(ERC8499);
+    assert_eq!(str_(&v["key_type"]), erc8499::KEY_TYPE);
+    assert_eq!(str_(&v["gas_label"]), erc8499::GAS_LABEL);
+    for c in v["keys"].as_array().unwrap() {
+        let seed: [u8; 32] = arr(&c["seed"]);
+        let root = erc8499::phrase_root(&seed).unwrap();
+        assert_eq!(root, arr::<64>(&c["phrase_root"]));
+        assert_eq!(erc8499::stateless_key_seed(&root).unwrap(), arr::<32>(&c["member_key_seed"]));
+        let mk = erc8499::stateless_key(&root).unwrap();
+        assert_eq!(mk.public_key(), arr::<32>(&c["member_key"]));
+        assert_eq!(keccak256(&mk.kept_leaves_bytes()), arr::<32>(&c["member_leaves_hash"]));
+        assert_eq!(owner::owner_address(&mk.public_key()).unwrap(), address(&c["owner"]));
+        assert_eq!(erc8499::gas_key(&root).unwrap(), arr::<32>(&c["gas_key"]));
+        let droot = erc8499::device_root(&seed);
+        assert_eq!(droot, arr::<64>(&c["device_root"]));
+        assert_eq!(erc8499::stateless_key_seed(&droot).unwrap(), arr::<32>(&c["device_key_seed"]));
+        assert_eq!(erc8499::stateless_key(&droot).unwrap().public_key(), arr::<32>(&c["device_key"]));
+    }
+}
+
+#[cfg(feature = "hbkd")]
+#[test]
+fn erc8499_tree_secret_seeds() {
+    use derive::erc8499;
+    let v = load(ERC8499);
+    let place = |c: &serde_json::Value| derive::TreePlace {
+        chain: uint(&c["chain"]),
+        owner: address(&c["owner"]),
+        safe: address(&c["safe"]),
+        device: uint(&c["device"]) as u8,
+        generation: uint(&c["gen"]) as u16,
+        start: uint(&c["start"]),
+    };
+    for c in v["tree_secrets"].as_array().unwrap() {
+        let at = place(c);
+        let root = erc8499::device_root(&arr(&c["device_random"]));
+        assert_eq!(root, arr::<64>(&c["root"]));
+        let height = uint(&c["height"]) as u32;
+        let mut kt = [0u8; 34];
+        assert_eq!(erc8499::tree_key_type(height, &mut kt).unwrap(), str_(&c["key_type"]));
+        assert_eq!(erc8499::tree_context(&at), arr::<32>(&c["context"]));
+        assert_eq!(erc8499::tree_secret_seed(&root, &at, height, &arr(&c["salt"])).unwrap(), arr::<32>(&c["sk_seed"]));
+    }
+    let s = &v["small_tree"];
+    let at = place(s);
+    let sk = erc8499::tree_secret_seed(&erc8499::device_root(&arr(&s["device_random"])), &at, 4, &arr(&s["salt"])).unwrap();
+    assert_eq!(sk, arr::<32>(&s["sk_seed"]));
+    let tree = wots::Tree::create(&derive::tree_public_seed(&at), &sk, 4, &wots::Prf::SIGNER).unwrap();
+    assert_eq!(tree.root[..], bytes(&s["tree_root"])[..]);
+}
+
 // --- HBKD (draft ERC: Hash-Based Key Derivation from BIP-39) ---
 
 #[cfg(feature = "hbkd")]

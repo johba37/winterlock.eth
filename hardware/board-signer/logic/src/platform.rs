@@ -24,3 +24,13 @@ impl Drop for Secret {
         core::hint::black_box(&mut self.0);
     }
 }
+
+/// A root (ERC-8499: 64 bytes), zeroed when dropped.
+pub struct SecretRoot(pub [u8; 64]);
+
+impl Drop for SecretRoot {
+    fn drop(&mut self) {
+        self.0 = [0; 64];
+        core::hint::black_box(&mut self.0);
+    }
+}

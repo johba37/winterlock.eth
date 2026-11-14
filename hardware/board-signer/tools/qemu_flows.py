@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(ROOT, "signer"))
 sys.path.insert(0, HERE)
 
 from board_client import (TEST_BUTTONS, Board, BoardError, TcpLink, encode_tx)  # noqa: E402
-from winterlock_signer import leansphincs, member, owner, phrase, safe as safemod, wots  # noqa: E402
+from winterlock_signer import erc8499, leansphincs, owner, phrase, safe as safemod, wots  # noqa: E402
 from winterlock_signer.abi import b2h, checksum  # noqa: E402
 from winterlock_signer.keccak import keccak256  # noqa: E402
 
@@ -34,7 +34,6 @@ CHAIN = 11155111
 SAFE = keccak256(b"qemu flows: Safe")[12:]
 PARENT = keccak256(b"qemu flows: parent Safe")[12:]
 BOB = keccak256(b"qemu flows: recipient")[12:]
-GAS_LABEL = b"winterlock.app.gas.v1"
 
 
 def key_line(*a):
@@ -191,7 +190,8 @@ def main():
              f"storage {st['storage_used']}/{st['storage_size']}")
     words, ident, s = setup(q, os.urandom(32))
     seed = phrase.to_seed(" ".join(words))
-    mk = member.stateless_key(seed).public_key
+    root = erc8499.phrase_root(seed)  # the keys follow ERC-8499 (decisions.md, D15)
+    mk = erc8499.stateless_key(root).public_key
     assert ident["member_key"] == mk, "the member key is the Python signer's for these words"
     owner_addr = owner.owner_address(mk)
     assert checksum(ident["owner"]) == owner_addr
@@ -201,7 +201,7 @@ def main():
     s = q.board.press("RR")
     assert s[0] == "Winterlock", s
     gas = q.board.gas_key()
-    assert gas == member._abi_label(GAS_LABEL, seed)
+    assert gas == erc8499.gas_key(root)
     key_line("gas key: matches the Python signer's for the seed")
     mem = q.board.memory()
     key_line("memory after setup:", mem)

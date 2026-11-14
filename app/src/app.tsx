@@ -5,11 +5,11 @@ import { useContext, useEffect, useState } from 'preact/hooks'
 import { link, useLink } from './board/link'
 import { core } from './core/client'
 import { short } from './lib/chain'
-import { type BoardRecord, DB_NAME, type DeviceRecord, getBoard, getDevice, openDb } from './lib/db'
+import { type BoardRecord, DB_NAME, type DeviceRecord, KEYS, getBoard, getDevice, openDb } from './lib/db'
 import type { Env } from './lib/flows'
 import { resumeWc } from './lib/wc-state'
 import { BoardDock, BoardHome, BoardInfo, BoardStart } from './screens/board'
-import { Create, Install, Pair, Welcome } from './screens/onboarding'
+import { Create, EarlierKeys, Install, Pair, Welcome } from './screens/onboarding'
 import { Devices, Home, Join, Revoke, Settings } from './screens/member'
 import { DappBar, DappsScreen } from './screens/dapps'
 import { SafeScreen, Send, TxScreen } from './screens/safe'
@@ -90,7 +90,7 @@ export function App() {
         if (__VIRTUAL_BOARD__ && b?.link === 'virtual') link.connectVirtual().catch(() => {})
         else if (b?.link === 'serial') link.connectGranted().catch(() => {})
         // a dapp session from before: reconnect, so its requests reach the app
-        if (d || b) resumeWc(e, !!b).catch(() => {})
+        if (d?.keys === KEYS || b) resumeWc(e, !!b).catch(() => {})
       } catch (err) {
         setFatal(short(err))
       }
@@ -119,6 +119,13 @@ export function App() {
       setDevice((await getDevice(env.db)) ?? null)
     },
   }
+  // a device from a build before ERC-8499: this build can't use its keys
+  if (device && device.keys !== KEYS)
+    return (
+      <AppContext.Provider value={state}>
+        <EarlierKeys device={device} />
+      </AppContext.Provider>
+    )
   const dock = board !== null || linkState.phase !== 'none'
   return (
     <AppContext.Provider value={state}>

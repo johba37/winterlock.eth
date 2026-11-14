@@ -30,7 +30,7 @@ use winterlock_core::{U256, leansphincs, owner, phrase, wots};
 use crate::decode::{self, Action, Decoded};
 use crate::input::Button;
 use crate::keys;
-use crate::platform::{Platform, Secret};
+use crate::platform::{Platform, Secret, SecretRoot};
 use crate::proto::{self, Code, Fail, Request, Writer, ty};
 use crate::store::{How, Opened, Phase, Store, StoreError};
 use crate::ui::{self, Body, Screen, address_lines, chain_name, short_address, wrap};
@@ -252,9 +252,10 @@ struct SetupCtx {
     words: [u16; 24],
 }
 
-/// What an unlock gives: the seed and the member key, until the board is erased or restarts.
+/// What an unlock gives: the seed's root (keys.rs) and the member key, until the board is erased
+/// or restarts.
 struct Session {
-    seed: Secret,
+    root: SecretRoot,
     key: leansphincs::Key,
 }
 
@@ -829,12 +830,14 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
         self.progress("Unlocking", "Reading the key", 0, 1, "");
         let r = (|| {
             let seed = Secret(self.store.seed()?);
+            let root = SecretRoot(keys::root(&seed.0).map_err(|_| StoreError::Damaged)?);
+            drop(seed);
             let leaves = self.store.member_leaves()?;
-            let key = keys::member_key(&seed.0, leaves).map_err(|_| StoreError::Damaged)?;
+            let key = keys::member_key(&root.0, leaves).map_err(|_| StoreError::Damaged)?;
             if Some(key.public_key()) != self.store.identity().map(|i| i.member_key) {
                 return Err(StoreError::Damaged);
             }
-            Ok(Session { seed, key })
+            Ok(Session { root, key })
         })();
         match r {
             Ok(s) => {
@@ -873,8 +876,9 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
     // --- heavy work, on both cores ---
 
     /// The member key's 1,024 leaves.
-    fn member_leaves(&mut self, seed: &[u8; 32], title: &str) -> Vec<leansphincs::Node> {
-        let (plan, ks) = keys::member_plan(seed);
+    fn member_leaves(&mut self, root: &keys::Root, title: &str) -> Vec<leansphincs::Node> {
+        let (plan, ks) = keys::member_plan(root);
+        let ks = Secret(ks);
         let n = plan.count as usize;
         let mut leaves = vec![[0u8; 16]; n];
         let per = n / LEAF_ROUNDS;
@@ -882,7 +886,7 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             let first = plan.first + (r * per) as u32;
             let (a, b) = leaves[r * per..(r + 1) * per].split_at_mut(per / 2);
             let p = plan.p;
-            self.platform.both(&mut || leansphincs::leaves(&p, &ks, first, a), &mut || leansphincs::leaves(&p, &ks, first + (per / 2) as u32, b));
+            self.platform.both(&mut || leansphincs::leaves(&p, &ks.0, first, a), &mut || leansphincs::leaves(&p, &ks.0, first + (per / 2) as u32, b));
             self.progress(title, "Making the member key", (r + 1) as u32, LEAF_ROUNDS as u32, "about 12 s");
         }
         leaves
@@ -947,8 +951,16 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
         let mut ctx = self.setup.take().expect("setup");
         let seed = ctx.seed.take().expect("a seed");
         let title = if ctx.how == How::Recovered { "Recovering" } else { "Setting up" };
-        let leaves = self.member_leaves(&seed.0, title);
-        let key = match keys::member_key(&seed.0, leaves) {
+        let root = match keys::root(&seed.0) {
+            Ok(r) => SecretRoot(r),
+            Err(_) => {
+                pin.fill(0);
+                self.fail(ctx.id, Fail::new(Code::Storage, "the member key could not be made"));
+                return self.result("Failed", "The member key could not be made.");
+            }
+        };
+        let leaves = self.member_leaves(&root.0, title);
+        let key = match keys::member_key(&root.0, leaves) {
             Ok(k) => k,
             Err(_) => {
                 pin.fill(0);
@@ -965,7 +977,8 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             self.setup = Some(ctx);
             return self.storage_failed(None, e);
         }
-        self.session = Some(Session { seed, key });
+        drop(seed);
+        self.session = Some(Session { root, key });
         let mut w = Writer::new();
         w.bytes(&pk).bytes(&owner).u8(ctx.how as u8);
         self.send(ty::A_IDENTITY, ctx.id, &w.0);
@@ -976,11 +989,15 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
 
     fn enrol(&mut self, job: EnrolJob) {
         let Some(s) = &self.session else { return self.rest() };
-        let seed = Secret(s.seed.0);
+        let root = SecretRoot(s.root.0);
         let owner_addr = self.store.identity().expect("set up").owner;
         let salt = Secret(self.random32());
         let place = TreePlace { chain: job.chain, owner: owner_addr, safe: job.safe, device: 0, generation: 0, start: job.start };
-        let sk = Secret(keys::tree_secret(&seed.0, &place, &salt.0));
+        let sk = match keys::tree_secret(&root.0, &place, TREE_HEIGHT, &salt.0) {
+            Ok(k) => Secret(k),
+            Err(_) => return self.fail_flow(job.id, "the key tree could not be made"),
+        };
+        drop(root);
         let tseed = derive::tree_public_seed(&place);
         let leaves = self.tree_leaves(&tseed, &sk.0, TREE_HEIGHT);
         let tree = match wots::Tree::from_leaves(&tseed, TREE_HEIGHT as u32, TREE_HEIGHT as u32, leaves, Vec::new()) {
@@ -1018,7 +1035,7 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
 
     fn sign(&mut self, job: SignJob) {
         let Some(s) = &self.session else { return self.rest() };
-        let seed = Secret(s.seed.0);
+        let root = SecretRoot(s.root.0);
         let t = self.store.trees()[job.tree].clone();
         self.progress("Signing", "Recording the key use", 0, 2, "");
         // the key log: the record is written and read back before anything is signed
@@ -1036,7 +1053,11 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             Err(e) => return self.storage_failed(Some(job.id), e),
         };
         let Some(tree) = tree else { return self.fail_flow(job.id, "the key tree's leaves don't give its root") };
-        let sk = Secret(keys::tree_secret(&seed.0, &place, &t.salt));
+        let sk = match keys::tree_secret(&root.0, &place, t.height, &t.salt) {
+            Ok(k) => Secret(k),
+            Err(_) => return self.fail_flow(job.id, "the key tree's secret could not be made"),
+        };
+        drop(root);
         let data = match owner::sign_transaction(&rec, &tree, &sk.0, 0, &job.tx) {
             Ok(d) => d,
             Err(_) => return self.fail_flow(job.id, "the signature failed its own check"),
@@ -1125,7 +1146,7 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
                 }
                 match req {
                     Request::GasKey => {
-                        let k = keys::gas_key(&self.session.as_ref().unwrap().seed.0);
+                        let k = keys::gas_key(&self.session.as_ref().unwrap().root.0);
                         match k {
                             Ok(k) => {
                                 let k = Secret(k);

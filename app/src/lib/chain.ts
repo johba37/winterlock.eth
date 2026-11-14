@@ -1,7 +1,8 @@
 // The chain: reads, the owner contract's views, and transactions from the gas account.
 //
-// The gas account is an ordinary account whose key comes from the phrase (core: derive::gas_key),
-// so every paired device holds the same one. It pays for the owner's deployment, certificates,
+// The gas account is an ordinary account whose key comes from the phrase (core:
+// derive::erc8499::gas_key, ERC-8499's application secret "winterlock.eth/gas"), so every paired
+// device holds the same one. It pays for the owner's deployment, certificates,
 // enrolments and executions. Fees follow the Python signer (ethtx.py's send): a gas limit of the
 // node's estimate × 1.2 under EIP-7825's cap, a fee cap of twice the base fee plus the tip.
 // No log scans: free RPC tiers limit them (10 blocks on Alchemy's, 2.5 s on Arbitrum).

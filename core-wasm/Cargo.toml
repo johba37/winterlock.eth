@@ -16,7 +16,7 @@ tiny-keccak = ["winterlock-core/tiny-keccak"]
 sha3        = ["winterlock-core/sha3"]
 
 [dependencies]
-winterlock-core = { path = "../core", default-features = false }
+winterlock-core = { path = "../core", default-features = false, features = ["hbkd"] }
 # the same version as the wasm-bindgen CLI that generates the JavaScript glue (app/scripts/build-wasm.sh)
 wasm-bindgen    = "=0.2.130"
 

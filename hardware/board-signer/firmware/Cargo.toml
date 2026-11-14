@@ -44,7 +44,7 @@ critical-section       = "1.2"
 ssd1306                = "0.10"
 
 winterlock-board = { path = "../logic" }
-winterlock-core  = { path = "../../../core", default-features = false, features = ["tiny-keccak"] }
+winterlock-core  = { path = "../../../core", default-features = false, features = ["tiny-keccak", "hbkd"] }
 
 esp-println   = { version = "0.18.0", features = ["esp32"], optional = true }
 esp-backtrace = { version = "0.20.0", features = ["esp32", "panic-handler", "println"], optional = true }

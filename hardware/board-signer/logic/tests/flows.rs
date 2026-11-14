@@ -14,7 +14,13 @@ use winterlock_board::input::Button::{Both, Left, Right};
 use winterlock_board::proto::{Code, ty};
 use winterlock_board::store::Phase;
 use winterlock_core::safe::{Operation, SafeTx};
-use winterlock_core::{U256, derive, leansphincs, owner, phrase, safe, wots};
+use winterlock_core::derive::erc8499;
+use winterlock_core::{U256, leansphincs, owner, phrase, safe, wots};
+
+/// The member key of a seed under ERC-8499, as the core makes it (keys.rs).
+fn member_key(seed: &[u8; 32]) -> leansphincs::Key {
+    erc8499::stateless_key(&erc8499::phrase_root(seed).unwrap()).unwrap()
+}
 
 const CHAIN: u64 = 42161;
 const SAFE: [u8; 20] = [0x5A; 20];
@@ -89,7 +95,7 @@ fn setup_gives_the_identity_of_its_words() {
     // the words shown are the seed's, and the member key and owner are the core's for that seed
     let text = words.join(" ");
     let seed = phrase::to_seed(&text).expect("24 words with a good checksum");
-    let key = derive::member_key(&seed).unwrap();
+    let key = member_key(&seed);
     assert_eq!(key.public_key(), id.member_key);
     assert_eq!(owner::owner_address(&id.member_key).unwrap(), id.owner);
     assert_eq!(id.how, 0);
@@ -103,7 +109,7 @@ fn setup_gives_the_identity_of_its_words() {
     assert_eq!((e.chain, e.safe, e.start, e.height), (CHAIN, SAFE, 0, 10));
     // the gas key is the core's
     request(&mut b, ty::GAS_KEY, 3, &[]);
-    assert_eq!(answer(&b, 3).unwrap().payload, derive::gas_key(&seed).unwrap());
+    assert_eq!(answer(&b, 3).unwrap().payload, erc8499::gas_key(&erc8499::phrase_root(&seed).unwrap()).unwrap());
     assert_eq!(l.borrow().certificates, 1);
 }
 
@@ -451,13 +457,13 @@ fn both_cores_give_the_same_bytes() {
     let words = setup(&mut b, 1, [9; 32], PIN);
     let id = parse_identity(&answer(&b, 1).unwrap().payload);
     let seed = phrase::to_seed(&words.join(" ")).unwrap();
-    assert_eq!(derive::member_key(&seed).unwrap().public_key(), id.member_key);
+    assert_eq!(member_key(&seed).public_key(), id.member_key);
     to_home(&mut b);
     request(&mut b, ty::ENROL, 2, &enrol_payload(CHAIN, &SAFE, 0));
     confirm(&mut b);
     let e = parse_enrolled(&answer(&b, 2).unwrap().payload);
     // the certificate is the one the core makes on one core
-    let key = derive::member_key(&seed).unwrap();
+    let key = member_key(&seed);
     let digest = owner::certificate_digest(CHAIN, &id.owner, &SAFE, 0, 0, &e.root, 10, 0);
     assert_eq!(e.sig, key.sign(&digest));
 }

@@ -11,8 +11,9 @@ import { hexBytes, wasm } from './helpers'
 const vec = (name: string) => JSON.parse(readFileSync(new URL(`../../core/tests/vectors/${name}`, import.meta.url), 'utf8'))
 
 describe('vectors', () => {
+  // the keys follow ERC-8499 (erc8499.json); keys.json holds the earlier derivation's, which the app no longer makes
   it('gas account: key and address from the phrase seed', () => {
-    for (const k of vec('keys.json').keys) {
+    for (const k of vec('erc8499.json').keys) {
       const key = wasm.gas_key(hexBytes(k.seed))
       expect(toHex(key)).toBe(k.gas_key)
       expect(privateKeyToAccount(toHex(key)).address).toBe(k.gas_address)
@@ -20,13 +21,33 @@ describe('vectors', () => {
   })
 
   it('member key, owner address', () => {
-    const k = vec('keys.json').keys[3]
+    const k = vec('erc8499.json').keys[3]
     const b = wasm.KeyBuilder.member(hexBytes(k.seed))
     while (b.done() < b.total()) b.step(64)
     const mk = b.finish()
     expect(toHex(mk.public_key())).toBe(k.member_key)
     expect(getAddress(toHex(mk.owner()))).toBe(k.owner)
     expect(getAddress(toHex(wasm.owner_address(hexBytes(k.member_key))))).toBe(k.owner)
+    // not the earlier derivation's owner for the same words
+    expect(getAddress(toHex(mk.owner()))).not.toBe(vec('keys.json').keys[3].owner)
+  })
+
+  it('device key from the device’s random bytes, and back from its cached leaves', () => {
+    const k = vec('erc8499.json').keys[2]
+    const b = wasm.KeyBuilder.device(hexBytes(k.seed))
+    while (b.done() < b.total()) b.step(64)
+    const dk = b.finish()
+    expect(toHex(dk.public_key())).toBe(k.device_key)
+    const again = wasm.StatelessKey.device_from_cache(hexBytes(k.seed), dk.kept_leaves(), dk.public_key())
+    expect(toHex(again.public_key())).toBe(k.device_key)
+    expect(() => wasm.StatelessKey.device_from_cache(hexBytes(vec('erc8499.json').keys[1].seed), dk.kept_leaves(), dk.public_key())).toThrow()
+  })
+
+  it('a key tree from the device’s random bytes', () => {
+    const t = vec('erc8499.json').small_tree
+    const b = new wasm.TreeBuilder(hexBytes(t.device_random), BigInt(t.chain), hexBytes(t.owner), hexBytes(t.safe), t.device, t.gen, BigInt(t.start), hexBytes(t.salt), t.height)
+    while (b.done() < b.total()) b.step(4)
+    expect(toHex(wasm.tree_root(b.finish()))).toBe(t.tree_root)
   })
 
   it('SafeTx hashes from the app encoding of the fields', () => {

@@ -13,7 +13,7 @@ publish      = false
 test-hooks = []
 
 [dependencies]
-winterlock-core   = { path = "../../../core", default-features = false, features = ["tiny-keccak"] }
+winterlock-core   = { path = "../../../core", default-features = false, features = ["tiny-keccak", "hbkd"] }
 embedded-graphics = "0.8"
 embedded-storage  = "0.3"
 

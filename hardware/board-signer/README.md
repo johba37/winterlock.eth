@@ -13,8 +13,8 @@ Winterlock's board: an ESP32-WROOM-32 with a 128×64 OLED and two buttons that h
 
 ## What it does
 
-- **Setup** (the app sends SETUP with 32 random bytes): the seed is keccak256(abi.encode("winterlock.board.seed.v1", the board's 32 random bytes, the app's)). The board shows the 24 words, four a page, then asks for three of them at random positions, each picked from four words. A wrong pick shows the words again and asks three new ones. Then a PIN of 4 to 8 digits, twice. The member key is made on both cores (11.7 s on the chip) and its 1,024 leaves are kept in flash, so this happens once. The app gets the member key and the owner address; the board shows the address in full.
-- **Unlock:** the PIN at every start. Each try is written to flash before it is checked; a right PIN resets the count; the third wrong PIN in a row erases the seed and the key log. A start that finds three tries counted erases too.
+- **Setup** (the app sends SETUP with 32 random bytes): the seed is keccak256(abi.encode("winterlock.board.seed.v1", the board's 32 random bytes, the app's)). The board shows the 24 words, four a page, then asks for three of them at random positions, each picked from four words. A wrong pick shows the words again and asks three new ones. Then a PIN of 4 to 8 digits, twice. The keys follow ERC-8499, as the app's do (decisions.md, D15): the 24 words' BIP-39 seed (PBKDF2, no passphrase) gives the root, and the root the member key, the key trees' secrets and the gas key (`logic/src/keys.rs`). The member key is made on both cores (11.7 s on the chip) and its 1,024 leaves are kept in flash, so this happens once. The app gets the member key and the owner address; the board shows the address in full.
+- **Unlock:** the PIN at every start. Each try is written to flash before it is checked; a right PIN resets the count; the third wrong PIN in a row erases the seed and the key log. A start that finds three tries counted erases too. A right PIN makes the root from the seed (PBKDF2's 2,048 rounds; its time on the chip is still to be measured) and keeps it until the board restarts or is erased; the seed itself stays in flash.
 - **Enrol** (ENROL: chain, Safe, start): the board shows the chain, the Safe and the first nonce. On confirmation it makes a height-10 tree (1,024 keys, 512 nonces) from a fresh 32-byte salt, writes the tree (salt, root, leaves) and the certificate's record, then the member key signs the certificate on both cores and the app gets it. A new tree must start after the board's last one for that Safe.
 - **Confirm a transaction** (SIGN: the fields, never a hash). Decoded on the board:
   - an ETH transfer; an ERC-20 `transfer` of a listed token (amount and symbol)
@@ -184,7 +184,7 @@ The app talks to the board over Web Serial, or, in development builds only, to t
 | `logic/src/store/` | The record log (`log.rs`) and what the records mean (`mod.rs`), the key log's storage |
 | `logic/src/proto.rs` | Frames, requests, answers |
 | `logic/src/decode.rs` | What a transaction does; the token list |
-| `logic/src/keys.rs` | Every key derived from the seed, in one place (today: the core's `derive`) |
+| `logic/src/keys.rs` | Every key derived from the seed, in one place: ERC-8499 through the core's `derive::erc8499`, as the app (decisions.md, D15) |
 | `logic/src/ui.rs`, `input.rs` | Screens and the frame buffer; the buttons |
 | `logic/src/sim.rs` | A NOR flash in memory that can lose power at any write |
 | `wasm/src/lib.rs` | The virtual board's bindings: bytes, buttons, the screen, the flash's changed sectors |

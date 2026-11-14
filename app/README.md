@@ -17,6 +17,8 @@ The signer without a terminal: a browser app for members of a Safe whose owners 
 
 One gas account per member, derived from the phrase, pays for everything on-chain: the owner contract, certificates, key trees and executions.
 
+**Keys follow [ERC-8499](https://github.com/ethereum/ERCs/pull/2172)** (Hash-Based Key Derivation from BIP-39, a draft) since 14 November 2026: the member key and the gas key come from the phrase's BIP-39 seed, a device's key and key trees from its own random root (decisions.md, D15). The same 24 words give another member key and owner than in the builds before, which the app no longer uses: a device that one of them set up is told so and linked to the last of them, build `494703c`. Pairing warns when no owner uses the phrase. A board derives its keys the same way, on the board.
+
 ## With a board
 
 In the round, the board is each member's only device (docs/notes/signer-app.md, decision 7): it holds the member key (device 0), its key trees and their key log, and signs every enrolment and confirmation after showing it. The app talks to it over USB and holds no key but the gas account's, which the board gives it after an unlock. The app without a board stays the development path and the fallback.
@@ -109,18 +111,21 @@ npm run build       # WebAssembly, type check, then dist/
 
 ## Published
 
-**`https://app.winterlock.eth.limo`** serves the build of commit `a20d51c`, IPFS hash `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth".
+**`https://app.winterlock.eth.limo`** serves the build of commit `494703c`, IPFS hash `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth". The build before it, of `a20d51c` (no WalletConnect), is `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`.
 
-To check that the hash comes from this code, build that commit and hash `dist/` with [kubo](https://docs.ipfs.tech/install/command-line/):
+To check that the hash comes from this code, build that commit and hash `dist/` with [kubo](https://docs.ipfs.tech/install/command-line/). The build holds WalletConnect's project ID, which isn't in the repository: it is the 32-character hex string in the published `assets/index-*.js` (`const …="<the ID>"`, just before WalletConnect's state).
 
 ```sh
-git checkout a20d51c && cd app && npm ci && npm run build
+git checkout 494703c && cd app && npm ci
+VITE_WALLETCONNECT_PROJECT_ID=<the ID> npm run build
 ipfs add -r -n -Q --cid-version=1 dist
 ```
 
-A second build on the same machine gave the same hash; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130 and Node 24.14.0.
+A second build on the same machine gave the same hash; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130, Node 24.14.0 and kubo 0.43.1.
 
 The site's storage belongs to its origin. Serving the app from another address gives an empty app, without the device keys stored at `app.winterlock.eth.limo`.
+
+**Updating from the build of `a20d51c`:** the app's database goes from version 1 to 2 (a store for dapps' transactions), keeping everything in it. A tab still open on the older build blocks that: the new one says to close it and reload.
 
 ## Rules it keeps (docs/notes/signer-app.md, "Risks a browser adds")
 

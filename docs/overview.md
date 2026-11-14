@@ -101,5 +101,6 @@ These are v1's numbers. **Owner v2** costs about 7k more per 2-of-3 transaction 
 ## Where next
 
 - [README](../README.md): set up the signer and try it on Sepolia.
+- [findings.md](findings.md): what building it showed, with the numbers, on a few pages.
 - [decisions.md](decisions.md): every decision and measurement, in order.
 - Notes on [messages](notes/safe-messages.md), [WalletConnect](notes/walletconnect.md) and [recovery](notes/signer-recovery.md).
