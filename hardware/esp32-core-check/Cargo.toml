@@ -1,6 +1,6 @@
 [package]
 name         = "winterlock-esp32-core-check"
-version      = "0.1.0"
+version      = "0.2.0"
 edition      = "2024"
 rust-version = "1.95"
 description  = "Checks winterlock-core against the Python vectors on a classic ESP32 and times the real operations"
@@ -24,8 +24,9 @@ esp-println            = { version = "0.18.0", features = ["esp32"] }
 esp-alloc              = { version = "0.11.0", features = ["esp32", "internal-heap-stats"] }
 
 # The core, with both keccak backends: the image times each (keccak::set_backend) and uses
-# tiny-keccak until told otherwise.
-winterlock-core = { path = "../../core", default-features = false, features = ["tiny-keccak", "sha3", "count"] }
+# tiny-keccak until told otherwise. hbkd: ERC-8499's key derivation (PBKDF2 and HKDF over
+# SHA-512), which the app and the board use.
+winterlock-core = { path = "../../core", default-features = false, features = ["tiny-keccak", "sha3", "count", "hbkd"] }
 
 # The optional OLED.
 ssd1306           = "0.10"

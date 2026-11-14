@@ -1,5 +1,6 @@
 //! winterlock-core on a classic ESP32: checks the core against the Python signer's vectors on the
-//! board, then times the real operations (stateless key and signatures, WOTS trees and
+//! board, times ERC-8499's key derivation (PBKDF2 and HKDF over SHA-512) against the reference's
+//! vectors, then times the real operations (stateless key and signatures, WOTS trees and
 //! signatures) with both keccak backends, on one core and on two. Serial (115200 baud) has the
 //! detail and ends with RESULT lines; an SSD1306 OLED on I2C is optional. The keys are public
 //! test vectors: nothing here is secret.
@@ -16,6 +17,7 @@ extern crate alloc;
 
 mod board;
 mod dual;
+mod erc8499;
 mod ui;
 
 use alloc::format;
@@ -40,7 +42,8 @@ use esp_println::println;
 use ui::{Button, Line, Screen};
 use winterlock_core::keccak::{self, Backend};
 use winterlock_core::keylog::{self, MemoryLog, Refused, TreeRef};
-use winterlock_core::{derive, hex, leansphincs, owner, phrase, wots};
+use winterlock_core::derive::erc8499 as derive8499;
+use winterlock_core::{derive, hbkd, hex, leansphincs, owner, phrase, wots};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -61,6 +64,28 @@ struct Report {
     failed: u32,
     failures: Vec<&'static str>,
     t: [Timings; 2],
+    e: Erc8499Times,
+}
+
+/// ERC-8499's derivations, in microseconds. SHA-512 in software: the same with either keccak
+/// backend (keccak only hashes a tree's place).
+#[derive(Default, Clone, Copy)]
+struct Erc8499Times {
+    /// a phrase's seed to its root: the 24 words, PBKDF2, HKDF-Extract (mean and max of four)
+    root_mean: u64,
+    root_max: u64,
+    /// of it, PBKDF2 alone
+    pbkdf2: u64,
+    /// a root to a stateless key's seed (HKDF-Expand), mean
+    key_seed: u64,
+    /// a root to the gas key (HKDF-Expand, then checked below n), mean
+    gas_key: u64,
+    /// a device's 32 random bytes to its root (HKDF-Extract), mean
+    device_root: u64,
+    /// a root to a tree's secret seed (its place's digest, HKDF-Expand), mean
+    tree_seed: u64,
+    /// a device's random bytes to the root of a tree of height 4
+    small_tree: u64,
 }
 
 #[derive(Default, Clone, Copy)]
@@ -104,7 +129,7 @@ impl Report {
         println!(
             "  {:<52} {:>11}  {:>7} perm  {}",
             name,
-            ms(us).as_str(),
+            dur(us).as_str(),
             perms.as_str(),
             if ok { "PASS" } else { "FAIL" }
         );
@@ -115,6 +140,11 @@ impl Report {
 /// Microseconds as milliseconds with one decimal.
 fn ms(us: u64) -> Line {
     text!("{}.{} ms", us / 1000, us % 1000 / 100)
+}
+
+/// Below 1 ms in microseconds, else as [`ms`].
+fn dur(us: u64) -> Line {
+    if us < 1000 { text!("{} us", us) } else { ms(us) }
 }
 
 fn ms_int(us: u64) -> u64 {
@@ -191,11 +221,13 @@ fn main() -> ! {
     }
     println!("start: {}", if pressed { "BOOT pressed" } else { "automatic after 10 s" });
 
-    let mut r = Report { passed: 0, failed: 0, failures: Vec::new(), t: [Timings::default(); 2] };
+    let mut r = Report { passed: 0, failed: 0, failures: Vec::new(), t: [Timings::default(); 2], e: Erc8499Times::default() };
     let mut dual = dual::Dual::new(CpuControl::new(p.CPU_CTRL));
     let started = Instant::now();
 
     checks(&mut r, &mut screen);
+    let e = erc8499_keys(&mut r, &mut screen);
+    r.e = e;
     for (i, &b) in BACKENDS.iter().enumerate() {
         r.t[i] = timings(&mut r, &mut screen, &mut dual, b, i);
     }
@@ -252,17 +284,29 @@ fn main() -> ! {
             ms_int(t.wots_max)
         );
     }
+    let e = &r.e;
+    println!(
+        "RESULT erc8499 phrase_root_ms={} phrase_root_max_ms={} pbkdf2_ms={} key_seed_us={} gas_key_us={} device_root_us={} tree_seed_us={} tree_h4_ms={}",
+        ms_int(e.root_mean),
+        ms_int(e.root_max),
+        ms_int(e.pbkdf2),
+        e.key_seed,
+        e.gas_key,
+        e.device_root,
+        e.tree_seed,
+        ms_int(e.small_tree)
+    );
 
     let mut page = 0;
     loop {
         println!();
-        println!("screen: summary {}/2 (BOOT or 20 s: next; EN: run again)", page + 1);
+        println!("screen: summary {}/3 (BOOT or 20 s: next; EN: run again)", page + 1);
         let lines = summary(page, &r, verdict);
         show_lines(&mut screen, &lines);
         if button.wait_down(Some(PAGE_TIME)) {
             button.wait_up();
         }
-        page = (page + 1) % 2;
+        page = (page + 1) % 3;
     }
 }
 
@@ -368,6 +412,114 @@ fn keylog_scenario() -> bool {
                 && a.hash == b.hash
         });
     ok && same
+}
+
+// --- ERC-8499 ---
+
+/// The ERC's own stateless seed for its first test phrase ("abandon" 23 times, then "art"), account
+/// 0, this key type: from the ERC's text, not from the vectors.
+const ERC_FIRST_SEED: [u8; 32] = hex::h32("fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879");
+
+/// ERC-8499's derivations as the app and the board make them, each timed and checked against the
+/// Python reference's vectors. Runs before the long passes, so its numbers come within seconds.
+fn erc8499_keys(r: &mut Report, screen: &mut Screen) -> Erc8499Times {
+    keccak::set_backend(Backend::TinyKeccak);
+    keccak::reset_permutations();
+    let mut e = Erc8499Times::default();
+    println!();
+    println!("ERC-8499 key derivation (SHA-512 in software), every result checked against the reference's vectors (core/tests/vectors/erc8499.json)");
+    let step = |screen: &mut Screen, what: &str| {
+        screen.show(&["core check", "ERC-8499 keys", "", what]);
+    };
+    r.check("key type and gas label are the reference's", derive8499::KEY_TYPE == erc8499::KEY_TYPE && derive8499::GAS_LABEL == erc8499::GAS_LABEL);
+
+    let n = erc8499::KEYS.len() as u64;
+    for (i, k) in erc8499::KEYS.iter().enumerate() {
+        step(screen, text!("phrase {}/{}", i + 1, n).as_str());
+        let s = Instant::now();
+        let root = derive8499::phrase_root(&k.seed);
+        let us = s.elapsed().as_micros();
+        e.root_mean += us;
+        e.root_max = e.root_max.max(us);
+        r.timed(&format!("phrase {}: root (24 words, PBKDF2, HKDF-Extract)", i + 1), "ERC-8499 phrase root", us, root == Ok(k.phrase_root), false);
+
+        let s = Instant::now();
+        let seed = derive8499::stateless_key_seed(&k.phrase_root);
+        let us = s.elapsed().as_micros();
+        e.key_seed += us;
+        r.timed(&format!("phrase {}: member key seed (HKDF-Expand)", i + 1), "ERC-8499 member key seed", us, seed == Ok(k.member_key_seed), false);
+        if i == 0 {
+            r.check("the ERC's printed seed for its first test phrase", k.seed == [0; 32] && seed == Ok(ERC_FIRST_SEED));
+        }
+        r.check("owner address of the reference's member key", owner::owner_address(&k.member_key) == Ok(k.owner));
+
+        keccak::reset_permutations();
+        let s = Instant::now();
+        let gas = derive8499::gas_key(&k.phrase_root);
+        let us = s.elapsed().as_micros();
+        e.gas_key += us;
+        r.timed(&format!("phrase {}: gas key (HKDF-Expand, below n)", i + 1), "ERC-8499 gas key", us, gas == Ok(k.gas_key), false);
+
+        let s = Instant::now();
+        let dev = derive8499::device_root(&k.seed);
+        let us = s.elapsed().as_micros();
+        e.device_root += us;
+        r.timed("the same bytes as a device's: root (HKDF-Extract)", "ERC-8499 device root", us, dev == k.device_root, false);
+        r.check("its device key seed", derive8499::stateless_key_seed(&dev) == Ok(k.device_key_seed));
+    }
+    e.root_mean /= n;
+    e.key_seed /= n;
+    e.gas_key /= n;
+    e.device_root /= n;
+
+    // the phrase root's parts: PBKDF2 over the 24 words, then HKDF-Extract
+    step(screen, "PBKDF2 alone");
+    let k = &erc8499::KEYS[0];
+    let words = phrase::to_phrase(&k.seed);
+    let s = Instant::now();
+    let bip = hbkd::bip39_seed(&words, "");
+    e.pbkdf2 = s.elapsed().as_micros();
+    r.timed("phrase 1: of its root, the BIP-39 seed alone (PBKDF2)", "ERC-8499 BIP-39 seed", e.pbkdf2, bip.and_then(|b| hbkd::root(&b)) == Ok(k.phrase_root), false);
+
+    let m = erc8499::TREE_SECRETS.len() as u64;
+    for (i, t) in erc8499::TREE_SECRETS.iter().enumerate() {
+        step(screen, text!("tree seed {}/{}", i + 1, m).as_str());
+        let mut kt = [0u8; 34];
+        r.check(
+            "tree key type, context and device root",
+            derive8499::tree_key_type(t.height, &mut kt) == Ok(t.key_type)
+                && derive8499::tree_context(&t.place) == t.context
+                && derive8499::device_root(&t.device_random) == t.root,
+        );
+        keccak::reset_permutations();
+        let s = Instant::now();
+        let sk = derive8499::tree_secret_seed(&t.root, &t.place, t.height, &t.salt);
+        let us = s.elapsed().as_micros();
+        e.tree_seed += us;
+        r.timed(&format!("tree secret seed, height {} (digest, HKDF-Expand)", t.height), "ERC-8499 tree secret seed", us, sk == Ok(t.sk_seed), false);
+    }
+    e.tree_seed /= m;
+
+    let st = &erc8499::SMALL_TREE;
+    step(screen, "tree, height 4");
+    let s = Instant::now();
+    let root = derive8499::device_root(&st.device_random);
+    let tree = derive8499::tree_secret_seed(&root, &st.place, st.height, &st.salt)
+        .and_then(|sk| wots::Tree::create(&derive::tree_public_seed(&st.place), &sk, st.height, &wots::Prf::SIGNER).map(|t| (sk, t.root)));
+    e.small_tree = s.elapsed().as_micros();
+    r.timed("tree of height 4: device's random bytes to its root", "ERC-8499 tree of height 4", e.small_tree, tree == Ok((st.sk_seed, st.tree_root)), false);
+
+    println!(
+        "  phrase root: mean {}, max {}; of it PBKDF2 {}. Member key seed {}, gas key {}, device root {}, tree secret seed {} (means)",
+        dur(e.root_mean).as_str(),
+        dur(e.root_max).as_str(),
+        dur(e.pbkdf2).as_str(),
+        dur(e.key_seed).as_str(),
+        dur(e.gas_key).as_str(),
+        dur(e.device_root).as_str(),
+        dur(e.tree_seed).as_str()
+    );
+    e
 }
 
 // --- timings ---
@@ -521,9 +673,9 @@ fn summary(page: u8, r: &Report, verdict: &str) -> [Line; 8] {
             row("key 2c", |t| t.key2),
             row("SPX avg", |t| t.spx_mean),
             row("SPX max", |t| t.spx_max),
-            text!("BOOT: next        1/2"),
+            text!("BOOT: next        1/3"),
         ]
-    } else {
+    } else if page == 1 {
         [
             text!("{:<7}{:>7}{:>7}", "ms", "tiny", "sha3"),
             row("h6 1c", |t| t.h6_1),
@@ -532,7 +684,19 @@ fn summary(page: u8, r: &Report, verdict: &str) -> [Line; 8] {
             row("h10 2c", |t| t.h10_2),
             row("WOTS av", |t| t.wots_mean),
             row("WOTS mx", |t| t.wots_max),
-            text!("BOOT: next        2/2"),
+            text!("BOOT: next        2/3"),
+        ]
+    } else {
+        let e = &r.e;
+        [
+            text!("ERC-8499 keys"),
+            text!("{:<12}{:>6} ms", "phrase root", ms_int(e.root_mean)),
+            text!("{:<12}{:>6} ms", " PBKDF2", ms_int(e.pbkdf2)),
+            text!("{:<12}{:>6} us", "member seed", e.key_seed),
+            text!("{:<12}{:>6} us", "gas key", e.gas_key),
+            text!("{:<12}{:>6} us", "tree seed", e.tree_seed),
+            text!("{:<12}{:>6} ms", "tree h4", ms_int(e.small_tree)),
+            text!("BOOT: next        3/3"),
         ]
     }
 }
