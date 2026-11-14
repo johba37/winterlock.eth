@@ -17,6 +17,8 @@ The signer without a terminal: a browser app for members of a Safe whose owners 
 
 One gas account per member, derived from the phrase, pays for everything on-chain: the owner contract, certificates, key trees and executions.
 
+**Keys follow [ERC-8499](https://github.com/ethereum/ERCs/pull/2172)** (Hash-Based Key Derivation from BIP-39, a draft) since 14 November 2026: the member key and the gas key come from the phrase's BIP-39 seed, a device's key and key trees from its own random root (decisions.md, D15). The same 24 words give another member key and owner than in the builds before, which the app no longer uses: a device that one of them set up is told so and linked to the last of them, build `494703c`. Pairing warns when no owner uses the phrase.
+
 ## Run
 
 ```sh

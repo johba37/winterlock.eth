@@ -14,8 +14,10 @@ pub const SAFE: &str = include_str!("../vectors/safe.json");
 pub const OWNER: &str = include_str!("../vectors/owner.json");
 pub const KEYLOG: &str = include_str!("../vectors/keylog.json");
 pub const BOARD: &str = include_str!("../vectors/board.json");
-/// Hash-based key derivation from BIP-39 (draft ERC; the hbkd feature).
+/// ERC-8499, hash-based key derivation from BIP-39 (the hbkd feature).
 pub const HBKD: &str = include_str!("../vectors/hbkd.json");
+/// Winterlock's keys under ERC-8499 (the signer app's derivation since 2026-11-14).
+pub const ERC8499: &str = include_str!("../vectors/erc8499.json");
 /// The upstream leanSphincs-keccak known answers (SPHINCs-), which the Python signer reproduces.
 pub const KAT: &str = include_str!("../../../contracts/test/fixtures/leansphincs-keccak-kat.json");
 /// The pinned v2 creation code, as the Python signer reads it.

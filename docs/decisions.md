@@ -105,6 +105,19 @@ Open:
   - a revocation library, if the team wants to withdraw approvals
 - **Not covered:** EIP-2612 permits that accept only ECDSA, which no smart account can sign.
 
+**D15. The signer app's keys follow ERC-8499** (2026-11-14)
+The app derives its keys by [ERC-8499](https://github.com/ethereum/ERCs/pull/2172) (Hash-Based Key Derivation from BIP-39, a draft): the BIP-39 seed of the phrase's 24 words (no passphrase), then HKDF-SHA512, never an elliptic-curve step. Code: `core/src/derive.rs` (module `erc8499`), with `signer/winterlock_signer/erc8499.py` as its reference.
+- **Member key and device keys:** stateless, key type `leanSphincs-keccak/wambsgans-keccak/b10` (the ERC's own example string), 32-byte seed, account 0. A device key comes from the device's random root, made from the 32 random bytes the app already keeps; a device holds no phrase.
+- **Key trees:** stateful, key type `winterlock-wots-d6-keccak/tree-h<height>`, from the root of the device that holds the tree. The context is keccak256(abi.encode(TREE_SEED_DOMAIN, chain, owner, safe, device, generation, start)), whose first 16 bytes are the tree's public seed; the instance is the tree's salt, 32 random bytes made with the tree and kept with it.
+- **Gas key:** the application secret `winterlock.eth/gas`, refused unless it is a secp256k1 private key.
+- **One phrase, one member:** account 0 throughout.
+- **Decided by the user (2026-11-14):**
+  - **A clean break.** The same words give another member key and owner than before, and this build doesn't make or use the earlier keys. A device that an earlier build set up is told so, shown its earlier owner and gas account, linked to the last earlier build (`494703c`, IPFS `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`, through a service-worker gateway), and can only be forgotten here.
+  - **The app makes the phrase,** 24 words as before. Pairing warns when no owner uses the typed phrase (another wallet's words, or a phrase from before), and goes on only when the member says so.
+  - **These names,** as above.
+  - **The board follows in the same step.**
+- **The command-line signer keeps the earlier derivation** (the phrase's entropy under Keccak labels, member.py) for the homes it has; its vectors stay in `keys.json`.
+
 ## Constraints that every design must respect
 
 - **One key tree per chain and per account.** Nonces repeat across chains and accounts. If two of them share a tree, the same one-time key ends up signing two different messages. In a threshold account this applies per member: each member needs a separate tree for every account they sign for. One master seed can derive them all. Under D12 the stateless key is shared by all chains and accounts; it signs their certificates and messages, up to its proved signature budget (D11).
@@ -1605,6 +1618,14 @@ Item 6 of [notes/signer-app.md](notes/signer-app.md), transactions first. The qu
 - **Threshold 1 executes at once.** When the member's confirmation meets the threshold and the Safe is at the transaction's nonce, the gas account executes it as part of the confirm, and `eth_sendTransaction` is answered with the execution's transaction hash once it is sent. A dapp that follows the hash on its own node then sees the transaction; a SafeTx hash it would never find there. `wallet_sendCalls` gets its id first. If executing fails, the dapp gets the SafeTx hash, the card says why, and the member can execute later. The request card says so before the confirm ("Sign and execute"). End to end on anvil (`e2e/walletconnect.spec.ts`): the transfer executed at once for 227,274 to 227,286 gas (anvil's pricing), and the dapp's answer came 2.3 s after the confirm; with an empty gas account the dapp got the SafeTx hash, and Execute worked once the account was funded.
 - **Pasting the link only,** no QR scanning.
 - **Messages wait** until Safe's Transaction Service takes longer message signatures. It caps one at 5,000 hex characters; a Winterlock entry is 5,834 bytes ("2026-11-05: Safe owner spike", size limits, and "2026-11-05: Safe owner, live on Sepolia", request g). Until then dapps get 4001 for sign-ins, messages and permits.
+
+**2026-11-14: the app's keys follow ERC-8499** (D15; `core/src/derive.rs`, module `erc8499`; `signer/winterlock_signer/erc8499.py`; `core-wasm/`; `app/src/screens/onboarding.tsx`)
+- **Reference and core agree.** `core_vectors.py` writes `erc8499.json`: for four phrase seeds the root, member key, owner, gas key and address, and for the same bytes as a device's random input its root and device key; four trees (heights 1, 10, 40, 20) with key type, context and secret seed; one tree of height 4 down to its root. The core reproduces all of it natively and in WebAssembly. Every other vector file is unchanged, byte for byte.
+- **The ERC's own values.** The all-zero seed is the ERC's first test phrase ("abandon" 23 times, then "art"), so its member key's seed is the ERC's stateless seed of account 0, `fe1de503…6879`: checked in Python and in the core.
+- **Cost in the browser.** Under Node, the phrase root (PBKDF2 with 2,048 rounds, then HKDF) takes 3.0 ms in WebAssembly (median of 20). The WebAssembly module grows from 184,418 to 222,040 bytes: core-wasm now enables the `hbkd` feature, which adds `hmac` 0.12.1 and `subtle` 2.6.1 to its lock file.
+- **End to end on anvil** (`e2e/keys.spec.ts`, dev server and production build): pairing the ERC's test phrase, which no owner uses, asks first; Stop pairs nothing; Pair anyway creates the owner the Python reference names for that phrase, from the gas account it names, and a second browser then pairs as device 2 without the question. A device record without the new marker gets the earlier-keys screen on every route, with no dapp bar, and Start again leaves the welcome screen. `walletconnect.spec.ts` passes unchanged (14/14, dev and production).
+- **Checks:** `core/check.sh` on all three targets; the Python signer's 196 tests; the app's 58 unit tests.
+- **The earlier build's link** (`https://<CID>.ipfs.inbrowser.link/`, IPFS's service-worker gateway; dweb.link now redirects there) opened build `494703c`, and its core answered a short phrase with its error, in headless Chromium. Its own origin per CID keeps its storage apart from other builds.
 
 ## Integration notes: Kernel v3.3
 

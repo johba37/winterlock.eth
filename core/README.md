@@ -10,7 +10,8 @@ The Python signer's cryptography and key rules in Rust, `no_std` with `alloc`, f
 | `phrase` | 24 BIP-39 words ↔ the 32-byte seed (entropy, SHA-256 checksum), the forgiving parser and its named errors, the pairing check code | `phrase.py`, `member.check_code` |
 | `leansphincs` | pruned keys (b = 10 for members and devices), leaves over any range, a key from leaves, sign, verify | `leansphincs.py` |
 | `wots` | D6: leaves over any range, trees and paths, the cache format, `verify_root`, signing only from a key log record | `wots.py` |
-| `derive` | the member key, device keys, tree secret seeds | `member.py` |
+| `derive` | the member key, device keys, tree secret seeds, the gas key: under ERC-8499 (`derive::erc8499`, the signer app's since 2026-11-14; feature `hbkd`), and the command-line signer's earlier derivation | `erc8499.py`, `member.py` |
+| `hbkd` | ERC-8499 (Hash-Based Key Derivation from BIP-39): BIP-39's seed, the root, stateless and stateful seeds, application secrets, SLH-DSA seeds (feature `hbkd`, on by default) | `hbkd.py` |
 | `owner` | v2: key indices, every digest, the three signature layouts and their parsers, owner addresses (pinned v2 contracts), signing a transaction, message, device certificate or revocation | `owner.py`, `messages.signature_data` |
 | `safe` | SafeTx (fields in, 320-byte words, EIP-712 hash), SafeMessage, EIP-191 | `safe.py`, `messages.py`, `eip712.personal_hash` |
 | `keylog` | the one-time key rules over a storage trait, and `MemoryLog`, a model of it | `keylog.py` (`pick_slot`, `record_sign`) |

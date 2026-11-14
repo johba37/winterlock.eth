@@ -28,6 +28,7 @@ import {
   type Hex,
   type StatelessRecord,
   type TreeRecord,
+  KEYS,
   certs,
   get,
   getDevice,
@@ -137,6 +138,7 @@ export async function createDevice(env: Env, session: Session, step: Step): Prom
     session.end()
     const rec: DeviceRecord = {
       id: 'this',
+      keys: KEYS,
       owner: d.owner,
       memberKey: d.memberKey,
       gasKey: d.gasKey,
@@ -162,22 +164,34 @@ function gasAddressOf(gasKey: Hex): Address {
  * Pair this device from the phrase: a device key for the next free device number, certified by
  * the member key on each enabled chain, then sent from the gas account. The session ends once the
  * member key has signed.
+ *
+ * If no enabled chain has an owner for the phrase's member key, `noAccount` is asked whether to go
+ * on (ERC-8499: warn before deriving from a phrase that may be another wallet's); without it, or
+ * when it answers false, nothing is paired.
  */
-export async function pairDevice(env: Env, session: Session, step: Step): Promise<{ device: DeviceRecord; report: string[] }> {
+export async function pairDevice(
+  env: Env,
+  session: Session,
+  step: Step,
+  noAccount?: () => Promise<boolean>,
+): Promise<{ device: DeviceRecord; report: string[] }> {
   let rec: DeviceRecord
   try {
     if (await getDevice(env.db)) throw new Error('This browser already holds a device.')
     const d = await derive(session, step)
     // the device number: the lowest one that isn't active on any enabled chain
     const gens = new Map<number, number[]>()
+    let found = false
     for (const c of enabledChains()) {
       step(`Reading your devices on ${c.name}`)
       const ctx = await usableCtx(env.db, env.core, c.id)
       const deployed = await ownerDeployed(ctx, env.core, d.owner, d.memberKey)
+      found ||= deployed
       const states = []
       for (let n = 1; n <= MAX_DEVICE; n++) states.push(deployed ? await readDevice(ctx, d.owner, n) : { key: '0x' as Hex, generation: 0, active: false })
       gens.set(c.id, states.map((s) => (s.active ? -1 : s.generation)))
     }
+    if (!found && !(await noAccount?.())) throw new Error('Nothing was paired: no Winterlock account uses this phrase.')
     let device = 0
     for (let n = 1; n <= MAX_DEVICE && !device; n++) {
       if ([...gens.values()].every((g) => g[n - 1] >= 0)) device = n
@@ -190,7 +204,7 @@ export async function pairDevice(env: Env, session: Session, step: Step): Promis
       out.push(await certifyWithMemberKey(env, session, c.id, device, gens.get(c.id)![device - 1] + 1, k.publicKey))
     }
     session.end()
-    rec = { id: 'this', owner: d.owner, memberKey: d.memberKey, gasKey: d.gasKey, gasAddress: gasAddressOf(d.gasKey), device, ...k, how: 'pair', createdAt: Date.now() }
+    rec = { id: 'this', keys: KEYS, owner: d.owner, memberKey: d.memberKey, gasKey: d.gasKey, gasAddress: gasAddressOf(d.gasKey), device, ...k, how: 'pair', createdAt: Date.now() }
     await writeStrict(env.db, 'device', [rec])
     await writeStrict(env.db, 'certs', out)
   } finally {

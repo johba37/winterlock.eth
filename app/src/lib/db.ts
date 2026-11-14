@@ -2,7 +2,8 @@
 // rest (docs/notes/signer-app.md, decision 3): the device's own screen lock protects it.
 //
 // Stores:
-//   device     "this": the member's owner, this device's number, seed and key, the gas key
+//   device     "this": the member's owner, this device's number, seed and key, the gas key, and which
+//              derivation made them (KEYS; a record without it is from a build before ERC-8499)
 //   certs      device certificates this device holds, per chain (signed by the member key)
 //   trees      key trees: where they belong, the salt (secret), the root, the public cache
 //   uses       the key log: one record per one-time key used, unique per (chain, Safe, root, key)
@@ -22,8 +23,21 @@ export type Hex = `0x${string}`
 export const DB_NAME = 'winterlock'
 export const DB_VERSION = 2
 
+/** The derivation this build's keys follow: ERC-8499 (core: derive::erc8499), since 2026-11-14. */
+export const KEYS = 'erc-8499'
+
+/** The last build before ERC-8499, which still opens the Safes of devices it set up. */
+export const EARLIER_BUILD = {
+  commit: '494703c',
+  cid: 'bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja',
+  url: 'https://bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja.ipfs.inbrowser.link/',
+} as const
+
 export interface DeviceRecord {
   id: 'this'
+  /** KEYS. Absent in a record of an earlier build, whose keys came from the phrase's entropy under Keccak labels: this
+   * build neither makes nor uses those. */
+  keys?: typeof KEYS
   owner: Hex
   memberKey: Hex
   gasKey: Hex

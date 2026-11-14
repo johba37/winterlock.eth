@@ -158,9 +158,16 @@ def _check_device(device: int):
         raise ValueError(f"devices are numbered 0 to {MAX_DEVICE}")
 
 
+def tree_place_digest(chain_id: int, owner: str, safe: str, device: int, generation: int, start: int) -> bytes:
+    """keccak256(abi.encode(TREE_SEED_DOMAIN, chain, owner, safe, device, generation, start)): where a tree belongs.
+    Its first 16 bytes are the tree's seed; the signer app's ERC-8499 trees take all 32 as their context
+    (erc8499.py)."""
+    return keccak256(TREE_SEED_DOMAIN + word(chain_id) + word(owner) + word(safe) + word(device) + word(generation)
+                     + word(start))
+
+
 def tree_seed(chain_id: int, owner: str, safe: str, device: int, generation: int, start: int) -> int:
-    d = keccak256(TREE_SEED_DOMAIN + word(chain_id) + word(owner) + word(safe) + word(device) + word(generation)
-                  + word(start))
+    d = tree_place_digest(chain_id, owner, safe, device, generation, start)
     return int.from_bytes(d[:16], "big")
 
 

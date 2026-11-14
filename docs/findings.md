@@ -224,7 +224,7 @@ What would it cost to verify the NIST standard itself? We wrote a [verifier][slh
 
 ## Related
 
-- The way a recovery phrase becomes these keys is proposed as a standard: [ERC-8499, Hash-Based Key Derivation from BIP-39](https://github.com/ethereum/ERCs/pull/2172) (draft). Winterlock's signer doesn't follow it yet.
+- The way a recovery phrase becomes these keys is proposed as a standard: [ERC-8499, Hash-Based Key Derivation from BIP-39](https://github.com/ethereum/ERCs/pull/2172) (draft). The signer app follows it since 14 November 2026 ([decisions.md](decisions.md), D15); the command-line signer keeps its earlier derivation.
 - [decisions.md](decisions.md): every decision and measurement, in order.
 - Notes on [messages](notes/safe-messages.md), [WalletConnect](notes/walletconnect.md), [recovery](notes/signer-recovery.md) and [owner v2](notes/owner-v2.md), which has the full design of device keys.
 

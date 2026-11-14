@@ -16,7 +16,8 @@ Home directory (default ~/.winterlock-signer, or WINTERLOCK_HOME), mode 700:
   cache/       public values only, rebuilt when missing: the stateless key's kept leaves, operation tree leaves
   move-request.json  only on a new device waiting for a move's bundle (move.py)
 
-Derivations (keccak256 of abi.encode(label, ...)):
+Derivations (keccak256 of abi.encode(label, ...)). The command line's only: the signer app follows ERC-8499 since
+2026-11-14 (erc8499.py), so the same phrase gives the app another member key and owner.
   member key       ("winterlock.signer.stateless.v1", seed) -> leanSphincs key, kept subtree of height 10.
                    Deterministic: a restored signer has the same KEY and the same owner address.
   device key       ("winterlock.signer.device-key.v1", seed) -> leanSphincs key, kept subtree of height 10
