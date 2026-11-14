@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { useApp } from '../app'
 import { type MemberSession, memberSession } from '../core/client'
 import { type DeviceRecord, EARLIER_BUILD, wipe } from '../lib/db'
-import { createDevice, pairDevice } from '../lib/flows'
+import { type PairQuestion, createDevice, pairDevice } from '../lib/flows'
 import { forgetWc } from '../lib/wc-state'
 import { isIOS, mayHoldKeys, persist } from '../lib/platform'
 import { Addr, ErrorLine, Panel, Progress, Screen, go, useAction } from '../ui'
@@ -256,8 +256,8 @@ export function Pair() {
   const [text, setText] = useState('')
   const [report, setReport] = useState<string[] | null>(null)
   const [paired, setPaired] = useState<{ device: number; owner: string } | null>(null)
-  // set while pairing waits for an answer: no account uses the phrase
-  const [ask, setAsk] = useState<((goOn: boolean) => void) | null>(null)
+  // set while pairing waits for the member: is this the owner they meant (or none at all)?
+  const [ask, setAsk] = useState<{ q: PairQuestion; answer: (goOn: boolean) => void } | null>(null)
   const area = useRef<HTMLTextAreaElement>(null)
   const act = useAction()
 
@@ -278,14 +278,17 @@ export function Pair() {
       setText('')
       if (area.current) area.current.value = ''
       try {
-        const noAccount = () =>
+        const confirm = (q: PairQuestion) =>
           new Promise<boolean>((resolve) =>
-            setAsk(() => (goOn: boolean) => {
-              setAsk(null)
-              resolve(goOn)
+            setAsk({
+              q,
+              answer: (goOn: boolean) => {
+                setAsk(null)
+                resolve(goOn)
+              },
             }),
           )
-        return await pairDevice(app.env, s, step, noAccount)
+        return await pairDevice(app.env, s, step, confirm)
       } catch (err) {
         const rep = (err as { report?: string[] }).report
         if (rep) {
@@ -358,7 +361,11 @@ export function Pair() {
         <p class="muted small">Case, numbering and commas don’t matter; the first four letters of a word are enough.</p>
         <ErrorLine error={act.error} />
         {ask ? (
-          <NoAccount answer={ask} />
+          ask.q.chains.length ? (
+            <PairOwner q={ask.q} answer={ask.answer} />
+          ) : (
+            <NoAccount answer={ask.answer} />
+          )
         ) : act.busy ? (
           <Progress step={act.step} started={act.started} />
         ) : (
@@ -371,6 +378,33 @@ export function Pair() {
       </form>
       <p class="muted small">Pairing sends one transaction from your gas account, which your phrase also gives this device.</p>
     </Screen>
+  )
+}
+
+/** Pairing found the phrase's owner: the member compares its full address before this device joins
+ * it, so that another member's phrase, typed by mistake, pairs nothing. */
+function PairOwner(props: { q: PairQuestion; answer: (goOn: boolean) => void }) {
+  const { q } = props
+  return (
+    <Panel title="Is this your owner?" testid="pair-owner">
+      <p>
+        Your phrase gives this owner, which exists on {q.chains.join(', ')}. This device would become its device{' '}
+        <span data-testid="pair-owner-device">{q.device}</span>.
+      </p>
+      <Addr value={q.owner} full testid="pair-owner-address" />
+      <p class="muted small">
+        Compare it in full with the owner on your other device’s home screen or in your Safe’s owners. If it isn’t yours, stop: these words may be another
+        member’s phrase.
+      </p>
+      <div class="actions row">
+        <button type="button" data-testid="pair-confirm" onClick={() => props.answer(true)}>
+          Pair with this owner
+        </button>
+        <button type="button" class="secondary" data-testid="pair-stop" onClick={() => props.answer(false)}>
+          Stop
+        </button>
+      </div>
+    </Panel>
   )
 }
 

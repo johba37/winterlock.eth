@@ -160,20 +160,32 @@ function gasAddressOf(gasKey: Hex): Address {
   return privateKeyToAccount(gasKey).address
 }
 
+/** What pairing found, shown to the member before the member key certifies this device. */
+export interface PairQuestion {
+  /** the owner that the phrase's member key gives: the same address on every chain */
+  owner: Address
+  /** the enabled chains where that owner exists; none when no Winterlock account uses the phrase */
+  chains: string[]
+  /** the device number this device would get */
+  device: number
+}
+
 /**
  * Pair this device from the phrase: a device key for the next free device number, certified by
  * the member key on each enabled chain, then sent from the gas account. The session ends once the
  * member key has signed.
  *
- * If no enabled chain has an owner for the phrase's member key, `noAccount` is asked whether to go
- * on (ERC-8499: warn before deriving from a phrase that may be another wallet's); without it, or
- * when it answers false, nothing is paired.
+ * Before the member key certifies anything, `confirm` is shown the owner the phrase gives and the
+ * chains where it exists, and nothing is paired unless it answers true. A phrase that no owner uses
+ * may be another wallet's (ERC-8499 asks wallets to warn before deriving from it); a phrase that
+ * finds an owner may still be another member's, typed by mistake, and the member compares the
+ * full address before this device joins it.
  */
 export async function pairDevice(
   env: Env,
   session: Session,
   step: Step,
-  noAccount?: () => Promise<boolean>,
+  confirm: (q: PairQuestion) => Promise<boolean>,
 ): Promise<{ device: DeviceRecord; report: string[] }> {
   let rec: DeviceRecord
   try {
@@ -181,22 +193,24 @@ export async function pairDevice(
     const d = await derive(session, step)
     // the device number: the lowest one that isn't active on any enabled chain
     const gens = new Map<number, number[]>()
-    let found = false
+    const found: string[] = []
     for (const c of enabledChains()) {
       step(`Reading your devices on ${c.name}`)
       const ctx = await usableCtx(env.db, env.core, c.id)
       const deployed = await ownerDeployed(ctx, env.core, d.owner, d.memberKey)
-      found ||= deployed
+      if (deployed) found.push(c.name)
       const states = []
       for (let n = 1; n <= MAX_DEVICE; n++) states.push(deployed ? await readDevice(ctx, d.owner, n) : { key: '0x' as Hex, generation: 0, active: false })
       gens.set(c.id, states.map((s) => (s.active ? -1 : s.generation)))
     }
-    if (!found && !(await noAccount?.())) throw new Error('Nothing was paired: no Winterlock account uses this phrase.')
     let device = 0
     for (let n = 1; n <= MAX_DEVICE && !device; n++) {
       if ([...gens.values()].every((g) => g[n - 1] >= 0)) device = n
     }
     if (!device) throw new Error('All three device numbers are in use. Revoke a device you no longer use (Devices), then pair this one.')
+    if (!(await confirm({ owner: d.owner, chains: found, device }))) {
+      throw new Error(found.length ? 'Nothing was paired.' : 'Nothing was paired: no Winterlock account uses this phrase.')
+    }
     const k = await newDeviceKey(env, step)
     const out: CertRecord[] = []
     for (const c of enabledChains()) {
