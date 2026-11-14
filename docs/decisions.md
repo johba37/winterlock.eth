@@ -1730,6 +1730,7 @@ Item 6 of [notes/signer-app.md](notes/signer-app.md), transactions first. The qu
   - **Natively:** the board's flows, the 658 power cuts and the Python vectors (`board_vectors.py`, now through erc8499.py) pass, and clippy is clean. The firmware's release checks pass (a 415,328-byte image).
   - **In QEMU** (`qemu_flows.py`, the test image, checked against erc8499.py): every flow passed in four runs, in 39 to 62 s, the first enrolment after an unlock taking 7.6 to 11.0 s. One earlier run, while the host was busy with other builds, got no answer to that enrolment within 600 s, and the board printed nothing. Not explained; QEMU's two cores are emulated, so it is one to watch on the chip.
   - **Not measured:** PBKDF2's time on the chip at unlock (QEMU's timing isn't the chip's).
+- **The app with a board** (board-app): the virtual board, the board's own logic in WebAssembly, follows by itself and grows from 269,755 to 306,130 bytes. The app's 69 unit tests pass, and on anvil `board.spec.ts`, `device-local.spec.ts`, `keys.spec.ts`, `walletconnect-board.spec.ts` and `walletconnect.spec.ts` pass together (23 tests); in one earlier run on the busy host `walletconnect.spec.ts`'s first test timed out on its way to Settings, and it passed alone and in the full rerun. A board record carries no derivation marker: no board has been set up, and a virtual board's stored seed from before gives another member key, which the board reports as damaged storage.
 
 ## Integration notes: Kernel v3.3
 
