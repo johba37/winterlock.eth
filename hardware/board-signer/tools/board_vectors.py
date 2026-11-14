@@ -4,8 +4,9 @@ them byte for byte: the seed from both sides' randomness, its words, member key,
 value; a key tree enrolled from a known salt and its certificate; and confirmations of an ETH transfer, a second version
 at the same nonce (a USDC transfer), an approveHash of a parent Safe's transaction, and a call that isn't decoded.
 
-The board's own labels (the seed, the PIN) are computed here with the signer's abi.encode helper, so the Python side
-states them too. Every input is a fixed public test value.
+The keys follow ERC-8499 as the signer app derives them (erc8499.py; decisions.md, D15): the root of the seed's words,
+the member key, the tree's secret seed and the gas key. The board's own labels (the seed, the PIN) are computed here with
+the signer's abi.encode helper, so the Python side states them too. Every input is a fixed public test value.
 
 usage: signer/.venv/bin/python -I hardware/board-signer/tools/board_vectors.py [OUT]
 """
@@ -17,7 +18,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 sys.path.insert(0, os.path.join(ROOT, "signer"))
 
-from winterlock_signer import leansphincs, member, owner, phrase, safe, wots  # noqa: E402
+from winterlock_signer import erc8499, leansphincs, member, owner, phrase, safe, wots  # noqa: E402
 from winterlock_signer.abi import b2h, checksum  # noqa: E402
 from winterlock_signer.keccak import keccak256  # noqa: E402
 
@@ -26,7 +27,6 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(HERE), 
 
 SEED_LABEL = b"winterlock.board.seed.v1"
 PIN_LABEL = b"winterlock.board.pin.v1"
-GAS_LABEL = b"winterlock.app.gas.v1"
 CHAIN = 42161
 USDC = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"  # Circle's USDC on Arbitrum One (the board's token list)
 
@@ -49,7 +49,8 @@ def main():
     board_random, app_random = k("board vectors: board randomness"), k("board vectors: app randomness")
     seed = member._abi_label(SEED_LABEL, board_random, app_random)
     words = phrase.to_phrase(seed)
-    key = member.stateless_key(seed)
+    root = erc8499.phrase_root(seed)
+    key = erc8499.stateless_key(root)
     owner_addr = owner.owner_address(key.public_key)
     pin = [2, 0, 2, 6]
     pin_salt = k("board vectors: PIN salt")
@@ -62,9 +63,7 @@ def main():
     tree_salt = k("board vectors: tree salt")
     rec = {"chain": CHAIN, "owner": owner_addr, "safe": safe_addr, "device": 0, "gen": 0, "start": start,
            "salt": b2h(tree_salt)}
-    m = member.Member.__new__(member.Member)
-    m._seed_value = seed
-    sk = m._tree_sk_seed(rec)
+    sk = erc8499.tree_secret_seed(root, rec, 10)
     tseed = owner.tree_seed(CHAIN, owner_addr, safe_addr, 0, 0, start)
     tree = wots.Tree.create(tseed, sk, 10, workers=1)
     digest = owner.certificate_digest(CHAIN, owner_addr, safe_addr, 0, 0, tree.root, 10, start)
@@ -99,9 +98,10 @@ def main():
     out = {
         "board_random": b2h(board_random), "app_random": b2h(app_random), "seed": b2h(seed),
         "words": " ".join(words), "member_key": b2h(key.public_key), "owner": owner_addr,
-        "gas_key": b2h(member._abi_label(GAS_LABEL, seed)),
+        "root": b2h(root), "gas_key": b2h(erc8499.gas_key(root)),
         "pin": pin, "pin_salt": b2h(pin_salt), "pin_check": b2h(pin_check),
-        "chain": CHAIN, "safe": safe_addr, "start": start, "tree_salt": b2h(tree_salt), "root": b2h(tree.root),
+        "chain": CHAIN, "safe": safe_addr, "start": start, "tree_salt": b2h(tree_salt), "tree_root": b2h(tree.root),
+        "tree_sk_seed": b2h(sk),
         "certificate_digest": b2h(digest), "certificate": b2h(cert), "transactions": txs,
     }
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

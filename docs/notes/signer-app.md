@@ -144,7 +144,7 @@ A flash partition holds the seed, the PIN's check value and its try count, each 
 
 - **Nothing online holds a key** but the gas account. A compromised computer or a bad build of the app can't sign. It can only ask the board, which shows what it computed itself. Transactions it can't decode are signed blind, after a second confirmation.
 - **No secure element.** Whoever holds the board and knows the PIN signs as the member. Without the PIN, a thief can still read the flash, and published fault-injection attacks read keys out of early ESP32 revisions even with flash encryption. The round's boards don't use flash encryption: it can't be undone and it complicates updates. A stolen board means a member replacement, as a leaked phrase does. Fine for play money, not more.
-- **The derivation sits in one place,** so it can change before the round without touching the rest.
+- **The derivation sits in one place,** so it can change before the round without touching the rest. It did: since 2026-11-14 the board's keys follow ERC-8499, as the app's (decisions.md, D15).
 - **The ESP32 accelerates SHA-256, not keccak.** Changing the hash changes the contracts (D9), so it stays a last resort.
 
 ## Decisions

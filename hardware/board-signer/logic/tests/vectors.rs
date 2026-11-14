@@ -99,7 +99,7 @@ fn the_board_matches_the_python_signer() {
     bd.platform.queue.extend(b(&v["tree_salt"]));
     confirm(&mut bd);
     let e = parse_enrolled(&answer(&bd, 3).expect("enrolled").payload);
-    assert_eq!(e.root, a::<24>(&v["root"]), "the tree's root");
+    assert_eq!(e.root, a::<24>(&v["tree_root"]), "the tree's root");
     assert_eq!(hex::encode0x(&e.sig), v["certificate"].as_str().unwrap(), "the certificate's stateless signature");
     bd.button(Right);
 
