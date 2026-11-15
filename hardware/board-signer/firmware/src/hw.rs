@@ -169,6 +169,23 @@ pub fn entropy_source_fix() {
     }
 }
 
+/// Test builds: waits until UART0 has sent what esp-println put in its transmit FIFO. Taking the
+/// UART (`Uart::new`) empties that FIFO, which cut the start-up lines on the first wired board
+/// (2026-11-15: the `rng:` and `display:` lines lost, and a few stale bytes sent instead). At
+/// 115200 baud the 128-byte FIFO empties in 11 ms; this gives up after 50 ms.
+#[cfg(feature = "log")]
+pub fn serial_drain() {
+    let start = esp_hal::time::Instant::now();
+    // SAFETY: reads of UART0's status register; nothing else uses UART0 yet
+    let status = || unsafe { (*esp32::UART0::ptr()).status().read() };
+    while start.elapsed() < esp_hal::time::Duration::from_millis(50) {
+        let st = status();
+        if st.txfifo_cnt().bits() == 0 && st.st_utx_out().bits() == 0 {
+            break;
+        }
+    }
+}
+
 /// Whether the I2S0 clock is on (for the start-up report).
 #[cfg(feature = "log")]
 pub fn i2s0_clock_on() -> bool {

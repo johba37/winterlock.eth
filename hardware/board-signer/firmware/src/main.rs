@@ -114,7 +114,10 @@ fn main() -> ! {
     };
     log!("display: {:?}", display.address);
 
-    // the serial link: UART0 through the board's USB serial chip
+    // the serial link: UART0 through the board's USB serial chip (taking it empties its FIFO: the
+    // test build's lines above go out first)
+    #[cfg(feature = "log")]
+    hw::serial_drain();
     let uart = match Uart::new(p.UART0, UartConfig::default()) {
         Ok(u) => u.with_rx(p.GPIO3).with_tx(p.GPIO1),
         Err(_) => halt(&mut display, "Serial failed", &["The USB serial port", "didn't start."]),

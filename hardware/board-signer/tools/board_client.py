@@ -177,6 +177,7 @@ class Board:
         self.events = []
         self.next_id = 1
         self.log = log
+        self.dropped = set()  # ids of short requests asked again: their late answers are dropped
 
     def close(self):
         self.link.close()
@@ -198,6 +199,8 @@ class Board:
             while (f := self.d.next()) is not None:
                 if f.ty == EV_BOOTED:
                     self.events.append(f)
+                elif f.id in self.dropped:
+                    self.dropped.discard(f.id)
                 else:
                     self.frames.append(f)
                 got = True
@@ -213,17 +216,23 @@ class Board:
         self.link.write(encode(ty, ident, payload))
         return ident
 
+    def _take(self, idents):
+        """The answer to one of `idents`, if it came (raised if it is an error)."""
+        for f in self.frames:
+            if f.id in idents:
+                self.frames.remove(f)
+                if f.ty == A_ERROR:
+                    code = f.payload[0]
+                    text, _ = _text(f.payload, 1)
+                    raise BoardError(code, text)
+                return f
+        return None
+
     def wait(self, ident: int, timeout=60.0) -> Frame:
         end = time.time() + timeout
         while True:
-            for f in self.frames:
-                if f.id == ident:
-                    self.frames.remove(f)
-                    if f.ty == A_ERROR:
-                        code = f.payload[0]
-                        text, _ = _text(f.payload, 1)
-                        raise BoardError(code, text)
-                    return f
+            if (f := self._take((ident,))) is not None:
+                return f
             left = end - time.time()
             if left <= 0:
                 raise TimeoutError(f"no answer to request {ident} in {timeout} s")
@@ -231,6 +240,30 @@ class Board:
 
     def call(self, ty, payload=b"", timeout=60.0) -> Frame:
         return self.wait(self.send(ty, payload), timeout)
+
+    def short(self, ty, payload=b"", timeout=60.0, every=4.0) -> Frame:
+        """A request that only reads, or cancels, so asking again is safe: asked again with a new id
+        after `every` seconds without an answer, and at once after BOOTED, until `timeout`. Opening
+        the serial port restarts most boards (their auto-reset circuit), so the first request can go
+        out while the board boots and be lost (the first wired board, 2026-11-15); the app's client
+        asks again too."""
+        end = time.time() + timeout
+        idents = []
+        while True:
+            idents.append(self.send(ty, payload))
+            booted = len(self.events)
+            again = min(end, time.time() + every)
+            while True:
+                if (f := self._take(idents)) is not None:
+                    self.dropped.update(i for i in idents if i != f.id)
+                    return f
+                now = time.time()
+                if now >= end:
+                    self.dropped.update(idents)
+                    raise TimeoutError(f"no answer to request {idents[-1]} in {timeout} s (asked {len(idents)} times)")
+                if now >= again or len(self.events) > booted:
+                    break
+                self._pump(min(again - now, 0.5))
 
     def wait_booted(self, timeout=60.0):
         end = time.time() + timeout
@@ -257,7 +290,7 @@ class Board:
                 "stateless_signatures": stateless}
 
     def status(self) -> dict:
-        return self.parse_status(self.call(STATUS).payload)
+        return self.parse_status(self.short(STATUS).payload)
 
     def setup(self, app_random: bytes) -> int:
         """Starts a setup; the member goes through it on the board. Returns the request id: wait() for it."""
@@ -273,10 +306,10 @@ class Board:
         return {"member_key": p[:32], "owner": p[32:52], "recovered": p[52] == 1}
 
     def gas_key(self) -> bytes:
-        return self.call(GAS_KEY).payload
+        return self.short(GAS_KEY).payload
 
     def trees(self) -> list:
-        p = self.call(TREES).payload
+        p = self.short(TREES).payload
         (n,) = struct.unpack(">H", p[:2])
         out, at = [], 2
         for _ in range(n):
@@ -319,7 +352,7 @@ class Board:
         return {"slot": slot, "key_index": key_index, "hash": h, "data": p[43:43 + n]}
 
     def cancel(self):
-        return self.call(CANCEL)
+        return self.short(CANCEL)
 
     # --- test builds only ---
 
