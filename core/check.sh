@@ -3,7 +3,7 @@
 # under Node, and a no_std build for the classic ESP32. Each test run reads the Python vectors.
 #
 # Needs: the wasm32-unknown-unknown target, wasm-bindgen-cli of the same version as the
-# wasm-bindgen crate in Cargo.lock (it provides wasm-bindgen-test-runner), Node, and espup's
+# wasm-bindgen crate in the workspace's Cargo.lock (../Cargo.lock; it provides wasm-bindgen-test-runner), Node, and espup's
 # Xtensa toolchain (`. ~/export-esp.sh`, done here if the file exists).
 set -euo pipefail
 cd "$(dirname "$0")"

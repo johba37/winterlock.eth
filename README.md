@@ -51,6 +51,7 @@ This repository also holds the landing page published at winterlock.eth: a singl
 | `signer/` | A minimal command-line signer for Safe members (Python) |
 | `core/` | The signer's cryptography and key rules in `no_std` Rust, for the browser and an ESP32 board, tested against the Python signer's vectors |
 | `core-wasm/` | The core's WebAssembly bindings for the app |
+| `Cargo.toml` | The Rust workspace of `core/`, `core-wasm/` and the board's `logic/` and `wasm/`: one `Cargo.lock` and `target/` at the root, and the app's WebAssembly the same in any folder |
 | `app/` | The signer app: a browser app for members who don't use a terminal, on the core in WebAssembly (Sepolia; see `app/README.md`) |
 | `hardware/` | ESP32 firmware: a keccak256 benchmark, and a check of the Rust core on the board |
 

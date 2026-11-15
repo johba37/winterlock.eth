@@ -1,3 +1,5 @@
 # Claude Code worktrees of this repository (local only)
 .claude/
 __pycache__/
+# Cargo's builds: the workspace's at the root (Cargo.toml), the other crates' next to them
+target/

@@ -124,7 +124,7 @@ ipfs add -r -n -Q --cid-version=1 dist
 
 A clean rebuild in the same folder gave the same hash, and a build in another folder a different one; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130, Node 24.14.0 and kubo 0.43.1.
 
-**From the next published build on,** the folder doesn't matter: `scripts/build-wasm.sh` maps the checkout's root to `/winterlock` and cargo's home to `/cargo` in the core's paths, and wasm-bindgen drops the core's debug `name` section, whose function names carry cargo's hashes of the folder. Two clean builds of main in different folders gave the same hash. Those hashes can still order the code differently: the virtual board's WebAssembly, which isn't published, differs between the two folders that way. So a publish compares builds from two folders.
+**From the next published build on,** the folder doesn't matter. The Rust crates the app builds (`core/`, `core-wasm/`, the board's `logic/` and `wasm/`) are one Cargo workspace rooted at the repository's root (`Cargo.toml`), so cargo hashes their paths from the root, not the folder, into the symbols' names and the order of the code, and their source paths read `core/src/…`; `scripts/build-wasm.sh` maps the checkout's root to `/winterlock` and cargo's home to `/cargo` for any other path. Two clean builds in different folders gave the same `dist/` and hash, and both WebAssembly files, the core's with its function names and the virtual board's, the same in every section.
 
 The site's storage belongs to its origin. Serving the app from another address gives an empty app, without the device keys stored at `app.winterlock.eth.limo`.
 
