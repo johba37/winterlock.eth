@@ -1,0 +1,39 @@
+ets Jun  8 2016 00:22:57
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0040,len:6072
+load:0x40078000,len:15776
+load:0x40080400,len:3920
+entry 0x40080638
+I (27) boot: ESP-IDF v6.1-829-g9a97f6c54ec 2nd stage bootloader
+I (27) boot: chip revision: v1.0
+I (27) boot.esp32: SPI Speed      : 40MHz
+I (29) boot.esp32: SPI Mode       : DIO
+I (33) boot.esp32: SPI Flash Size : 4MB
+I (36) boot: Partition Table:
+I (39) boot: ## Label            Usage          Type ST Offset   Length
+I (45) boot:  0 factory          factory app      00 00 00010000 00100000
+I (52) boot:  1 signer           Unknown data     01 06 00110000 002f0000
+I (58) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=03994h ( 14740) map
+I (71) esp_image: segment 1: paddr=000139bc vaddr=3ffb0000 size=01330h (  4912) load
+I (75) esp_image: segment 2: paddr=00014cf4 vaddr=40080000 size=015e4h (  5604) load
+I (83) esp_image: segment 3: paddr=000162e0 vaddr=00000000 size=09d38h ( 40248) 
+I (102) esp_image: segment 4: paddr=00020020 vaddr=400d0020 size=11c7ch ( 72828) map
+I (129) boot: Loaded app from partition at offset 0x10000
+
+winterlock bring-up 0.1.0: no key, no signing, no flash writes
+oled: answers at 0x3c
+left (GPIO32): high at start: push button to GND, or nothing wired (signer build: default)
+right (GPIO33): high at start: push button to GND, or nothing wired (signer build: default)
+BOOT (GPIO0): high at start (high while not pressed)
+entropy source (for the esp-hal report):
+  after esp_hal::init:        PERIP_CLK_EN 0xf900600f (I2S0 clock 0, I2C0 clock 0), PERIP_RST_EN 0x00000000 (I2S0 reset 0, I2C0 reset 0), I2S0 CONF2 0x00000020, SAMPLE_RATE_CONF 0x00410186
+  after TrngSource::new:      PERIP_CLK_EN 0xf900608f (I2S0 clock 0, I2C0 clock 1), PERIP_RST_EN 0x00000000 (I2S0 reset 0, I2C0 reset 0), I2S0 CONF2 0x00000020, SAMPLE_RATE_CONF 0x00410186
+  after the signer's fix:     PERIP_CLK_EN 0xf900609f (I2S0 clock 1, I2C0 clock 1), PERIP_RST_EN 0x00000000 (I2S0 reset 0, I2C0 reset 0), I2S0 CONF2 0x00000039, SAMPLE_RATE_CONF 0x00410506
+type a line and Enter: the board echoes it and shows it
+up 5 s | left up   0 | right up   0 | BOOT up   0 | 0 bytes received
+echo: screen ok?
+up 10 s | left up   0 | right up   0 | BOOT up   0 | 12 bytes received

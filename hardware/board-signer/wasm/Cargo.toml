@@ -1,0 +1,22 @@
+[package]
+name         = "winterlock-board-wasm"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.88"
+description  = "The virtual board: winterlock-board (the board signer's logic) in WebAssembly for the signer app, with its flash in memory and its randomness from crypto.getRandomValues. Thin wrappers, no logic of their own."
+license      = "MIT"
+publish      = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+winterlock-board = { path = "../logic" }
+embedded-storage = "0.3"
+# the same version as the wasm-bindgen CLI that generates the JavaScript glue (app/scripts/build-wasm.sh)
+wasm-bindgen     = "=0.2.130"
+
+[profile.release]
+codegen-units = 1
+lto           = "fat"
+opt-level     = 3

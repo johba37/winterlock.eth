@@ -9,6 +9,7 @@
 
 import {
   type Address,
+  BaseError,
   type PublicClient,
   type TransactionReceipt,
   createPublicClient,
@@ -42,6 +43,7 @@ export const OWNER_ABI = parseAbi([
 
 export const FACTORY_ABI = parseAbi([
   'function deploy(bytes32 key) returns (address owner)',
+  'function deployAndEnroll(bytes32 key, address safe, bytes32 root, uint8 height, uint64 start, bytes signature) returns (address owner)',
   'function predict(bytes32 key) view returns (address)',
   'function IMPLEMENTATION() view returns (address)',
 ])
@@ -156,6 +158,25 @@ export async function ownerDeployed(ctx: Ctx, core: Core, owner: Address, member
   return true
 }
 
+/** Whether `address` holds a Winterlock owner contract: a v2 proxy of the pinned implementation. */
+export async function isOwnerContract(ctx: Ctx, core: Core, address: Address): Promise<boolean> {
+  const code = await ctx.client.getCode({ address })
+  if (!code || code === '0x') return false
+  return !!(await core.call<Uint8Array | null>('memberKeyOf', { address: hexToBytes(address), code: hexToBytes(code) }))
+}
+
+/** Why the Safe's own call (not its execTransaction) fails at the latest block, if it does: a
+ * recipient that refuses ETH, a balance too small. Only a warning: a transaction queued before it
+ * can change that. */
+export async function safeCallFails(ctx: Ctx, safe: Address, call: { to: Address; value: bigint; data: Hex }): Promise<string | null> {
+  try {
+    await ctx.client.call({ account: safe, to: call.to, value: call.value, data: call.data })
+    return null
+  } catch (e) {
+    return short(e)
+  }
+}
+
 export async function isValidSignature(ctx: Ctx, owner: Address, hash: Hex, data: Uint8Array): Promise<boolean> {
   try {
     const r = await ctx.client.readContract({ address: owner, abi: OWNER_ABI, functionName: 'isValidSignature', args: [hash, toHex(data)] })
@@ -174,14 +195,14 @@ export interface SafeState {
   version: string
 }
 
-export async function safeState(ctx: Ctx, safe: Address): Promise<SafeState> {
-  const code = await ctx.client.getCode({ address: safe })
+export async function safeState(ctx: Ctx, safe: Address, blockNumber?: bigint): Promise<SafeState> {
+  const code = await ctx.client.getCode({ address: safe, blockNumber })
   if (!code || code === '0x') throw new Error(`There is no Safe at ${safe} on ${ctx.chain.name}.`)
   const [nonce, threshold, owners, version] = await Promise.all([
-    ctx.client.readContract({ address: safe, abi: SAFE_ABI, functionName: 'nonce' }),
-    ctx.client.readContract({ address: safe, abi: SAFE_ABI, functionName: 'getThreshold' }),
-    ctx.client.readContract({ address: safe, abi: SAFE_ABI, functionName: 'getOwners' }),
-    ctx.client.readContract({ address: safe, abi: SAFE_ABI, functionName: 'VERSION' }).catch(() => '?'),
+    ctx.client.readContract({ address: safe, abi: SAFE_ABI, functionName: 'nonce', blockNumber }),
+    ctx.client.readContract({ address: safe, abi: SAFE_ABI, functionName: 'getThreshold', blockNumber }),
+    ctx.client.readContract({ address: safe, abi: SAFE_ABI, functionName: 'getOwners', blockNumber }),
+    ctx.client.readContract({ address: safe, abi: SAFE_ABI, functionName: 'VERSION', blockNumber }).catch(() => '?'),
   ])
   return { nonce: Number(nonce), threshold: Number(threshold), owners: owners.map((o) => getAddress(o)), version }
 }
@@ -198,10 +219,6 @@ export interface Sent {
   gasLimit: bigint
 }
 
-/**
- * Signs and sends a transaction from the gas account and waits for its receipt; throws if it
- * reverts. The caller dry-runs it with eth_call first, as the Python signer does.
- */
 /**
  * A read for the check after a transaction, at the block that mined it. A public endpoint can
  * spread requests over several nodes, and one that hasn't reached that block yet answers a read
@@ -223,6 +240,43 @@ export async function afterTx<T>(receipt: { blockNumber: bigint }, read: (blockN
   throw last
 }
 
+/** Per chain, the newest block that mined a transaction this app sent. */
+const mined = new Map<number, bigint>()
+
+/** Remembers that `block` mined one of this app's transactions: later views read no older state. */
+export function sawMined(chainId: number, block: bigint) {
+  if (block > (mined.get(chainId) ?? 0n)) mined.set(chainId, block)
+}
+
+/**
+ * A view's reads: of the latest state, but never of a block older than one that mined a
+ * transaction this app sent. A node behind the others answers "latest" with the state from before
+ * that transaction: on the first wired board (2026-11-15) the Key tree panel, refreshed right after
+ * an enrolment, saw no owner contract and offered to enrol again, and the second tree pushed the
+ * start nonce past the Safe's. After such a transaction, `read` gets a block number (the newest
+ * the node reports, or the mining block if that is newer) and is tried again while the node
+ * refuses it, for up to about 30 s. An error that isn't the endpoint's (one of ours, thrown in
+ * `read`) isn't tried again.
+ */
+export async function readFresh<T>(ctx: Ctx, read: (blockNumber?: bigint) => Promise<T>, tries = 15, waitMs = 2000): Promise<T> {
+  const floor = mined.get(ctx.chain.id)
+  if (floor === undefined) return read()
+  const head = await ctx.client.getBlockNumber({ cacheTime: 0 })
+  const at = head > floor ? head : floor
+  for (let i = 0; ; i++) {
+    try {
+      return await read(at)
+    } catch (e) {
+      if (!(e instanceof BaseError) || i + 1 >= tries) throw e
+      await new Promise((r) => setTimeout(r, waitMs))
+    }
+  }
+}
+
+/**
+ * Signs and sends a transaction from the gas account and waits for its receipt; throws if it
+ * reverts. The caller dry-runs it with eth_call first, as the Python signer does.
+ */
 export async function sendFromGas(
   ctx: Ctx,
   gasKey: Hex,
@@ -266,6 +320,7 @@ export async function sendFromGas(
   const hash = await ctx.client.sendRawTransaction({ serializedTransaction: raw })
   opts.onSent?.(hash)
   const receipt = await ctx.client.waitForTransactionReceipt({ hash, pollingInterval: ctx.chain.id === 42161 ? 1000 : 3000, timeout: 600_000 })
+  sawMined(ctx.chain.id, receipt.blockNumber)
   if (receipt.status !== 'success') throw new Error(`The transaction reverted: ${hash}`)
   return { hash, receipt, gasLimit: gas }
 }

@@ -3,7 +3,8 @@
 //
 // Stores:
 //   device     "this": the member's owner, this device's number, seed and key, the gas key, and which
-//              derivation made them (KEYS; a record without it is from a build before ERC-8499)
+//              derivation made them (KEYS; a record without it is from a build before ERC-8499); or,
+//              with a board, the board's member key and owner and the gas key it gave
 //   certs      device certificates this device holds, per chain (signed by the member key)
 //   trees      key trees: where they belong, the salt (secret), the root, the public cache
 //   uses       the key log: one record per one-time key used, unique per (chain, Safe, root, key)
@@ -48,6 +49,33 @@ export interface DeviceRecord {
   keptLeaves: Hex
   how: 'create' | 'pair'
   createdAt: number
+}
+
+/** With a board (docs/notes/signer-app.md, decision 7): the board holds the member key, its key
+ * trees and their key log; the app holds the gas key the board gave it and what is public. */
+export interface BoardRecord {
+  id: 'this'
+  kind: 'board'
+  /** how the app reaches it: USB (Web Serial) or the virtual board in this browser */
+  link: 'serial' | 'virtual'
+  owner: Hex
+  memberKey: Hex
+  gasKey: Hex
+  gasAddress: Hex
+  /** set up or recovered on the board while the app watched, or already set up */
+  how: 'setup' | 'recover' | 'existing'
+  createdAt: number
+}
+
+/** A tree certificate the board signed, kept until the gas account has sent it. */
+export interface PendingEnrolment {
+  chain: number
+  safe: Hex
+  start: number
+  height: number
+  root: Hex
+  signature: Hex
+  at: number
 }
 
 export interface CertRecord {
@@ -230,7 +258,22 @@ export async function remove(db: IDBDatabase, store: string, key: IDBValidKey): 
 
 // --- typed helpers ---
 
-export const getDevice = (db: IDBDatabase) => get<DeviceRecord>(db, 'device', 'this')
+/** This browser's device (without a board); undefined with a board. */
+export async function getDevice(db: IDBDatabase): Promise<DeviceRecord | undefined> {
+  const r = await get<DeviceRecord | BoardRecord>(db, 'device', 'this')
+  return r && (r as BoardRecord).kind !== 'board' ? (r as DeviceRecord) : undefined
+}
+
+/** The member's board, if the app uses one. */
+export async function getBoard(db: IDBDatabase): Promise<BoardRecord | undefined> {
+  const r = await get<DeviceRecord | BoardRecord>(db, 'device', 'this')
+  return r && (r as BoardRecord).kind === 'board' ? (r as BoardRecord) : undefined
+}
+
+/** Whether the app holds a device or a board. */
+export async function hasMember(db: IDBDatabase): Promise<boolean> {
+  return (await get(db, 'device', 'this')) !== undefined
+}
 
 export const certs = (db: IDBDatabase) => all<CertRecord>(db, 'certs')
 

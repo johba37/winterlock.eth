@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# Builds the core's WebAssembly bindings (core-wasm/) into src/wasm/ for the app and its tests.
-# Needs the wasm32-unknown-unknown target and wasm-bindgen-cli 0.2.130, the version core-wasm pins.
-# FEATURES=sha3 builds with RustCrypto's Keccak-f instead of tiny-keccak.
+# Builds the WebAssembly the app runs into src/wasm/:
+#   core.js, core_bg.wasm     the core's bindings (core-wasm/)
+#   board.js, board_bg.wasm   the virtual board: the board signer's logic (hardware/board-signer/wasm/)
+# Needs the wasm32-unknown-unknown target and wasm-bindgen-cli 0.2.130, the version both crates pin.
+# FEATURES=sha3 builds the core with RustCrypto's Keccak-f instead of tiny-keccak.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
-crate="$here/../core-wasm"
 want="0.2.130"
 have="$(wasm-bindgen --version | awk '{print $2}')"
 if [ "$have" != "$want" ]; then
@@ -15,7 +16,13 @@ features=()
 if [ -n "${FEATURES:-}" ]; then
   features=(--no-default-features --features "$FEATURES")
 fi
+crate="$here/../core-wasm"
 (cd "$crate" && cargo build --quiet --release --target wasm32-unknown-unknown "${features[@]}")
 wasm-bindgen --target web --out-dir "$here/src/wasm" --out-name core \
   "$crate/target/wasm32-unknown-unknown/release/winterlock_core_wasm.wasm"
 echo "built src/wasm/core_bg.wasm: $(wc -c < "$here/src/wasm/core_bg.wasm") bytes"
+board="$here/../hardware/board-signer/wasm"
+(cd "$board" && cargo build --quiet --release --target wasm32-unknown-unknown)
+wasm-bindgen --target web --out-dir "$here/src/wasm" --out-name board \
+  "$board/target/wasm32-unknown-unknown/release/winterlock_board_wasm.wasm"
+echo "built src/wasm/board_bg.wasm: $(wc -c < "$here/src/wasm/board_bg.wasm") bytes"

@@ -1,7 +1,7 @@
 // What the app does, step by step, following the Python signer (cli.py, cli_devices.py) where it
 // has a counterpart. Screens call these; they report progress through `step`.
 
-import { type Address, encodeFunctionData, getAddress, hexToBytes, isAddress, keccak256, padHex, toHex } from 'viem'
+import { type Address, BaseError, encodeFunctionData, getAddress, hexToBytes, isAddress, keccak256, padHex, toHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { CHAINS, chainById, enabledChains } from './chains'
 import {
@@ -12,9 +12,11 @@ import {
   type SafeState,
   factoryAddress,
   executionResult,
+  isOwnerContract,
   isValidSignature,
   ownerDeployed,
   readDevice,
+  readFresh,
   readTree,
   safeState,
   sendFromGas,
@@ -31,7 +33,7 @@ import {
   KEYS,
   certs,
   get,
-  getDevice,
+  hasMember,
   putSafe,
   putTree,
   treeId,
@@ -40,11 +42,13 @@ import {
 } from './db'
 import { type Core, Refused, recordThenSign } from './keylog'
 import {
+  type Decoded,
   ERC20_ABI,
   MULTISEND,
   SAFE_ABI,
   type SafeTx,
   batchCalls,
+  cancelTx,
   contractSignature,
   decode,
   encodeForCore,
@@ -56,7 +60,7 @@ import {
   signatureDevice,
   stripMetadata,
 } from './safe'
-import { Service, type ServiceTx, writerFor } from './service'
+import { Service, ServiceError, type ServiceTx, writerFor } from './service'
 import { sources, staleLogCheck } from './stale'
 
 export interface Env {
@@ -128,7 +132,7 @@ async function certifyWithMemberKey(env: Env, session: Session, chain: number, d
  */
 export async function createDevice(env: Env, session: Session, step: Step): Promise<DeviceRecord> {
   try {
-    if (await getDevice(env.db)) throw new Error('This browser already holds a device.')
+    if (await hasMember(env.db)) throw new Error('This browser already holds a device or a board.')
     const [d, k] = await Promise.all([derive(session, step), newDeviceKey(env, step)])
     const out: CertRecord[] = []
     for (const c of enabledChains()) {
@@ -189,7 +193,7 @@ export async function pairDevice(
 ): Promise<{ device: DeviceRecord; report: string[] }> {
   let rec: DeviceRecord
   try {
-    if (await getDevice(env.db)) throw new Error('This browser already holds a device.')
+    if (await hasMember(env.db)) throw new Error('This browser already holds a device or a board.')
     const d = await derive(session, step)
     // the device number: the lowest one that isn't active on any enabled chain
     const gens = new Map<number, number[]>()
@@ -354,18 +358,24 @@ export interface SafeView {
 /** Where this member stands with a Safe: owner or not, the device, the key tree and its nonces. */
 export async function safeView(env: Env, dev: DeviceRecord, chainId: number, safe: Address): Promise<SafeView> {
   const ctx = await usableCtx(env.db, env.core, chainId)
-  const state = await safeState(ctx, safe)
-  const isOwner = state.owners.some((o) => o.toLowerCase() === dev.owner.toLowerCase())
   const device = await deviceState(env, dev, ctx)
-  let tree: TreeRecord | null = null
-  let treeProblem: string | undefined
-  if (device.kind === 'active') {
-    try {
-      tree = await signingTree(env, dev, ctx, safe, device.generation)
-    } catch (e) {
-      treeProblem = (e as Error).message
+  // the Safe and the tree at one block, never before a transaction this app saw mined (readFresh)
+  const { state, tree, treeProblem } = await readFresh(ctx, async (b) => {
+    const state = await safeState(ctx, safe, b)
+    let tree: TreeRecord | null = null
+    let treeProblem: string | undefined
+    if (device.kind === 'active') {
+      try {
+        tree = await signingTree(env, dev, ctx, safe, device.generation, b)
+      } catch (e) {
+        // the endpoint's errors: asked again, or shown as the view's (not as a missing tree)
+        if (e instanceof BaseError) throw e
+        treeProblem = (e as Error).message
+      }
     }
-  }
+    return { state, tree, treeProblem }
+  })
+  const isOwner = state.owners.some((o) => o.toLowerCase() === dev.owner.toLowerCase())
   const view: SafeView = { ctx, state, isOwner, device, tree, treeProblem }
   if (tree) {
     view.capacity = 2 ** (tree.height - 1)
@@ -375,8 +385,8 @@ export async function safeView(env: Env, dev: DeviceRecord, chainId: number, saf
 }
 
 /** The key log's tree enrolled on-chain for this device and Safe (cli.py's signing_tree). */
-export async function signingTree(env: Env, dev: DeviceRecord, ctx: Ctx, safe: Address, generation: number): Promise<TreeRecord> {
-  const onchain = await readTree(ctx, dev.owner, safe, dev.device)
+export async function signingTree(env: Env, dev: DeviceRecord, ctx: Ctx, safe: Address, generation: number, blockNumber?: bigint): Promise<TreeRecord> {
+  const onchain = await readTree(ctx, dev.owner, safe, dev.device, blockNumber)
   const mine = (await treesFor(env.db, ctx.chain.id, safe)).filter((t) => t.device === dev.device)
   if (!onchain.root) throw new Refused('No key tree is enrolled for this device on this Safe yet: enrol one.')
   if (onchain.generation !== generation) throw new Refused('The key tree enrolled for this device is from before it was certified again: enrol a fresh one.')
@@ -400,8 +410,7 @@ export async function signingTree(env: Env, dev: DeviceRecord, ctx: Ctx, safe: A
 export async function enrol(env: Env, dev: DeviceRecord, chainId: number, safe: Address, step: Step, height = TREE_HEIGHT): Promise<{ tree: TreeRecord; hash: Hex; gasUsed: bigint }> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   const gen = await requireActive(env, dev, ctx)
-  const state = await safeState(ctx, safe)
-  const onchain = await readTree(ctx, dev.owner, safe, dev.device)
+  const { state, onchain } = await readFresh(ctx, async (b) => ({ state: await safeState(ctx, safe, b), onchain: await readTree(ctx, dev.owner, safe, dev.device, b) }))
   const sameGen = onchain.root !== null && onchain.generation === gen
   const mine = (await treesFor(env.db, chainId, safe)).filter((t) => t.device === dev.device && t.generation === gen)
   if (sameGen && !mine.some((t) => t.root.toLowerCase() === onchain.root!.toLowerCase())) {
@@ -411,6 +420,11 @@ export async function enrol(env: Env, dev: DeviceRecord, chainId: number, safe: 
   }
   let tree = mine.filter((t) => !sameGen || t.start > onchain.start).at(-1)
   if (!tree) {
+    // the owner contract takes a new tree only from a later start: while the enrolled one is
+    // unused, another would leave nonces this device can't sign (needlessEnrolment)
+    if (sameGen && onchain.start >= state.nonce) {
+      throw new Refused(`This device’s key tree for this Safe is enrolled (nonces ${onchain.start} to ${onchain.start + 2 ** (onchain.height - 1) - 1}), and none of its nonces is used yet: there’s nothing to enrol.`)
+    }
     const start = Math.max(state.nonce, sameGen ? onchain.start + 1 : 0, ...mine.map((t) => t.start + 1))
     const salt = crypto.getRandomValues(new Uint8Array(32))
     step('Making a key tree for this Safe')
@@ -483,7 +497,7 @@ export async function safeTxHash(core: Core, chainId: number, safe: Address, tx:
 }
 
 /** The Safe's pending transactions from Safe's service, each decoded and its hash checked here. */
-export async function queue(env: Env, dev: DeviceRecord, chainId: number, safe: Address, fromNonce: number): Promise<QueueItem[]> {
+export async function queue(env: Env, dev: { owner: Hex }, chainId: number, safe: Address, fromNonce: number): Promise<QueueItem[]> {
   const items = await service(chainId).pending(safe, fromNonce)
   const out: QueueItem[] = []
   for (const s of items) {
@@ -524,6 +538,43 @@ export async function checkMultiSend(ctx: Ctx): Promise<void> {
   }
 }
 
+/** Where a decoded transaction sends ETH (or makes an empty call) and tokens. */
+export function payees(d: Decoded): { to: Address; what: 'eth' | 'token' }[] {
+  switch (d.kind) {
+    case 'eth':
+      return [{ to: d.to, what: 'eth' }]
+    case 'erc20':
+      return [{ to: d.to, what: 'token' }]
+    case 'raw':
+      return d.value > 0n ? [{ to: d.to, what: 'eth' }] : []
+    case 'batch':
+      return d.calls.flatMap((c) => payees(c.decoding.decoded))
+    default:
+      return []
+  }
+}
+
+/**
+ * Refuses a transaction that sends ETH or tokens to a Winterlock owner contract, the member's own
+ * or another member's (a Safe's owners are often both). It has no receive, fallback or payable
+ * function, so ETH sent to it reverts the Safe's whole transaction, which then can never execute;
+ * and it can't move tokens, which would stay there for good. The first wired board signed 0.01 ETH
+ * to its own owner contract (2026-11-15): a valid signature on a transaction that could never run,
+ * and one of the nonce's two keys spent on it.
+ */
+export async function refusePaymentToOwner(env: Env, ctx: Ctx, safe: Address, tx: SafeTx, own: Address): Promise<void> {
+  for (const p of payees(decode(tx, safe).decoded)) {
+    const mine = p.to.toLowerCase() === own.toLowerCase()
+    if (!mine && !(await isOwnerContract(ctx, env.core, p.to))) continue
+    const whose = mine ? 'your owner contract' : 'another member’s Winterlock owner contract'
+    throw new Refused(
+      p.what === 'eth'
+        ? `This sends ETH to ${p.to}, ${whose}. It can’t receive ETH, so the transaction could never execute. To send ETH to yourself, use an ordinary account of yours, not your owner address.`
+        : `This sends tokens to ${p.to}, ${whose}. It can’t move them, so they would stay there for good. To send tokens to yourself, use an ordinary account of yours, not your owner address.`,
+    )
+  }
+}
+
 /** The checks before a one-time signature (cli.py's prepare), then the stale-log check. */
 async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Address, tx: SafeTx, step: Step, expect?: Hex): Promise<Prepared> {
   const ctx = await usableCtx(env.db, env.core, chainId)
@@ -540,6 +591,7 @@ async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Addre
     args: [tx.to, tx.value, tx.data, tx.operation, tx.safeTxGas, tx.baseGas, tx.gasPrice, tx.gasToken, tx.refundReceiver, tx.nonce],
   })
   if (onchain.toLowerCase() !== hash.toLowerCase()) throw new Refused(`The Safe computes ${onchain} for these fields, not ${hash}: refusing.`)
+  await refusePaymentToOwner(env, ctx, safe, tx, dev.owner)
   // a batch, from a dapp or from the queue, shows as its calls: the code it delegatecalls must be
   // the MultiSendCallOnly those calls were decoded for
   if (batchCalls(tx)) {
@@ -570,6 +622,40 @@ async function sign(env: Env, dev: DeviceRecord, p: Prepared, tx: SafeTx, step: 
 export async function nextNonce(chainId: number, safe: Address, safeNonce: number, also: number[] = []): Promise<number> {
   const pending = await service(chainId).pending(safe, safeNonce)
   return Math.max(safeNonce, ...pending.map((p) => Number(p.nonce) + 1), ...also.filter((n) => n >= safeNonce).map((n) => n + 1))
+}
+
+/** Whether Safe's service holds a transaction with this SafeTx hash. */
+export async function serviceHas(chainId: number, hash: Hex): Promise<boolean> {
+  try {
+    await service(chainId).transaction(hash)
+    return true
+  } catch (e) {
+    if (e instanceof ServiceError && e.status === 404) return false
+    throw e
+  }
+}
+
+/** What a reject did: the cancel's SafeTx hash, and whether it was proposed here or confirmed. */
+export interface Rejected extends Proposed {
+  confirmed: boolean
+}
+
+/**
+ * Rejects the transactions at `nonce` (Safe's app's Reject): a cancel there (cancelTx), proposed
+ * to Safe's service, or confirmed if the service has it already (the same fields give the same
+ * hash). The key log gives the nonce's key: the second if this device signed another version at
+ * that nonce. Executed, the cancel uses up the nonce. The app proposes only at the next free nonce
+ * otherwise, so without this a member needed Safe's app to replace a transaction (the first wired
+ * board's nonce 4, 2026-11-15).
+ */
+export async function reject(env: Env, dev: DeviceRecord, chainId: number, safe: Address, nonce: number, step: Step): Promise<Rejected> {
+  const tx = cancelTx(safe, BigInt(nonce))
+  const hash = await safeTxHash(env.core, chainId, safe, tx)
+  if (await serviceHas(chainId, hash)) {
+    const r = await confirm(env, dev, chainId, safe, hash, step)
+    return { hash, nonce, slot: r.slot ?? -1, note: r.note, confirmed: true }
+  }
+  return { ...(await proposeTx(env, dev, chainId, safe, tx, step)), confirmed: false }
 }
 
 export interface Transfer {
@@ -637,7 +723,7 @@ export async function confirm(env: Env, dev: DeviceRecord, chainId: number, safe
  * owner's first confirmation (get_or_create), so after a revoke or a fresh tree it may keep one
  * that no longer counts. Then this device keeps the new signature and uses it when it executes.
  */
-async function keptCheck(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, sig: Hex): Promise<string | undefined> {
+export async function keptCheck(env: Env, dev: { owner: Hex }, chainId: number, safe: Address, hash: Hex, sig: Hex): Promise<string | undefined> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   for (let i = 0; i < 3; i++) {
     const rec = await service(chainId).transaction(hash).catch(() => null)
@@ -704,7 +790,7 @@ export async function collect(env: Env, chainId: number, safe: Address, hash: He
 
 /** Execute a fully confirmed transaction, paid by the gas account (cli.py's execute). `onSent` gets
  * the transaction's hash once it is sent, before it is mined. */
-export async function execute(env: Env, dev: DeviceRecord, chainId: number, safe: Address, hash: Hex, step: Step, onSent?: (tx: Hex) => void): Promise<{ tx: Hex; gasUsed: bigint }> {
+export async function execute(env: Env, dev: { gasKey: Hex; gasAddress: Hex }, chainId: number, safe: Address, hash: Hex, step: Step, onSent?: (tx: Hex) => void): Promise<{ tx: Hex; gasUsed: bigint }> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   step('Fetching the proposal and its confirmations')
   const rec = await service(chainId).transaction(hash)

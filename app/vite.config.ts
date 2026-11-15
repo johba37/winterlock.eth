@@ -33,7 +33,7 @@ function csp(): Plugin {
   }
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   // Development only: SAFE_API_KEY from the environment, added by the dev server's proxy for
   // writes to Safe's service when VITE_SERVICE_PROXY=/safe-service is set. Never bundled: the
   // key stays in this Node process and only the dev server's proxy sees it.
@@ -42,6 +42,8 @@ export default defineConfig(({ mode }) => {
   return {
     base: './',
     plugins: [preact(), csp()],
+    // the virtual board: the dev server and the tests only, unless VIRTUAL_BOARD=1 (src/board/dev.d.ts)
+    define: { __VIRTUAL_BOARD__: JSON.stringify(command === 'serve' || mode === 'test' || process.env.VIRTUAL_BOARD === '1') },
     resolve: {
       // WalletKit's payments client (api.pay.walletconnect.com, with its own WebAssembly) stays out
       alias: { '@walletconnect/pay': fileURLToPath(new URL('src/lib/wc-pay-stub.ts', import.meta.url)) },

@@ -130,11 +130,18 @@ export async function noteExecution(db: IDBDatabase, hash: Hex, tx: Hex) {
 /** The SDK's module, loaded on first use. */
 export const wcModule = () => import('./walletconnect')
 
+/** What dapps may ask for with a board: no batches, since the board refuses delegate calls. The
+ * reason goes to the dapp. */
+export const BOARD_MODE = { batches: false, noBatches: "batches aren't supported: this member signs on a board, which refuses delegate calls; send one call at a time" }
+
+/** The signer's mode for WalletConnect: a board takes no batches. */
+export const wcMode = (board: boolean) => (board ? BOARD_MODE : { batches: true })
+
 /** Starts WalletConnect if this browser had a session before (a setting the module keeps), so a
  * dapp's requests reach the app after a reload. */
-export async function resumeWc(env: Env) {
+export async function resumeWc(env: Env, board = false) {
   if (!PROJECT_ID || !(await setting<boolean>(env.db, 'wc:on'))) return
-  await (await wcModule()).start(env)
+  await (await wcModule()).start(env, wcMode(board))
 }
 
 /** Before "forget this device": ends every session and drops the SDK's storage. */

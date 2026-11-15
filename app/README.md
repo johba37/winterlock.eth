@@ -10,25 +10,42 @@ The signer without a terminal: a browser app for members of a Safe whose owners 
 - **Pair this device:** the member types the phrase on another browser or phone. The app makes a key for the next free device number, certifies it with the member key, sends the certificate and forgets the phrase.
 - **Join a Safe:** shows the owner address and the steps for the Safe's owners in Safe's app. The app doesn't create Safes.
 - **Enrol:** a key tree per Safe and chain, height 10 (512 one-time keys, two per nonce).
-- **Transactions:** the Safe's queue from Safe's Transaction Service, decoded (ETH, ERC-20 transfers, anything else marked raw); confirm; propose an ETH or ERC-20 transfer; execute once confirmed.
+- **Transactions:** the Safe's queue from Safe's Transaction Service, decoded (ETH, ERC-20 transfers, anything else marked raw); confirm; propose an ETH or ERC-20 transfer; reject a pending one (a cancel at its nonce, 0 ETH from the Safe to itself, as Safe's app makes it; confirmed instead if it exists already), signed with the nonce's other one-time key; execute once confirmed. ETH or tokens to a Winterlock owner contract are refused before anything is signed: it can't receive ETH or move tokens.
 - **Dapps over WalletConnect** (transactions): paste a dapp's `wc:` link on a Safe's dapps screen, and the dapp sees the Safe as its account. Each transaction or batch it asks for shows decoded; on a confirm the app proposes it with this device's confirmation, and the dapp gets the SafeTx hash, then the execution's receipt and status. With threshold 1 the app executes it at once, and a transaction's answer is the execution's hash. Message requests are refused.
 - **Revoke a device,** with the phrase.
 - **Settings:** the RPC URL per chain, the gas account with its balance and a QR code.
 
 One gas account per member, derived from the phrase, pays for everything on-chain: the owner contract, certificates, key trees and executions.
 
-**Keys follow [ERC-8499](https://github.com/ethereum/ERCs/pull/2172)** (Hash-Based Key Derivation from BIP-39, a draft) since 14 November 2026: the member key and the gas key come from the phrase's BIP-39 seed, a device's key and key trees from its own random root (decisions.md, D15). The same 24 words give another member key and owner than in the builds before, which the app no longer uses: a device that one of them set up is told so and linked to the last of them, build `494703c`. Pairing shows the owner the phrase gives, in full, and goes on only when the member confirms it; when no owner uses the phrase, it warns instead.
+**Keys follow [ERC-8499](https://github.com/ethereum/ERCs/pull/2172)** (Hash-Based Key Derivation from BIP-39, a draft) since 14 November 2026: the member key and the gas key come from the phrase's BIP-39 seed, a device's key and key trees from its own random root (decisions.md, D15). The same 24 words give another member key and owner than in the builds before, which the app no longer uses: a device that one of them set up is told so and linked to the last of them, build `494703c`. Pairing shows the owner the phrase gives, in full, and goes on only when the member confirms it; when no owner uses the phrase, it warns instead. A board derives its keys the same way, on the board.
+
+## With a board
+
+In the round, the board is each member's only device (docs/notes/signer-app.md, decision 7): it holds the member key (device 0), its key trees and their key log, and signs every enrolment and confirmation after showing it. The app talks to it over USB and holds no key but the gas account's, which the board gives it after an unlock. The app without a board stays the development path and the fallback.
+
+- **Use a board** (on the welcome screen): connect it by USB, or start the virtual board (development builds only). A blank board is set up on the board (the app adds 32 random bytes to its seed) or recovered on it from the 24 words; a board that is set up is taken as it is. The app checks the owner address against the member key and keeps the gas key the board gives (`GAS_KEY`).
+- **A locked board:** the app says to enter the PIN on the board, and reads its status every 1.5 s until it is unlocked.
+- **Enrol:** the board makes a key tree for the Safe and signs its certificate once the member confirms on it; the app checks the certificate with the core and sends it from the gas account. The first enrolment on a chain creates the owner contract with it (`deployAndEnroll`). A certificate the board signed is kept until it is sent.
+- **Confirm and propose:** the app checks the Safe, the hash (here and by the Safe) and the tree enrolled on-chain, then sends the fields to the board, never a hash. For an `approveHash` on a parent Safe, it fetches the parent's transaction from Safe's service and sends its fields along; the board checks them. The app checks the board's signature with the owner contract before it posts it. Long requests show what to do on the board and can be cancelled; once the member has confirmed on the board, the board finishes.
+- **Reject** as without a board: the board shows the cancel ("Cancel", the nonce it uses up) and signs it with the nonce's other key.
+- **Execute** as without a board, paid by the gas account.
+- **Dapps** over WalletConnect: a dapp's transaction goes to the board, which shows it and signs on confirm, as for a transfer. A dapp's batch is refused with the reason: the board refuses delegate calls.
+- **Not with a board:** device pairing and revoking, the stale-log check (the key log is the board's own), and messages.
+
+**The link** (`src/board/`): one transport interface with two implementations. **Web Serial** (`serial.ts`, Chrome, Edge and Brave on a computer, up to date: Brave 1.80 lost the port as it opened, 1.99 works): the chooser lists the usual USB serial chips (CP2102 `10c4:ea60`, CH340 `1a86:7523`, CH9102 `1a86:55d4`, FTDI `0403:6001`), or every port on request; 115200 baud; DTR and RTS low; an unplugged port's link closes, and when the same port comes back the app opens it again. **The virtual board** (`virtual.ts`): the board's own logic (`hardware/board-signer/logic`) in WebAssembly (`hardware/board-signer/wasm`) in a worker, its flash in IndexedDB, its randomness from `crypto.getRandomValues`. The client (`client.ts`) speaks PROTOCOL.md: frames found among the bootloader's text by the magic and both CRCs, an id per request, BOOTED (the board restarted: what it was doing is dropped), no timeout on the requests that wait for the member, retries on the short ones.
+
+**The virtual board** is a development board whose keys live in the browser, and the page labels it so. Only the dev server, the tests and a build with `VIRTUAL_BOARD=1` have it: `npm run build` leaves it out, its WebAssembly and worker included (decided 2026-11-11). The page draws its 128×64 screen and its buttons (keys: ← and →, ↓ or B for both held) and can restart it. Its flash is saved sector by sector in a strict-durability IndexedDB transaction after each request or button press, and only then does what the board sent reach the app, so a signature never leaves before its key log record is stored. One virtual board runs per browser profile: its worker holds a Web Lock, and a second tab's board doesn't start. It runs without the test hooks.
 
 ## Run
 
 ```sh
 cd app
 npm ci
-npm run wasm        # builds core-wasm/ into src/wasm/ (needs the wasm32 target and wasm-bindgen-cli 0.2.130)
+npm run wasm        # builds core-wasm/ and the virtual board into src/wasm/ (needs the wasm32 target and wasm-bindgen-cli 0.2.130)
 npm run dev         # http://localhost:5173
 ```
 
-The core's bindings are in `core-wasm/`, a separate crate, so `core/` stays `no_std` and free of wasm-bindgen.
+The core's bindings are in `core-wasm/`, a separate crate, so `core/` stays `no_std` and free of wasm-bindgen. The virtual board's are in `hardware/board-signer/wasm/` for the same reason.
 
 Dapps need a WalletConnect project ID (cloud.reown.com, free) at build time: `VITE_WALLETCONNECT_PROJECT_ID=... npm run dev`, or the same before `npm run build`. Without one, the dapps screen says so. A published build contains the ID, as every dapp's does.
 
@@ -40,7 +57,22 @@ npm run typecheck
 npx playwright test e2e/bench.spec.ts    # the core's timings in Chromium's worker
 ```
 
-The unit tests cover the Python vectors through the app's encodings, the key log store (record, then sign), two and three tabs racing for one key, the stale-log check against a copied browser, and what the app answers dapps (`test/dapp.test.ts`).
+The unit tests cover the Python vectors through the app's encodings, the key log store (record, then sign), two and three tabs racing for one key, the stale-log check against a copied browser, and what the app answers dapps (`test/dapp.test.ts`). With a board: the link's frames, CRCs and payloads against the Python client's (`hardware/board-signer/tools/frame_vectors.py`), and the virtual board through the board client in whole flows, every output checked with the core (`test/board.test.ts`).
+
+**With a board, on a local chain** (anvil with Sepolia's chain id, the contracts at their pinned addresses, a stand-in for Safe's service; spends nothing):
+
+```sh
+WINTERLOCK_PYTHON=../signer/.venv/bin/python E2E_PORT=5291 npx playwright test e2e/board.spec.ts
+QEMU=.../qemu-system-xtensa BOARD_TEST_IMAGE=.../winterlock-board-test-qemu.bin \
+WINTERLOCK_PYTHON=../signer/.venv/bin/python E2E_PORT=5291 npx playwright test e2e/serial.spec.ts
+```
+
+- `board.spec.ts`: the virtual board in Chromium, through the app's screens and the board's drawn screen and buttons.
+- `serial.spec.ts`: the app's Web Serial code against the firmware's test image in QEMU. A stand-in for `navigator.serial` in the page (`e2e/fake-serial.js`) bridges its port to QEMU's TCP serial port; the test presses the board's buttons with the test image's hooks on the same port.
+- `device-local.spec.ts`: the app without a board, on the same local chain.
+- `walletconnect-board.spec.ts`: a dapp with the virtual board: its transaction signed on the board, its batch refused. Needs `WINTERLOCK_ENV_FILE` with `WALLETCONNECT_PROJECT_ID`, as below.
+
+**With the virtual board, live on Sepolia** (as the live run above, from the same `.env`; stops past 0.03 ETH): `E2E_DIR=... WINTERLOCK_ENV_FILE=... npx playwright test e2e/live-board.spec.ts`. A Safe made by script whose ECDSA test owner adds the board's owner with threshold 2; the board and that owner each propose a transfer the other confirms.
 
 **WalletConnect on a local chain** (spends nothing; needs anvil, the Python signer's virtualenv and Reown's live relay):
 

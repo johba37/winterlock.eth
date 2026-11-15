@@ -8,7 +8,7 @@ The Python signer's cryptography and key rules in Rust, `no_std` with `alloc`, f
 |---|---|---|
 | `keccak` | keccak256: a small sponge over Keccak-f[1600] from `tiny-keccak` (default) or RustCrypto (`sha3` feature: the `keccak` crate that `sha3` is built on). With both features, `set_backend` picks one at run time. `count` counts permutations. | `keccak.py` |
 | `phrase` | 24 BIP-39 words ↔ the 32-byte seed (entropy, SHA-256 checksum), the forgiving parser and its named errors, the pairing check code | `phrase.py`, `member.check_code` |
-| `leansphincs` | pruned keys (b = 10 for members and devices), leaves over any range, a key from leaves, sign, verify | `leansphincs.py` |
+| `leansphincs` | pruned keys (b = 10 for members and devices), leaves over any range, a key from leaves, sign, verify; a signature in parts (randomizer candidates and FORS trees over any split, then `finish`) for a board's two cores | `leansphincs.py` |
 | `wots` | D6: leaves over any range, trees and paths, the cache format, `verify_root`, signing only from a key log record | `wots.py` |
 | `derive` | the member key, device keys, tree secret seeds, the gas key: under ERC-8499 (`derive::erc8499`, the signer app's since 2026-11-14; feature `hbkd`), and the command-line signer's earlier derivation | `erc8499.py`, `member.py` |
 | `hbkd` | ERC-8499 (Hash-Based Key Derivation from BIP-39): BIP-39's seed, the root, stateless and stateful seeds, application secrets, SLH-DSA seeds (feature `hbkd`, on by default) | `hbkd.py` |

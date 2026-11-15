@@ -266,6 +266,12 @@ export function multiSendData(calls: Call[]): Hex {
 }
 
 /** A batch's SafeTx: a delegatecall to MultiSendCallOnly. */
+/** A cancel at `nonce`: 0 ETH from the Safe to itself, no data, as Safe's app's Reject makes it.
+ * Executed, it uses up the nonce, so no other transaction at that nonce can execute. */
+export function cancelTx(safe: Address, nonce: bigint): SafeTx {
+  return safeTx({ to: safe, nonce })
+}
+
 export function batchTx(calls: Call[], nonce: bigint): SafeTx {
   return safeTx({ to: MULTISEND.address, data: multiSendData(calls), operation: 1, nonce })
 }
@@ -304,6 +310,7 @@ export type Decoded =
   | { kind: 'allowance'; token: Address; spender: Address; amount: bigint }
   | { kind: 'batch'; calls: { call: Call; decoding: Decoding }[] }
   | { kind: 'self'; what: string; to: Address; value: bigint; data: Hex }
+  | { kind: 'approve'; to: Address; hash: Hex }
   | { kind: 'raw'; to: Address; value: bigint; data: Hex; selector: Hex }
 
 export const MAX_UINT256 = 2n ** 256n - 1n
@@ -372,6 +379,11 @@ export function decode(t: SafeTx, safe: Address): Decoding {
     } catch {
       /* not a transfer or an allowance */
     }
+  }
+  if (!self && t.operation === 0 && t.value === 0n && size(t.data) === 36 && t.data.slice(0, 10).toLowerCase() === '0xd4d9bdcd') {
+    // approveHash(bytes32) on another Safe: this Safe approves one of that Safe's transactions
+    warnings.push('This approves a transaction of another Safe: check that one too')
+    return { decoded: { kind: 'approve', to: t.to, hash: `0x${t.data.slice(10)}` as Hex }, warnings }
   }
   if (self) {
     try {

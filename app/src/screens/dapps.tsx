@@ -4,14 +4,16 @@
 
 import { useEffect, useState } from 'preact/hooks'
 import type { Address } from 'viem'
-import { useApp, useDevice } from '../app'
+import { useApp, useMember } from '../app'
+import { link } from '../board/link'
 import { ctxFor, safeState } from '../lib/chain'
 import { chainById } from '../lib/chains'
 import { type DappInfo, txFor } from '../lib/dapp'
 import { type DappTxRecord, all } from '../lib/db'
+import { boardProposeTx } from '../lib/board-flows'
 import { execute, proposeTx } from '../lib/flows'
 import { decode, tokensOf } from '../lib/safe'
-import { type DappDone, type DappProposal, type DappRequest, PROJECT_ID, noteExecution, useWc, wcModule } from '../lib/wc-state'
+import { type DappDone, type DappProposal, type DappRequest, PROJECT_ID, noteExecution, useWc, wcMode, wcModule } from '../lib/wc-state'
 import { ErrorLine, Explorer, Panel, Progress, Screen, useAction } from '../ui'
 import { Describe, useTokens } from './safe'
 
@@ -59,7 +61,7 @@ export function DappsScreen(props: { chain: number; safe: Address }) {
   const here = (x: { chain: number; safe: Address }) => same(x, props.chain, props.safe)
 
   useEffect(() => {
-    if (PROJECT_ID) wcModule().then((m) => m.start(app.env).catch(() => {}))
+    if (PROJECT_ID) wcModule().then((m) => m.start(app.env, wcMode(!!app.board)).catch(() => {}))
   }, [])
   useEffect(() => {
     all<DappTxRecord>(app.env.db, 'dapp').then((rows) => setGiven(rows.filter(here).sort((a, b) => b.at - a.at)))
@@ -173,13 +175,13 @@ export function DappsScreen(props: { chain: number; safe: Address }) {
 }
 
 function ProposalCard(props: { p: DappProposal; chain: number; safe: Address }) {
-  const dev = useDevice()
+  const member = useMember()
   const act = useAction()
   const c = chainById(props.chain)
   async function approve() {
     await act.run(async (step) => {
       step('Connecting the dapp')
-      await (await wcModule()).approve(props.p.id, dev.owner, { chain: props.chain, safe: props.safe })
+      await (await wcModule()).approve(props.p.id, member.owner, { chain: props.chain, safe: props.safe })
       return true
     })
   }
@@ -212,7 +214,8 @@ function ProposalCard(props: { p: DappProposal; chain: number; safe: Address }) 
 
 function RequestCard(props: { r: DappRequest; now: number }) {
   const app = useApp()
-  const dev = useDevice()
+  const member = useMember()
+  const board = app.board
   const act = useAction()
   const r = props.r
   const { tokens, want } = useTokens(r.chain)
@@ -230,11 +233,13 @@ function RequestCard(props: { r: DappRequest; now: number }) {
   }, [r.id])
   const expired = r.expired || (r.expiry !== undefined && props.now >= r.expiry)
   async function confirm() {
-    await act.run(async (step) =>
+    // a board shows the transaction and signs on its own confirm; this browser's device signs here.
+    // Either way the gas account executes at once when the confirmation is enough (threshold 1).
+    await act.run(async (step, signal) =>
       (await wcModule()).confirmRequest(
         r.id,
-        (chain, safe, tx, s) => proposeTx(app.env, dev, chain, safe, tx, s),
-        (chain, safe, hash, s, onSent) => execute(app.env, dev, chain, safe, hash, s, onSent),
+        (chain, safe, tx, s) => (board ? boardProposeTx(app.env, board, link.need(), chain, safe, tx, s, { signal }) : proposeTx(app.env, app.device!, chain, safe, tx, s)),
+        (chain, safe, hash, s, onSent) => execute(app.env, member, chain, safe, hash, s, onSent),
         step,
       ),
     )
@@ -258,6 +263,7 @@ function RequestCard(props: { r: DappRequest; now: number }) {
         <p class="muted small">
           From the Safe <code>{r.safe}</code> on {chainById(r.chain).name}, at the Safe’s next free nonce, with no refund fields ({r.method}).
         </p>
+        {board && <p class="small">The board shows this transaction itself and signs it once you confirm there.</p>}
         {threshold === 1 && (
           <p class="small" data-testid="wc-at-once">
             Your confirmation is enough (threshold 1): unless an earlier transaction waits in the queue, the app executes it right away, paid by your gas account
@@ -279,12 +285,12 @@ function RequestCard(props: { r: DappRequest; now: number }) {
       </div>
       <ErrorLine error={act.error} />
       {act.busy || r.busy ? (
-        <Progress step={act.step} started={act.started} />
+        <Progress step={act.step} started={act.started} onCancel={board ? act.cancel : undefined} />
       ) : (
         <div class="actions row">
           {!expired && (
             <button type="button" data-testid="wc-confirm" onClick={confirm}>
-              {threshold === 1 ? 'Sign and execute' : 'Sign and propose'}
+              {board ? (threshold === 1 ? 'Sign on the board and execute' : 'Sign on the board and propose') : threshold === 1 ? 'Sign and execute' : 'Sign and propose'}
             </button>
           )}
           <button type="button" class="secondary" data-testid="wc-refuse" onClick={refuse}>
@@ -298,13 +304,13 @@ function RequestCard(props: { r: DappRequest; now: number }) {
 
 function DoneCard(props: { d: DappDone }) {
   const app = useApp()
-  const dev = useDevice()
+  const member = useMember()
   const act = useAction()
   const d = props.d
   const c = chainById(d.chain)
   async function doExecute() {
     await act.run(async (step) => {
-      const r = await execute(app.env, dev, d.chain, d.safe, d.hash, step)
+      const r = await execute(app.env, member, d.chain, d.safe, d.hash, step)
       await noteExecution(app.env.db, d.hash, r.tx)
       return r
     })

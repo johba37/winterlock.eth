@@ -318,3 +318,16 @@ describe('storage', () => {
     expect(await setting(db, 'rpc:11155111')).toBe('https://example.org')
   })
 })
+
+describe('with a board', () => {
+  it('takes one call but refuses a batch with the reason, and says so in its capabilities', async () => {
+    const { BOARD_MODE, wcMode } = await import('../src/lib/wc-state')
+    const board = { chain: CHAIN, safe: SAFE, ...wcMode(true) }
+    expect(wcMode(false)).toEqual({ batches: true })
+    expect(plan('wallet_sendCalls', [{ calls: [{ to: A, value: '0x1' }] }], undefined, board)).toMatchObject({ kind: 'tx', calls: [{ to: A, value: 1n }] })
+    fails(() => plan('wallet_sendCalls', [{ calls: [{ to: A }, { to: B }] }], undefined, board), CODE.rejected, /board, which refuses delegate calls/)
+    expect(BOARD_MODE.noBatches).toMatch(/one call at a time/)
+    expect(plan('wallet_getCapabilities', [SAFE], undefined, board)).toEqual({ kind: 'answer', result: { '0xaa36a7': { atomicBatch: { supported: false }, atomic: { status: 'unsupported' } } } })
+    expect(JSON.parse(sessionProperties(CHAIN, SAFE, false).atomic)).toEqual({ status: 'unsupported' })
+  })
+})

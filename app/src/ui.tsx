@@ -92,7 +92,7 @@ export interface StepState {
   total?: number
 }
 
-export function Progress(props: { step: StepState | null; started?: number }) {
+export function Progress(props: { step: StepState | null; started?: number; onCancel?: () => void }) {
   const [, tick] = useState(0)
   useEffect(() => {
     const t = setInterval(() => tick((x) => x + 1), 500)
@@ -112,31 +112,44 @@ export function Progress(props: { step: StepState | null; started?: number }) {
         <div class="fill" style={{ width: pct !== undefined ? `${pct}%` : undefined }} />
       </div>
       {secs !== undefined && secs > 1 && <p class="muted small">{secs} s</p>}
+      {props.onCancel && (
+        <div class="actions row">
+          <button type="button" class="secondary" data-testid="cancel" onClick={props.onCancel}>
+            Cancel
+          </button>
+        </div>
+      )}
     </div>
   )
 }
 
-/** Runs an action with progress and an error line. */
+/** Runs an action with progress and an error line. The action gets an AbortSignal: cancel()
+ * aborts it (a board then gets CANCEL). */
 export function useAction() {
   const [step, setStep] = useState<StepState | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [started, setStarted] = useState<number | undefined>()
-  async function run<T>(f: (step: (label: string, p?: { done: number; total: number }) => void) => Promise<T>): Promise<T | undefined> {
+  const [ctl, setCtl] = useState<AbortController | null>(null)
+  async function run<T>(f: (step: (label: string, p?: { done: number; total: number }) => void, signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
     setError(null)
     setBusy(true)
     setStarted(Date.now())
+    const c = new AbortController()
+    setCtl(c)
     try {
-      return await f((label, p) => setStep({ label, done: p?.done, total: p?.total }))
+      return await f((label, p) => setStep({ label, done: p?.done, total: p?.total }), c.signal)
     } catch (e) {
       setError(short(e))
       return undefined
     } finally {
       setBusy(false)
       setStep(null)
+      setCtl(null)
     }
   }
-  return { step, error, busy, run, started, setError }
+  const cancel = () => ctl?.abort()
+  return { step, error, busy, run, started, setError, cancel }
 }
 
 export function ErrorLine(props: { error: string | null }) {
