@@ -1,6 +1,6 @@
 [package]
 name         = "winterlock-esp32-core-check"
-version      = "0.2.0"
+version      = "0.2.1"
 edition      = "2024"
 rust-version = "1.95"
 description  = "Checks winterlock-core against the Python vectors on a classic ESP32 and times the real operations"

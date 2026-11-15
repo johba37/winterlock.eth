@@ -64,7 +64,7 @@ Without a display, everything still runs and prints on serial. Each screen is al
 
 ## Flashing
 
-The image is one file, `winterlock-esp32-core-check.bin` (bootloader, partition table and app, about 470 KB). It goes at address 0x0.
+The image is one file, `winterlock-esp32-core-check.bin` (bootloader, partition table and app, about 420 KB). It goes at address 0x0.
 
 ### In the browser (Chrome or Edge)
 
@@ -107,15 +107,28 @@ The serial output at 115200 baud has the full detail. Paste back:
 These lines are from a run in QEMU, so the numbers mean nothing:
 
 ```
-RESULT winterlock-esp32-core-check 0.2.0 rev=v0.0 mhz=240 checks=PASS passed=90/90 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=10300/73912 stack1=1644/32768
-RESULT tiny-keccak perm_s=57251 key_1core_ms=3004 key_2core_ms=1824 spx_mean_ms=2431 spx_max_ms=5521 spx_verify_ms=8 h6_1core_ms=1035 h6_2core_ms=504 h10_1core_ms=15063 h10_2core_ms=8563 wots_mean_ms=51 wots_max_ms=101
-RESULT sha3 perm_s=28153 key_1core_ms=6077 key_2core_ms=3544 spx_mean_ms=3083 spx_max_ms=6943 spx_verify_ms=7 h6_1core_ms=1142 h6_2core_ms=748 h10_1core_ms=19447 h10_2core_ms=11213 wots_mean_ms=66 wots_max_ms=109
-RESULT erc8499 phrase_root_ms=323 phrase_root_max_ms=486 pbkdf2_ms=173 key_seed_us=1804 gas_key_us=1627 device_root_us=1457 tree_seed_us=944 tree_h4_ms=214
+RESULT winterlock-esp32-core-check 0.2.1 rev=v0.0 mhz=240 checks=PASS passed=90/90 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=10300/73912 stack1=1644/32768
+RESULT tiny-keccak perm_s=62572 key_1core_ms=2500 key_2core_ms=1173 spx_mean_ms=1854 spx_max_ms=4603 spx_verify_ms=4 h6_1core_ms=519 h6_2core_ms=401 h10_1core_ms=9380 h10_2core_ms=5272 wots_mean_ms=51 wots_max_ms=119
+RESULT sha3 perm_s=45968 key_1core_ms=7597 key_2core_ms=3463 spx_mean_ms=2956 spx_max_ms=6367 spx_verify_ms=6 h6_1core_ms=1060 h6_2core_ms=763 h10_1core_ms=18145 h10_2core_ms=9019 wots_mean_ms=82 wots_max_ms=128
+RESULT erc8499 phrase_root_ms=93 phrase_root_max_ms=101 pbkdf2_ms=88 key_seed_us=385 gas_key_us=194 device_root_us=135 tree_seed_us=340 tree_h4_ms=199
 ```
 
 The first line: the chip, whether all 90 checks passed, the peak heap use and both stacks' peak use (bytes). The next two, per backend: keccak256 hashes per second, then each operation in ms (`spx` is the stateless signature, `h6` and `h10` the WOTS trees, `1core` and `2core` one core and both). The last, ERC-8499: a phrase's root (mean and max) and PBKDF2 alone in ms; a stateless key's seed, the gas key, a device's root and a tree's secret seed in µs; the tree of height 4 in ms.
 
 On the display, `1c` and `2c` are one core and both; `SPX` is the stateless signature; `h6` and `h10` are the WOTS trees; times are in ms. The third page is ERC-8499's, with its units on each line.
+
+## On the board (2026-11-15)
+
+Version 0.2.0 on the same board, again without a display. All 90 checks pass.
+
+```
+RESULT winterlock-esp32-core-check 0.2.0 rev=v1.0 mhz=240 checks=PASS passed=90/90 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=10300/73912 stack1=1644/32768
+RESULT tiny-keccak perm_s=9956 key_1core_ms=23330 key_2core_ms=11718 spx_mean_ms=14006 spx_max_ms=31035 spx_verify_ms=36 h6_1core_ms=5240 h6_2core_ms=2625 h10_1core_ms=83836 h10_2core_ms=41983 wots_mean_ms=310 wots_max_ms=525
+RESULT sha3 perm_s=5120 key_1core_ms=44435 key_2core_ms=22318 spx_mean_ms=26600 spx_max_ms=58992 spx_verify_ms=68 h6_1core_ms=9933 h6_2core_ms=4973 h10_1core_ms=158917 h10_2core_ms=79556 wots_mean_ms=580 wots_max_ms=979
+RESULT erc8499 phrase_root_ms=25233 phrase_root_max_ms=25237 pbkdf2_ms=25210 key_seed_us=24711 gas_key_us=24760 device_root_us=24681 tree_seed_us=25512 tree_h4_ms=1361
+```
+
+The keccak numbers match 0.1.0's within a few percent. ERC-8499's don't match anything reasonable: a phrase's root took 25.2 s, nearly all of it PBKDF2, and each HKDF step about 25 ms. Both come to about 6 ms per SHA-512 block, at every size. The reason is the code's size: sha2's software SHA-512 unrolls its 80 rounds into one function of 48.5 KB, more than the chip's 32 KB flash cache, so each block ran from flash. QEMU doesn't model the cache, and there it took 173 ms. Since 0.2.1 the core builds sha2's compact code on the ESP32 (`core/Cargo.toml`), a loop of 3.8 KB.
 
 ## On the board (2026-11-10)
 
@@ -135,6 +148,7 @@ Not yet tried on a board: the OLED and the BOOT button.
 - **Chip revision.** esp-hal 1.2 supports ESP32 v3.0 and later, and by default it refuses older chips. This build accepts any revision (`.cargo/esp-config.toml`), as the benchmark firmware does, and prints the revision at start.
 - **The FPU** is turned on at start on both cores, as in the benchmark firmware. The core uses no floating point.
 - **The second core** is started for each two-core job and parked when it's done. If it doesn't start, the first core does its half and the check says FAIL.
+- **Code that doesn't fit the flash cache** runs at flash speed. The chip runs code from flash through a 32 KB cache; a hot function larger than that is fetched again on each pass. sha2's unrolled SHA-512 (48.5 KB) did (2026-11-15, above). `tiny_keccak::keccakf` is 2.6 KB.
 - **BOOT is GPIO0.** Holding it while pressing EN starts the chip in download mode instead of the firmware, so press it only once the start screen is up.
 
 ## Building from source
