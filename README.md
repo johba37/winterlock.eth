@@ -43,6 +43,7 @@ This repository also holds the landing page published at winterlock.eth: a singl
 | `docs/overview.md` | Winterlock in one page: how it works, numbers, what's live, terms |
 | `docs/findings.md` | What building it showed, with the numbers: cost, Safe, dapps, one-time keys, native accounts, signing times |
 | `SECURITY.md` | How to report a vulnerability privately, and what's in scope |
+| `LICENSE` | The MIT licence for Winterlock's own code and documentation |
 | `docs/decisions.md` | Design decisions, gas measurements and open questions |
 | `docs/notes/` | Longer notes, such as the message-signing options on the Safe route |
 | `docs/ux/` | The MVP proposal for teams and a clickable mockup |
@@ -220,6 +221,6 @@ Every change produces a new CID, so repeat steps 1 and 2 for each update.
 
 ## Licenses
 
-Contracts: MIT (SPDX headers in each file). Vendored code keeps its own licence files (`contracts/src/vendor/`, `contracts/test/vendor/`).
+Winterlock's own code and documentation: MIT, see [`LICENSE`](LICENSE). The contracts also carry SPDX headers. Vendored code keeps its own licence files (`contracts/src/vendor/`, `contracts/test/vendor/`).
 
 Fonts: Atkinson Hyperlegible Next and Atkinson Hyperlegible Mono, © The Atkinson Hyperlegible Next Project Authors, licensed under the SIL Open Font License 1.1 (see `fonts/OFL-*.txt`).
