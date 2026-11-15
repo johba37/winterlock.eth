@@ -62,7 +62,7 @@ Push buttons go to GND (the default build: active low, internal pull-ups). Touch
    ```sh
    git checkout board-app && cd app && npm ci && npm run wasm && npm run dev
    ```
-   Open http://localhost:5173 in Chrome or Edge, choose "Use a board", then "Connect a board by USB".
+   Open http://localhost:5173 in an up-to-date Chrome, Edge or Brave (not the Snap Store's Firefox, which sees no serial ports), choose "Use a board", then "Connect a board by USB".
 
 To build the images:
 ```sh
@@ -167,14 +167,23 @@ The app talks to the board over Web Serial, or, in development builds only, to t
 - **In Chromium** (`app/e2e/board.spec.ts`): the app's screens and the virtual board's drawn screen and buttons, on anvil with a stand-in for Safe's service.
 - **The app's Web Serial code against this firmware in QEMU** (`app/e2e/serial.spec.ts`): a stand-in for `navigator.serial` in the page bridges its port to QEMU's TCP serial port, bootloader text and all; the test presses the buttons through the test image's hooks on the same port. Setup through the app, the reset button (BOOTED on the open port, locked, the PIN), an unplug and a replug (the app opens the port again by itself), then on anvil an enrolment (`deployAndEnroll`) and a transfer signed by the firmware and executed.
 
-## Not verified until the board runs it
+## On the first wired board (2026-11-15)
 
-- the OLED, the buttons and their debouncing, and how the screens feel at 0.96 inch
-- the serial link through the CP2102 with Chrome or Edge (Web Serial) on each system, and the board's reset lines: the app sets DTR and RTS low once the port is open, as the Python client does, but how each driver toggles them on open (a reset at every connect?) shows only on the board
-- the random number generator with the ADC entropy source on the chip (QEMU can't show it)
+[`runs/2026-11-15/REPORT.md`](runs/2026-11-15/REPORT.md): an ESP32-D0WDQ6 of revision v1.0 with a CP2102, on Ubuntu.
+
+- **Works:** the OLED (at 0x3C), both push buttons (each press counted once), the serial link both ways, setup through the app in Brave 1.99 (the words, the check, the PIN), and an enrolment on Sepolia (`deployAndEnroll`, 606,041 gas).
+- **The entropy source:** the bring-up image's register dump shows esp-hal 1.2.2's `TrngSource::new` turning on I2C0's clock and leaving I2S0's off, and the signer's fix turning I2S0's on and setting it up (`I2S0 CONF2` from 0x20 to 0x39).
+- **Reset on connect:** most opens of the port restart the board (Linux raises DTR and RTS as the port opens, before the program sets them low). The app's client asks again after BOOTED; `board_client.py` now does too.
+- **Found and fixed since:** the Key tree panel, refreshed from a node one block behind, offered to enrol again after an enrolment, and the second tree started one nonce past the Safe's (the app now reads no older state than its own transactions, and refuses an enrolment while the board holds an unused tree for the Safe); the test build's first start-up lines were cut off (taking UART0 empties its FIFO: the test build now waits for it first); the browsers that work are named.
+
+## Not verified on the board yet
+
+- confirming a transaction (SIGN): transfers, approveHash with the parent's fields, an undecoded call, a refused delegate call
+- unlocking after a restart, three wrong PINs (the board erases itself), and recovery from the words
 - flash writes, erases and power cuts on the real chip (QEMU's flash model and the simulated NOR flash are what was tested)
 - the times on the chip: QEMU's say nothing about them. The core check measured 11.7 s for the member key and 42 s for a tree on both cores, and 15 s on average (32 s at most) for a stateless signature on one core; the board spreads a signature's grind and FORS trees over both cores, which should shorten it, unmeasured
-- a chip of revision v1.0 (QEMU emulates v0.0; the core check ran on v1.0)
+- the touch-button build, the release image (no diagnostics), the BOOT button in the bring-up image
+- Web Serial on Windows and macOS, and in Chrome and Edge
 
 ## Files
 

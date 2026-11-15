@@ -120,6 +120,17 @@ The app's message "use Chrome or Edge" (`serial.ts:26`) could name what works: a
 
   These numbers are recorded on that branch (`7de4366`).
 
+## Looked into afterwards (branch `board-run1-fixes`)
+
+- **The second enrolment.** The board didn't cause it: after ENROLLED it rests on a result screen and answers TREES. The owner contract takes a new tree only from a later start than the enrolled one's (`enroll`: "within a generation, start nonces only grow"), and the board only from a later one than its own last tree's for the Safe. So any enrolment while the board holds an unused tree pushes the start past the Safe's nonce. A node behind the others answering "latest" was seen on the same endpoint on 2026-11-13 (`app/test/after-tx.test.ts`). It fits the panel's refresh, though this run can't show which read was stale. Fixed in three places:
+  - The views read no state older than the block that mined the app's last transaction on that chain. They ask again while a node lacks that block (`readFresh` in `app/src/lib/chain.ts`).
+  - Enrolment refuses while the board holds a tree for the Safe none of whose nonces is used (`needlessEnrolment`), and the browser-key path does the same.
+  - The Key tree panel offers no enrolment while the board's trees are unknown. While the Safe's nonce is below the tree's first, the panel says so and names the way out.
+- **The start-up lines.** Not a restart: the log shows one boot. `Uart::new` empties UART0's transmit FIFO (esp-hal 1.2.2: "Applying config also resets Tx/Rx FIFOs"), so up to 128 bytes of esp-println's output were lost. The `k-b` in the capture is a stale piece of `winterlock-board` from the FIFO's memory. The test build now waits for the FIFO to empty before taking the UART.
+- **`board_client.py`:** STATUS, TREES, GAS_KEY and CANCEL are asked again after 4 s without an answer, and at once after BOOTED, as the app's client does.
+- **Browsers:** the app names an up-to-date Chrome, Edge or Brave. An empty chooser explains the cable, "Show all serial ports" and the Snap Store's Firefox. A port that closes within 5 s of opening says an older browser can do this.
+- **The Safe of this run:** another owner executes nonce 3; then the board signs nonces 4 to 515. The tree from nonce 3 stays in the board's storage, void.
+
 ## Files
 
 | File | What |
