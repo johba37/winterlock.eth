@@ -2,7 +2,7 @@
 
 The bring-up image, the push-button signer and the app with a board, on the first wired board. Everything in this report was built from `board-app` at `ccebaac`. Serial logs are next to this file.
 
-**Result:** the hardware works: display, both buttons, serial both ways. The signer starts blank, sets up through the app and enrols a key tree on Sepolia. Its first confirmation is accepted by the Safe's signature check on-chain. Five things came up:
+**Result:** the hardware works: display, both buttons, serial both ways. The signer starts blank, sets up through the app and enrols a key tree on Sepolia. The board signed both versions of one nonce with that nonce's two keys, and the Safe executed the second on the board's signature alone. Five things came up:
 - The app enrolled twice, so the board's tree started one nonce past the Safe's. Another owner executed that nonce.
 - The first confirmed transaction sends ETH to the board's own owner contract, which can't receive ETH, so it can't execute. Nothing warned before signing.
 - Ubuntu's Firefox snap can't see serial ports.
@@ -120,13 +120,23 @@ The app's message "use Chrome or Edge" (`serial.ts:26`) could name what works: a
 
 `eth_call` of a plain 0.01 ETH transfer from the Safe to `0x8c08…` reverts the same way.
 
-**The way out:** a second version of nonce 4 to a recipient that takes ETH, such as the ECDSA owner or the gas account, confirmed on the board. Each nonce has two one-time keys, so the board signs one more version of nonce 4 and refuses a third.
+**The way out, and the second key:** the app always proposes at the next free nonce (`nextNonce`, `app/src/lib/flows.ts`), here 5, so it can't propose a second version of nonce 4. It can confirm one proposed elsewhere (`boardConfirm`):
+1. In Safe's web app the ECDSA owner chose **Reject** on nonce 4. That made a rejection, 0 ETH from the Safe to itself (`0x99fcf517429813e7e529b641f61fae0272e3c797893d6c6bae02a6f22dea69fd`), which the ECDSA owner signed without executing.
+2. In the app the rejection showed as pending and was **confirmed on the board**.
+3. The app **executed** it: transaction `0x0e186ff9d6186a7d2bc6c570da855ebc0aeb87bff1b2fdd12617856a3bbb6f26`, block 12141485, 176,949 gas, from `0xB75FC5C6AB455c6bb8e6C6333be82F63A4fb357C`. The Safe moved to nonce 5.
+
+Checked on-chain and at Safe's service:
+- **Only the board's signature was sent:** the `signatures` argument is a single 1,855-byte contract signature for `0x8c08…`. The app sorts the valid signatures by owner and sends as many as the threshold (`execute`, `flows.ts:717`), and `0x8c08…` sorts before `0x8db6…`. So the Safe executed on the board's WOTS signature alone.
+- **The two versions used nonce 4's two keys:** the first byte of the signature data is the slot, `00` for the transfer (`0xc61a3aa1…`, never executed) and `01` for the rejection. Both signatures carry the enrolled tree's root.
+
+This is the board's first signature that went through a real execution. It also covers the key log's second version at one nonce on the chip.
 
 **Suggested fix:** neither the app nor the board's logic checks the recipient against the member's owner contract. Since an ETH transfer to it always reverts, the app should refuse to propose one, and the board should refuse or warn before signing. The board would otherwise spend one of the nonce's two keys on a transaction that can never run.
 
 ## Not tested yet
 
-- **A transaction confirmed on the board and executed:** the second version of nonce 4 (above). Then a token transfer, approveHash with the parent's fields, a call that isn't decoded, a refused delegate call.
+- **A third version at one nonce, refused** by the key log (both of nonce 4's keys are now used, so a third proposal at nonce 4 would show it).
+- **A transfer confirmed on the board and executed** at a fresh nonce (5), the plain case. Then a token transfer, approveHash with the parent's fields, a call that isn't decoded, a refused delegate call.
 - **Unlock after a restart** (the PIN), **three wrong PINs** (the board erases itself), and **recovery** from the words.
 - **Power cuts and flash wear** on the real chip.
 - **Times on the chip** for setup, enrolment and a signature (not measured this time).
