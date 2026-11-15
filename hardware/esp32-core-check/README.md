@@ -1,6 +1,6 @@
 # ESP32 core check
 
-A firmware for a classic ESP32 (an ESP32-WROOM-32 dev board) that runs Winterlock's Rust core (`core/`) on the board. It answers two questions: does the core compute the same bytes as the Python signer on this chip, and how long do the real operations take? Its keys are public test vectors: it holds nothing secret and signs nothing that counts.
+A firmware for a classic ESP32 (an ESP32-WROOM-32 dev board) that runs Winterlock's Rust core (`core/`) on the board. It answers two questions: does the core compute the same bytes as the Python signer on this chip, and how long do the real operations take, ERC-8499's key derivation included? Its keys are public test vectors: it holds nothing secret and signs nothing that counts.
 
 ## What it checks
 
@@ -15,11 +15,26 @@ The Python signer's vectors (`core/tests/vectors/board.json`, written by `signer
 - a stateless signature from Python verifies; with one byte changed it doesn't
 - a tree's secret and public seeds; a WOTS signature and path verify to the height-6 root
 
+The ERC-8499 vectors (`core/tests/vectors/erc8499.json`, written from the Python reference `signer/winterlock_signer/erc8499.py`) are built in too: the key type and gas label; for four phrase seeds, the phrase root, the member key's seed, its owner address and the gas key, and for the same bytes as a device's random input, the device root and the device key's seed; four trees' key types, contexts and secret seeds (heights 1, 10, 40 and 20); one tree of height 4 from a device's random bytes down to its root. The first phrase is the ERC's own first test phrase ("abandon" 23 times, then "art"), and its member key's seed is also checked against the value printed in the ERC (`fe1de503…6879`).
+
 Every timed operation below is checked too: the member key's public key, each stateless signature byte for byte, each tree root, each WOTS signature's owner signature data byte for byte.
 
 ## What it times
 
-Each in ms, once with `tiny-keccak` and once with RustCrypto's Keccak-f (`sha3`). Both are in the image; the core switches at run time.
+First, once, ERC-8499's derivations as the app and the board make them. They hash with SHA-512 in software (RustCrypto's `sha2` and `hmac`), so the keccak backend doesn't matter here; keccak only hashes a tree's place.
+
+| Operation | How |
+|---|---|
+| a phrase's root | the seed's 24 words, PBKDF2-HMAC-SHA512 with 2,048 rounds, then HKDF-Extract; four phrases, mean and max |
+| of it, PBKDF2 alone | the first phrase's BIP-39 seed |
+| a stateless key's seed, the gas key | HKDF-Expand from a root; means of four |
+| a device's root | HKDF-Extract of its 32 random bytes; mean of four |
+| a tree's secret seed | its place's digest, then HKDF-Expand; mean of four |
+| a tree of height 4 | from a device's random bytes to the tree's root |
+
+Below 1 ms the serial lines give microseconds.
+
+Then each in ms, once with `tiny-keccak` and once with RustCrypto's Keccak-f (`sha3`). Both are in the image; the core switches at run time.
 
 | Operation | How |
 |---|---|
@@ -49,7 +64,7 @@ Without a display, everything still runs and prints on serial. Each screen is al
 
 ## Flashing
 
-The image is one file, `winterlock-esp32-core-check.bin` (bootloader, partition table and app, about 390 KB). It goes at address 0x0.
+The image is one file, `winterlock-esp32-core-check.bin` (bootloader, partition table and app, about 420 KB). It goes at address 0x0.
 
 ### In the browser (Chrome or Edge)
 
@@ -80,30 +95,60 @@ screen /dev/cu.usbserial-XXXX 115200                                  # macOS; q
 
 ## Running it
 
-Press BOOT once the start screen is up, or wait 10 s. A run has two passes, one per backend; in QEMU it took 80 to 130 s. The display shows the pass and the step. At the end it shows two summary pages; a short BOOT press, or 20 s, moves to the other one. Press EN to run again.
+Press BOOT once the start screen is up, or wait 10 s. After the checks come ERC-8499's derivations, a few seconds, then two passes, one per backend; in QEMU a run took 80 to 130 s. The display shows the pass and the step. At the end it shows three summary pages; a short BOOT press, or 20 s, moves to the next one. Press EN to run again.
 
 ## What to paste back
 
 The serial output at 115200 baud has the full detail. Paste back:
 
-- the three `RESULT` lines at the end, and
+- the four `RESULT` lines at the end, and
 - if any check says FAIL, or the run stops, the whole output.
 
 These lines are from a run in QEMU, so the numbers mean nothing:
 
 ```
-RESULT winterlock-esp32-core-check 0.1.0 rev=v3.0 mhz=240 checks=PASS passed=54/54 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=9868/73992 stack1=1644/32768
-RESULT tiny-keccak perm_s=74988 key_1core_ms=4800 key_2core_ms=1940 spx_mean_ms=2188 spx_max_ms=4338 spx_verify_ms=6 h6_1core_ms=846 h6_2core_ms=425 h10_1core_ms=13277 h10_2core_ms=8106 wots_mean_ms=53 wots_max_ms=98
-RESULT sha3 perm_s=32340 key_1core_ms=6862 key_2core_ms=3868 spx_mean_ms=4371 spx_max_ms=9608 spx_verify_ms=11 h6_1core_ms=1784 h6_2core_ms=956 h10_1core_ms=23662 h10_2core_ms=12975 wots_mean_ms=80 wots_max_ms=131
+RESULT winterlock-esp32-core-check 0.2.1 rev=v0.0 mhz=240 checks=PASS passed=90/90 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=10300/73912 stack1=1644/32768
+RESULT tiny-keccak perm_s=62572 key_1core_ms=2500 key_2core_ms=1173 spx_mean_ms=1854 spx_max_ms=4603 spx_verify_ms=4 h6_1core_ms=519 h6_2core_ms=401 h10_1core_ms=9380 h10_2core_ms=5272 wots_mean_ms=51 wots_max_ms=119
+RESULT sha3 perm_s=45968 key_1core_ms=7597 key_2core_ms=3463 spx_mean_ms=2956 spx_max_ms=6367 spx_verify_ms=6 h6_1core_ms=1060 h6_2core_ms=763 h10_1core_ms=18145 h10_2core_ms=9019 wots_mean_ms=82 wots_max_ms=128
+RESULT erc8499 phrase_root_ms=93 phrase_root_max_ms=101 pbkdf2_ms=88 key_seed_us=385 gas_key_us=194 device_root_us=135 tree_seed_us=340 tree_h4_ms=199
 ```
 
-The first line: the chip, whether all 54 checks passed, the peak heap use and both stacks' peak use (bytes). The others, per backend: keccak256 hashes per second, then each operation in ms (`spx` is the stateless signature, `h6` and `h10` the WOTS trees, `1core` and `2core` one core and both).
+The first line: the chip, whether all 90 checks passed, the peak heap use and both stacks' peak use (bytes). The next two, per backend: keccak256 hashes per second, then each operation in ms (`spx` is the stateless signature, `h6` and `h10` the WOTS trees, `1core` and `2core` one core and both). The last, ERC-8499: a phrase's root (mean and max) and PBKDF2 alone in ms; a stateless key's seed, the gas key, a device's root and a tree's secret seed in µs; the tree of height 4 in ms.
 
-On the display, `1c` and `2c` are one core and both; `SPX` is the stateless signature; `h6` and `h10` are the WOTS trees; times are in ms.
+On the display, `1c` and `2c` are one core and both; `SPX` is the stateless signature; `h6` and `h10` are the WOTS trees; times are in ms. The third page is ERC-8499's, with its units on each line.
+
+## On the board (2026-11-15, version 0.2.1)
+
+The same board, with sha2's compact code. The run was stopped after ERC-8499's part; every check up to there passed. Times are means of four, except PBKDF2 alone and the tree:
+
+| ERC-8499 step | 0.2.0 | 0.2.1 |
+|---|---|---|
+| a phrase's root (max) | 25,233 ms (25,237) | 483.6 ms (483.9) |
+| of it, PBKDF2 | 25,210 ms | 481.0 ms |
+| member key seed | 24.7 ms | 836 µs |
+| gas key | 24.8 ms | 817 µs |
+| device root | 24.7 ms | 1.1 ms |
+| tree secret seed | 25.5 ms | 1.0 ms |
+| tree of height 4, from a device's random bytes | 1,361 ms | 1,331 ms |
+
+52 times faster for the phrase's root, 20 to 30 times for the HKDF steps. The tree of height 4 is mostly keccak and barely changed.
+
+## On the board (2026-11-15, version 0.2.0)
+
+Version 0.2.0 on the same board, again without a display. All 90 checks pass.
+
+```
+RESULT winterlock-esp32-core-check 0.2.0 rev=v1.0 mhz=240 checks=PASS passed=90/90 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=10300/73912 stack1=1644/32768
+RESULT tiny-keccak perm_s=9956 key_1core_ms=23330 key_2core_ms=11718 spx_mean_ms=14006 spx_max_ms=31035 spx_verify_ms=36 h6_1core_ms=5240 h6_2core_ms=2625 h10_1core_ms=83836 h10_2core_ms=41983 wots_mean_ms=310 wots_max_ms=525
+RESULT sha3 perm_s=5120 key_1core_ms=44435 key_2core_ms=22318 spx_mean_ms=26600 spx_max_ms=58992 spx_verify_ms=68 h6_1core_ms=9933 h6_2core_ms=4973 h10_1core_ms=158917 h10_2core_ms=79556 wots_mean_ms=580 wots_max_ms=979
+RESULT erc8499 phrase_root_ms=25233 phrase_root_max_ms=25237 pbkdf2_ms=25210 key_seed_us=24711 gas_key_us=24760 device_root_us=24681 tree_seed_us=25512 tree_h4_ms=1361
+```
+
+The keccak numbers match 0.1.0's within a few percent. ERC-8499's don't match anything reasonable: a phrase's root took 25.2 s, nearly all of it PBKDF2, and each HKDF step about 25 ms. Both come to about 6 ms per SHA-512 block, at every size. The reason is the code's size: sha2's software SHA-512 unrolls its 80 rounds into one function of 48.5 KB, more than the chip's 32 KB flash cache, so each block ran from flash. QEMU doesn't model the cache, and there it took 173 ms. Since 0.2.1 the core builds sha2's compact code on the ESP32 (`core/Cargo.toml`), a loop of 3.8 KB.
 
 ## On the board (2026-11-10)
 
-An ESP32-D0WDQ6, silicon revision v1.0, with no display; the run started by itself and took 666 s. All 54 checks pass. Full output: [`runs/2026-11-10-esp32-v1.0.log`](runs/2026-11-10-esp32-v1.0.log).
+Version 0.1.0, before the ERC-8499 step. An ESP32-D0WDQ6, silicon revision v1.0, with no display; the run started by itself and took 666 s. All 54 checks pass. Full output: [`runs/2026-11-10-esp32-v1.0.log`](runs/2026-11-10-esp32-v1.0.log).
 
 ```
 RESULT winterlock-esp32-core-check 0.1.0 rev=v1.0 mhz=240 checks=PASS passed=54/54 default_backend=tiny-keccak heap_peak=82144 heap=180224 stack0=9868/73992 stack1=1644/32768
@@ -119,6 +164,7 @@ Not yet tried on a board: the OLED and the BOOT button.
 - **Chip revision.** esp-hal 1.2 supports ESP32 v3.0 and later, and by default it refuses older chips. This build accepts any revision (`.cargo/esp-config.toml`), as the benchmark firmware does, and prints the revision at start.
 - **The FPU** is turned on at start on both cores, as in the benchmark firmware. The core uses no floating point.
 - **The second core** is started for each two-core job and parked when it's done. If it doesn't start, the first core does its half and the check says FAIL.
+- **Code that doesn't fit the flash cache** runs at flash speed. The chip runs code from flash through a 32 KB cache; a hot function larger than that is fetched again on each pass. sha2's unrolled SHA-512 (48.5 KB) did, and took 52 times as long as the 3.8 KB loop (2026-11-15, above). `tiny_keccak::keccakf` is 2.6 KB.
 - **BOOT is GPIO0.** Holding it while pressing EN starts the chip in download mode instead of the firmware, so press it only once the start screen is up.
 
 ## Building from source
@@ -134,7 +180,7 @@ espflash save-image --chip esp32 --merge --skip-padding --flash-size 4mb \
 cargo run --release                       # or flash and watch the serial output in one step
 ```
 
-Built with Xtensa Rust 1.97.0.0 (espup 0.19.0), esp-hal 1.2.2, esp-alloc 0.11.0 and espflash 4.7.0. The vectors come from `core/tests/vectors/board.json` at build time (`build.rs`).
+Built with Xtensa Rust 1.97.0.0 (espup 0.19.0), esp-hal 1.2.2, esp-alloc 0.11.0 and espflash 4.7.0. The vectors come from `core/tests/vectors/board.json` and `erc8499.json` at build time (`build.rs`).
 
 ### In QEMU
 
@@ -152,6 +198,7 @@ It has no display and can't press BOOT, so the run starts by itself after 10 s. 
 |---|---|
 | `src/main.rs` | Start-up, checks, timings, RESULT lines and screens |
 | `src/board.rs` | The vectors' types; `build.rs` writes their values from `board.json` |
+| `src/erc8499.rs` | The ERC-8499 vectors' types; `build.rs` writes their values from `erc8499.json` |
 | `src/dual.rs` | Jobs on the second core, and the stacks' peak use |
 | `src/ui.rs` | The OLED, the BOOT button and a small text buffer (from the benchmark firmware) |
 | `.cargo/esp-config.toml` | Accepts ESP32 chips older than v3.0; asks for at least 32 KB of main stack |

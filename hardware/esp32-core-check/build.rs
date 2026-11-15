@@ -1,6 +1,6 @@
 //! Links the firmware (as esp-generate's template does) and turns the Python vectors the board
-//! checks (core/tests/vectors/board.json) into Rust data: small values inline, signatures as
-//! files in OUT_DIR, included with include_bytes!.
+//! checks (core/tests/vectors/board.json and erc8499.json) into Rust data: small values inline,
+//! signatures as files in OUT_DIR, included with include_bytes!.
 
 use std::fmt::Write as _;
 use std::path::PathBuf;
@@ -13,6 +13,7 @@ fn main() {
     // make sure linkall.x is the last linker script (otherwise might cause problems with flip-link)
     println!("cargo:rustc-link-arg=-Tlinkall.x");
     vectors();
+    erc8499();
 }
 
 #[cfg(unix)]
@@ -142,6 +143,7 @@ fn linker_be_nice() {
 }
 
 const BOARD: &str = "../../core/tests/vectors/board.json";
+const ERC8499: &str = "../../core/tests/vectors/erc8499.json";
 
 struct Gen {
     out: String,
@@ -335,4 +337,66 @@ fn vectors() {
     g.tree("H6", &v["h6"]);
     g.tree("H10", &v["h10"]);
     std::fs::write(dir.join("board.rs"), g.out).unwrap();
+}
+
+/// A tree's place as a TreePlace literal.
+fn place(g: &Gen, t: &Value) -> String {
+    format!(
+        "TreePlace {{ chain: {}, owner: {}, safe: {}, device: {}, generation: {}, start: {} }}",
+        u(&t["chain"]),
+        g.arr(&unhex(&t["owner"])),
+        g.arr(&unhex(&t["safe"])),
+        u(&t["device"]),
+        u(&t["gen"]),
+        u(&t["start"])
+    )
+}
+
+fn erc8499() {
+    println!("cargo:rerun-if-changed={ERC8499}");
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(ERC8499).expect("erc8499.json")).expect("JSON");
+    let g = Gen { out: String::new(), dir: PathBuf::new(), blobs: 0 };
+    let o = &mut String::new();
+    writeln!(o, "pub const KEY_TYPE: &str = {:?};", v["key_type"].as_str().unwrap()).unwrap();
+    writeln!(o, "pub const GAS_LABEL: &str = {:?};", v["gas_label"].as_str().unwrap()).unwrap();
+    let mut keys = String::new();
+    for k in v["keys"].as_array().unwrap() {
+        write!(keys, "Keys {{ ").unwrap();
+        for f in ["seed", "phrase_root", "member_key_seed", "member_key", "owner", "gas_key", "device_root", "device_key_seed"] {
+            write!(keys, "{f}: {}, ", g.arr(&unhex(&k[f]))).unwrap();
+        }
+        write!(keys, "}},").unwrap();
+    }
+    writeln!(o, "pub static KEYS: &[Keys] = &[{keys}];").unwrap();
+    let mut trees = String::new();
+    for t in v["tree_secrets"].as_array().unwrap() {
+        write!(
+            trees,
+            "TreeSecret {{ place: {}, height: {}, device_random: {}, root: {}, key_type: {:?}, context: {}, salt: {}, sk_seed: {} }},",
+            place(&g, t),
+            u(&t["height"]),
+            g.arr(&unhex(&t["device_random"])),
+            g.arr(&unhex(&t["root"])),
+            t["key_type"].as_str().unwrap(),
+            g.arr(&unhex(&t["context"])),
+            g.arr(&unhex(&t["salt"])),
+            g.arr(&unhex(&t["sk_seed"]))
+        )
+        .unwrap();
+    }
+    writeln!(o, "pub static TREE_SECRETS: &[TreeSecret] = &[{trees}];").unwrap();
+    let t = &v["small_tree"];
+    writeln!(
+        o,
+        "pub static SMALL_TREE: SmallTree = SmallTree {{ place: {}, height: {}, device_random: {}, salt: {}, sk_seed: {}, tree_root: {} }};",
+        place(&g, t),
+        u(&t["height"]),
+        g.arr(&unhex(&t["device_random"])),
+        g.arr(&unhex(&t["salt"])),
+        g.arr(&unhex(&t["sk_seed"])),
+        g.arr(&unhex(&t["tree_root"]))
+    )
+    .unwrap();
+    let dir = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    std::fs::write(dir.join("erc8499.rs"), o).unwrap();
 }
