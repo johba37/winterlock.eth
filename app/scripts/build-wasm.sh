@@ -12,13 +12,23 @@ if [ "$have" != "$want" ]; then
   echo "wasm-bindgen-cli $have found; core-wasm pins $want: cargo install wasm-bindgen-cli --version $want" >&2
   exit 1
 fi
+# The WebAssembly mustn't depend on where the checkout is. rustc gets absolute paths for path
+# dependencies outside a crate's workspace (core/ for core-wasm) and keeps them in panic locations,
+# so a build in another folder gave another IPFS hash. The checkout's root becomes /winterlock and
+# cargo's home (crates.io sources) /cargo. CARGO_ENCODED_RUSTFLAGS replaces any RUSTFLAGS, so the
+# build doesn't depend on those either. Cargo also hashes the location of a path dependency outside
+# the workspace into its symbols' names, which the debug `name` section holds: the core's is
+# removed, so the core's WebAssembly is the same in any folder (the virtual board, a development
+# tool, keeps its names).
+root="$(cd "$here/.." && pwd -P)"
+export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$root=/winterlock"$'\x1f'"--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo"
 features=()
 if [ -n "${FEATURES:-}" ]; then
   features=(--no-default-features --features "$FEATURES")
 fi
 crate="$here/../core-wasm"
 (cd "$crate" && cargo build --quiet --release --target wasm32-unknown-unknown "${features[@]}")
-wasm-bindgen --target web --out-dir "$here/src/wasm" --out-name core \
+wasm-bindgen --target web --remove-name-section --out-dir "$here/src/wasm" --out-name core \
   "$crate/target/wasm32-unknown-unknown/release/winterlock_core_wasm.wasm"
 echo "built src/wasm/core_bg.wasm: $(wc -c < "$here/src/wasm/core_bg.wasm") bytes"
 board="$here/../hardware/board-signer/wasm"

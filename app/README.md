@@ -124,6 +124,8 @@ ipfs add -r -n -Q --cid-version=1 dist
 
 A clean rebuild in the same folder gave the same hash, and a build in another folder a different one; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130, Node 24.14.0 and kubo 0.43.1.
 
+**From the next published build on,** the folder doesn't matter: `scripts/build-wasm.sh` maps the checkout's root to `/winterlock` and cargo's home to `/cargo` in the core's paths, and wasm-bindgen drops the core's debug `name` section, whose function names carry cargo's hashes of the folder. Two clean builds of main in different folders gave the same hash. Those hashes can still order the code differently: the virtual board's WebAssembly, which isn't published, differs between the two folders that way. So a publish compares builds from two folders.
+
 The site's storage belongs to its origin. Serving the app from another address gives an empty app, without the device keys stored at `app.winterlock.eth.limo`.
 
 **Updating from the build of `17118b8`:** the database stays at version 2 and keeps everything in it. **From `494703c`:** the database stays at version 2 too. A device that build set up shows the "Keys of an earlier version" screen on every route, with a link to `494703c`, and can only be forgotten here (D15). **From `a20d51c`:** the database goes from version 1 to 2 (a store for dapps' transactions), keeping everything in it. A tab still open on the older build blocks that: the new one says to close it and reload.
