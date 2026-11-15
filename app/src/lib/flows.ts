@@ -12,6 +12,7 @@ import {
   type SafeState,
   factoryAddress,
   executionResult,
+  isOwnerContract,
   isValidSignature,
   ownerDeployed,
   readDevice,
@@ -41,6 +42,7 @@ import {
 } from './db'
 import { type Core, Refused, recordThenSign } from './keylog'
 import {
+  type Decoded,
   ERC20_ABI,
   MULTISEND,
   SAFE_ABI,
@@ -535,6 +537,43 @@ export async function checkMultiSend(ctx: Ctx): Promise<void> {
   }
 }
 
+/** Where a decoded transaction sends ETH (or makes an empty call) and tokens. */
+export function payees(d: Decoded): { to: Address; what: 'eth' | 'token' }[] {
+  switch (d.kind) {
+    case 'eth':
+      return [{ to: d.to, what: 'eth' }]
+    case 'erc20':
+      return [{ to: d.to, what: 'token' }]
+    case 'raw':
+      return d.value > 0n ? [{ to: d.to, what: 'eth' }] : []
+    case 'batch':
+      return d.calls.flatMap((c) => payees(c.decoding.decoded))
+    default:
+      return []
+  }
+}
+
+/**
+ * Refuses a transaction that sends ETH or tokens to a Winterlock owner contract, the member's own
+ * or another member's (a Safe's owners are often both). It has no receive, fallback or payable
+ * function, so ETH sent to it reverts the Safe's whole transaction, which then can never execute;
+ * and it can't move tokens, which would stay there for good. The first wired board signed 0.01 ETH
+ * to its own owner contract (2026-11-15): a valid signature on a transaction that could never run,
+ * and one of the nonce's two keys spent on it.
+ */
+export async function refusePaymentToOwner(env: Env, ctx: Ctx, safe: Address, tx: SafeTx, own: Address): Promise<void> {
+  for (const p of payees(decode(tx, safe).decoded)) {
+    const mine = p.to.toLowerCase() === own.toLowerCase()
+    if (!mine && !(await isOwnerContract(ctx, env.core, p.to))) continue
+    const whose = mine ? 'your owner contract' : 'another member’s Winterlock owner contract'
+    throw new Refused(
+      p.what === 'eth'
+        ? `This sends ETH to ${p.to}, ${whose}. It can’t receive ETH, so the transaction could never execute. To send ETH to yourself, use an ordinary account of yours, not your owner address.`
+        : `This sends tokens to ${p.to}, ${whose}. It can’t move them, so they would stay there for good. To send tokens to yourself, use an ordinary account of yours, not your owner address.`,
+    )
+  }
+}
+
 /** The checks before a one-time signature (cli.py's prepare), then the stale-log check. */
 async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Address, tx: SafeTx, step: Step, expect?: Hex): Promise<Prepared> {
   const ctx = await usableCtx(env.db, env.core, chainId)
@@ -551,6 +590,7 @@ async function prepare(env: Env, dev: DeviceRecord, chainId: number, safe: Addre
     args: [tx.to, tx.value, tx.data, tx.operation, tx.safeTxGas, tx.baseGas, tx.gasPrice, tx.gasToken, tx.refundReceiver, tx.nonce],
   })
   if (onchain.toLowerCase() !== hash.toLowerCase()) throw new Refused(`The Safe computes ${onchain} for these fields, not ${hash}: refusing.`)
+  await refusePaymentToOwner(env, ctx, safe, tx, dev.owner)
   // a batch, from a dapp or from the queue, shows as its calls: the code it delegatecalls must be
   // the MultiSendCallOnly those calls were decoded for
   if (batchCalls(tx)) {

@@ -114,6 +114,16 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
     await shot(page, '06-safe-enrolled')
   })
 
+  await test.step('ETH to the member’s own owner contract: refused at review, nothing signed', async () => {
+    // the first wired board signed such a transfer (2026-11-15): valid, never executable
+    await page.goto(`${baseURL}/#/safe/11155111/${child}/send`)
+    await t(page, 'to-input').fill(owner)
+    await t(page, 'amount-input').fill('0.01')
+    await t(page, 'review').click()
+    await expect(page.locator('.error')).toContainText('It can’t receive ETH', { timeout: 30_000 })
+    await expect(t(page, 'review-summary')).toHaveCount(0)
+  })
+
   await test.step('a transfer: proposed, confirmed on the board, executed by the gas account', async () => {
     await page.goto(`${baseURL}/#/safe/11155111/${child}/send`)
     await t(page, 'to-input').fill(BOB)

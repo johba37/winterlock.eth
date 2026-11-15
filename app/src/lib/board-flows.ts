@@ -13,7 +13,7 @@ import { type BoardClient, type BoardStatus, type BoardTree, type Identity, type
 import { chainById } from './chains'
 import { type Ctx, FACTORY_ABI, afterTx, OWNER_ABI, type OnchainTree, type SafeState, factoryAddress, isValidSignature, ownerDeployed, readFresh, readTree, safeState, sendFromGas, short, usableCtx } from './chain'
 import { type BoardRecord, type Hex, type PendingEnrolment, getDevice, hasMember, putSetting, setting, writeStrict } from './db'
-import { type Env, type Proposed, type Step, type Transfer, keptCheck, nextNonce, safeTxHash, service } from './flows'
+import { type Env, type Proposed, type Step, type Transfer, keptCheck, nextNonce, refusePaymentToOwner, safeTxHash, service } from './flows'
 import { Refused } from './keylog'
 import { ERC20_ABI, SAFE_ABI, type SafeTx, contractSignature, encodeForCore, fromService, parseSignature, safeTx } from './safe'
 import { writerFor } from './service'
@@ -275,6 +275,7 @@ async function prepare(env: Env, rec: BoardRecord, client: BoardClient, chainId:
     args: [tx.to, tx.value, tx.data, tx.operation, tx.safeTxGas, tx.baseGas, tx.gasPrice, tx.gasToken, tx.refundReceiver, tx.nonce],
   })
   if (onSafe.toLowerCase() !== hash.toLowerCase()) throw new Refused(`The Safe computes ${onSafe} for these fields, not ${hash}: refusing.`)
+  await refusePaymentToOwner(env, ctx, safe, tx, rec.owner)
   if (!(await ownerDeployed(ctx, env.core, rec.owner, rec.memberKey))) throw new Refused('Your owner contract doesn’t exist on this network yet: enrol a key tree first, which creates it.')
   const onchain = await readTree(ctx, rec.owner, safe, 0)
   if (!onchain.root) throw new Refused('No key tree is enrolled for your owner on this Safe yet: enrol one.')
@@ -292,6 +293,7 @@ async function prepare(env: Env, rec: BoardRecord, client: BoardClient, chainId:
 
 async function boardSign(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, p: Prepared, tx: SafeTx, step: Step, w: Waiting) {
   const parent = await parentOf(env, chainId, tx)
+  if (parent) await refusePaymentToOwner(env, p.ctx, tx.to, parent, rec.owner)
   step(
     parent
       ? 'Check the board: it shows the parent Safe’s transaction this approves. Confirm there (hold both buttons on the last page)'

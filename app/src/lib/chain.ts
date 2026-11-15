@@ -158,6 +158,25 @@ export async function ownerDeployed(ctx: Ctx, core: Core, owner: Address, member
   return true
 }
 
+/** Whether `address` holds a Winterlock owner contract: a v2 proxy of the pinned implementation. */
+export async function isOwnerContract(ctx: Ctx, core: Core, address: Address): Promise<boolean> {
+  const code = await ctx.client.getCode({ address })
+  if (!code || code === '0x') return false
+  return !!(await core.call<Uint8Array | null>('memberKeyOf', { address: hexToBytes(address), code: hexToBytes(code) }))
+}
+
+/** Why the Safe's own call (not its execTransaction) fails at the latest block, if it does: a
+ * recipient that refuses ETH, a balance too small. Only a warning: a transaction queued before it
+ * can change that. */
+export async function safeCallFails(ctx: Ctx, safe: Address, call: { to: Address; value: bigint; data: Hex }): Promise<string | null> {
+  try {
+    await ctx.client.call({ account: safe, to: call.to, value: call.value, data: call.data })
+    return null
+  } catch (e) {
+    return short(e)
+  }
+}
+
 export async function isValidSignature(ctx: Ctx, owner: Address, hash: Hex, data: Uint8Array): Promise<boolean> {
   try {
     const r = await ctx.client.readContract({ address: owner, abi: OWNER_ABI, functionName: 'isValidSignature', args: [hash, toHex(data)] })

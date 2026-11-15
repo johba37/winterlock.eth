@@ -1,13 +1,13 @@
 // A Safe: joining it (owner address, enrolment), its queue, a transaction, and a new transfer.
 
 import { useEffect, useState } from 'preact/hooks'
-import { type Address, getAddress, toHex } from 'viem'
+import { type Address, encodeFunctionData, getAddress, toHex } from 'viem'
 import { short } from '../lib/chain'
 import { useApp, useMember } from '../app'
 import { link, useLink } from '../board/link'
 import { type BoardSafeView, approveHashOf, boardConfirm, boardPropose, boardSafeView } from '../lib/board-flows'
 import { BoardTreePanel, gapLine } from './board'
-import { ctxFor, fmtEth } from '../lib/chain'
+import { ctxFor, fmtEth, safeCallFails, usableCtx } from '../lib/chain'
 import { chainById } from '../lib/chains'
 import type { Hex } from '../lib/db'
 import {
@@ -21,12 +21,13 @@ import {
   parseAddress,
   propose,
   queue,
+  refusePaymentToOwner,
   safeTxHash,
   safeView,
   service,
   tokenInfo,
 } from '../lib/flows'
-import { type Decoded, MAX_UINT256, decode, formatUnits, fromService, parseSignature, parseUnits, signatureDevice, tokensOf } from '../lib/safe'
+import { type Decoded, ERC20_ABI, MAX_UINT256, decode, formatUnits, fromService, parseSignature, parseUnits, safeTx, signatureDevice, tokensOf } from '../lib/safe'
 import type { ServiceTx } from '../lib/service'
 import { noteExecution } from '../lib/wc-state'
 import { Addr, ErrorLine, Explorer, Panel, Progress, Screen, go, useAction } from '../ui'
@@ -456,6 +457,7 @@ export function Send(props: { chain: number; safe: Address }) {
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [review, setReview] = useState<{ to: Address; amount: bigint; token?: Address } | null>(null)
+  const [fails, setFails] = useState<string | null>(null)
   const [balance, setBalance] = useState<bigint | null>(null)
   const [done, setDone] = useState<{ text: string; hash: string } | null>(null)
   const act = useAction()
@@ -488,17 +490,26 @@ export function Send(props: { chain: number; safe: Address }) {
     })()
   }, [asset, token])
 
-  function next(e: Event) {
+  async function next(e: Event) {
     e.preventDefault()
     act.setError(null)
     try {
       const recipient = parseAddress(to)
+      let r: { to: Address; amount: bigint; token?: Address }
       if (asset === 'token') {
         if (!info) throw new Error('That token doesn’t answer as an ERC-20 token on this network.')
-        setReview({ to: recipient, amount: parseUnits(amount, info.decimals), token: getAddress(parseAddress(token)) })
+        r = { to: recipient, amount: parseUnits(amount, info.decimals), token: getAddress(parseAddress(token)) }
       } else {
-        setReview({ to: recipient, amount: parseUnits(amount, 18) })
+        r = { to: recipient, amount: parseUnits(amount, 18) }
       }
+      // the Safe's call itself: refused if it pays an owner contract, a warning if it fails now
+      const call = r.token
+        ? { to: r.token, value: 0n, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [r.to, r.amount] }) }
+        : { to: r.to, value: r.amount, data: '0x' as Hex }
+      const ctx = await usableCtx(app.env.db, app.env.core, props.chain)
+      await refusePaymentToOwner(app.env, ctx, props.safe, safeTx({ ...call, nonce: 0n }), board ? board.owner : app.device!.owner)
+      setFails(await safeCallFails(ctx, props.safe, call))
+      setReview(r)
     } catch (err) {
       act.setError(short(err))
     }
@@ -556,6 +567,11 @@ export function Send(props: { chain: number; safe: Address }) {
             </strong>{' '}
             from the Safe to <code>{review.to}</code>
           </p>
+          {fails && (
+            <p class="error" data-testid="call-fails">
+              Sent now, the Safe’s call would fail ({fails}). Signed as it is, the transaction can’t execute until that changes, and it uses one of the nonce’s two one-time keys.
+            </p>
+          )}
           <p class="muted small">
             {board ? 'The board shows it and signs it with a one-time key once you confirm there' : 'This device signs with a one-time key'}, and the app posts the proposal to Safe’s Transaction Service. Nothing moves until enough owners confirm and
             someone executes it.
