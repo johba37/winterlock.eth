@@ -131,12 +131,21 @@ Checked on-chain and at Safe's service:
 
 This is the board's first signature that went through a real execution. It also covers the key log's second version at one nonce on the chip.
 
+**Nonce 5, the plain case:** 0.02 ETH to the ECDSA owner, proposed in the app, confirmed on the board and executed from the app. The board's signature (slot `00`) was the only confirmation:
+
+| | |
+|---|---|
+| SafeTx hash | `0xb2effbd3ab7e89d2d6f00270c5215472c7d8d693e9910de5406f86c85480d2ea` |
+| Execution | `0xf31e03182561c435ba881ba180cbc302778cd618e707b2356d2457a8ffdc815d`, block 12141504, 187,161 gas, from the gas account `0xB75FC5C6…` |
+
+The Safe is at nonce 6.
+
 **Suggested fix:** neither the app nor the board's logic checks the recipient against the member's owner contract. Since an ETH transfer to it always reverts, the app should refuse to propose one, and the board should refuse or warn before signing. The board would otherwise spend one of the nonce's two keys on a transaction that can never run.
 
 ## Not tested yet
 
-- **A third version at one nonce, refused** by the key log (both of nonce 4's keys are now used, so a third proposal at nonce 4 would show it).
-- **A transfer confirmed on the board and executed** at a fresh nonce (5), the plain case. Then a token transfer, approveHash with the parent's fields, a call that isn't decoded, a refused delegate call.
+- **A third version at one nonce, refused by the board's key log.** Nonce 4 was executed before it could be tried, and the app refuses a used nonce before the board sees it. To test it, keep a nonce open: propose version 1 in the app, then versions 2 and 3 in Safe's web app, and confirm each on the board. Execute only at the end.
+- **Other transactions on the board:** a token transfer, approveHash with the parent's fields, a call that isn't decoded, a refused delegate call.
 - **Unlock after a restart** (the PIN), **three wrong PINs** (the board erases itself), and **recovery** from the words.
 - **Power cuts and flash wear** on the real chip.
 - **Times on the chip** for setup, enrolment and a signature (not measured this time).
