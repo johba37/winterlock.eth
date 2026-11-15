@@ -48,6 +48,7 @@ import {
   SAFE_ABI,
   type SafeTx,
   batchCalls,
+  cancelTx,
   contractSignature,
   decode,
   encodeForCore,
@@ -59,7 +60,7 @@ import {
   signatureDevice,
   stripMetadata,
 } from './safe'
-import { Service, type ServiceTx, writerFor } from './service'
+import { Service, ServiceError, type ServiceTx, writerFor } from './service'
 import { sources, staleLogCheck } from './stale'
 
 export interface Env {
@@ -621,6 +622,40 @@ async function sign(env: Env, dev: DeviceRecord, p: Prepared, tx: SafeTx, step: 
 export async function nextNonce(chainId: number, safe: Address, safeNonce: number, also: number[] = []): Promise<number> {
   const pending = await service(chainId).pending(safe, safeNonce)
   return Math.max(safeNonce, ...pending.map((p) => Number(p.nonce) + 1), ...also.filter((n) => n >= safeNonce).map((n) => n + 1))
+}
+
+/** Whether Safe's service holds a transaction with this SafeTx hash. */
+export async function serviceHas(chainId: number, hash: Hex): Promise<boolean> {
+  try {
+    await service(chainId).transaction(hash)
+    return true
+  } catch (e) {
+    if (e instanceof ServiceError && e.status === 404) return false
+    throw e
+  }
+}
+
+/** What a reject did: the cancel's SafeTx hash, and whether it was proposed here or confirmed. */
+export interface Rejected extends Proposed {
+  confirmed: boolean
+}
+
+/**
+ * Rejects the transactions at `nonce` (Safe's app's Reject): a cancel there (cancelTx), proposed
+ * to Safe's service, or confirmed if the service has it already (the same fields give the same
+ * hash). The key log gives the nonce's key: the second if this device signed another version at
+ * that nonce. Executed, the cancel uses up the nonce. The app proposes only at the next free nonce
+ * otherwise, so without this a member needed Safe's app to replace a transaction (the first wired
+ * board's nonce 4, 2026-11-15).
+ */
+export async function reject(env: Env, dev: DeviceRecord, chainId: number, safe: Address, nonce: number, step: Step): Promise<Rejected> {
+  const tx = cancelTx(safe, BigInt(nonce))
+  const hash = await safeTxHash(env.core, chainId, safe, tx)
+  if (await serviceHas(chainId, hash)) {
+    const r = await confirm(env, dev, chainId, safe, hash, step)
+    return { hash, nonce, slot: r.slot ?? -1, note: r.note, confirmed: true }
+  }
+  return { ...(await proposeTx(env, dev, chainId, safe, tx, step)), confirmed: false }
 }
 
 export interface Transfer {

@@ -5,7 +5,7 @@ import { type Address, encodeFunctionData, getAddress, toHex } from 'viem'
 import { short } from '../lib/chain'
 import { useApp, useMember } from '../app'
 import { link, useLink } from '../board/link'
-import { type BoardSafeView, approveHashOf, boardConfirm, boardPropose, boardSafeView } from '../lib/board-flows'
+import { type BoardSafeView, approveHashOf, boardConfirm, boardPropose, boardReject, boardSafeView } from '../lib/board-flows'
 import { BoardTreePanel, gapLine } from './board'
 import { ctxFor, fmtEth, safeCallFails, usableCtx } from '../lib/chain'
 import { chainById } from '../lib/chains'
@@ -20,8 +20,10 @@ import {
   execute,
   parseAddress,
   propose,
+  type Rejected,
   queue,
   refusePaymentToOwner,
+  reject,
   safeTxHash,
   safeView,
   service,
@@ -297,6 +299,8 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [k, setK] = useState(0)
   const [done, setDone] = useState<{ text: string; tx?: string } | null>(null)
+  const [rejecting, setRejecting] = useState(false)
+  const [rejected, setRejected] = useState<Rejected | null>(null)
   const act = useAction()
   const { tokens, want } = useTokens(props.chain)
   const c = chainById(props.chain)
@@ -322,6 +326,14 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
     )
     if (r) setDone({ text: r.note ?? `Confirmed with your ${r.slot === 0 ? 'first' : 'second and last'} one-time key for this nonce${board ? ', on the board' : ''}.` })
     setK(k + 1)
+  }
+  async function doReject() {
+    const n = Number(t!.nonce)
+    const r = await act.run((step, signal) =>
+      board ? boardReject(app.env, board, link.need(), props.chain, props.safe, n, step, { signal }) : reject(app.env, app.device!, props.chain, props.safe, n, step),
+    )
+    setRejecting(false)
+    if (r) setRejected(r)
   }
   async function doExecute() {
     const r = await act.run(async (step) => {
@@ -432,8 +444,44 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
                       Execute (paid by your gas account)
                     </button>
                   )}
-                  {col && !ready && Number(t.nonce) !== col.nonce && <p class="muted small">The Safe executes nonce {col.nonce} first.</p>}
+                  {col && !ready && Number(t.nonce) > col.nonce && <p class="muted small">The Safe executes nonce {col.nonce} first.</p>}
+                  {col && Number(t.nonce) < col.nonce && (
+                    <p class="muted small" data-testid="nonce-used">
+                      Nonce {String(t.nonce)} is used up: another transaction at it was executed, so this one can’t execute any more.
+                    </p>
+                  )}
+                  {!rejecting && !rejected && decoding.decoded.kind !== 'cancel' && col && Number(t.nonce) >= col.nonce && (
+                    <button type="button" class="secondary" data-testid="reject" onClick={() => setRejecting(true)}>
+                      Reject…
+                    </button>
+                  )}
                 </div>
+              )}
+              {rejecting && !act.busy && (
+                <div data-testid="reject-panel">
+                  <p class="small">
+                    Reject proposes a cancel at nonce {String(t.nonce)}: a transaction that does nothing (0 ETH from the Safe to itself), as Safe’s app’s Reject does. If another owner proposed that cancel
+                    already, this confirms it. Whichever transaction at this nonce is executed first uses the nonce up, and the other can’t execute any more. Signing the cancel uses one of the
+                    nonce’s two one-time keys{board ? ', on the board' : ''}.
+                  </p>
+                  <div class="actions row">
+                    <button type="button" data-testid="reject-sign" onClick={doReject}>
+                      {board ? 'Sign the cancel on the board' : 'Sign the cancel'}
+                    </button>
+                    <button type="button" class="secondary" onClick={() => setRejecting(false)}>
+                      Keep it
+                    </button>
+                  </div>
+                </div>
+              )}
+              {rejected && (
+                <p class="okline" data-testid="rejected" data-hash={rejected.hash}>
+                  {rejected.note ??
+                    `${rejected.confirmed ? 'Confirmed the cancel' : 'Proposed a cancel'} at nonce ${rejected.nonce}, signed with your ${rejected.slot === 0 ? 'first' : 'second and last'} one-time key for it${board ? ', on the board' : ''}.`}{' '}
+                  <a href={`#/safe/${props.chain}/${props.safe}/tx/${rejected.hash}`} data-testid="see-cancel">
+                    See the cancel
+                  </a>
+                </p>
               )}
             </Panel>
           )}

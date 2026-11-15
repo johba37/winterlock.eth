@@ -67,4 +67,27 @@ test('the app without a board, on a local chain', async ({ page, baseURL }) => {
   // the device's signature: device 1, not the member key
   const sig = svc.txs.get(hash.toLowerCase())!.confirmations[0].signature
   expect(Number.parseInt(sig.slice(2 + 2 * 98, 2 + 2 * 99), 16)).toBe(1)
+
+  // a mistaken transfer, rejected with this device's second key for the nonce; the cancel executes
+  const n = await chain.nonceOf(safe)
+  await page.goto(`${baseURL}/#/safe/11155111/${safe}/send`)
+  await t(page, 'to-input').fill(BOB)
+  await t(page, 'amount-input').fill('0.125')
+  await t(page, 'review').click()
+  await t(page, 'sign-propose').click()
+  await waitDone(page, t(page, 'done'))
+  const mistaken = (await t(page, 'done').getAttribute('data-hash'))!
+  await page.goto(`${baseURL}/#/safe/11155111/${safe}/tx/${mistaken}`)
+  await t(page, 'reject').click()
+  await t(page, 'reject-sign').click()
+  await waitDone(page, t(page, 'rejected'))
+  await expect(t(page, 'rejected')).toContainText(`Proposed a cancel at nonce ${n}, signed with your second and last one-time key`)
+  const cancel = (await t(page, 'rejected').getAttribute('data-hash'))!
+  expect(cancel).toBe(await chain.hashOf(safe, safe, 0n, '0x', 0, n))
+  await t(page, 'see-cancel').click()
+  const kept = await chain.client().getBalance({ address: BOB })
+  await t(page, 'execute').click()
+  await waitDone(page, page.locator('[data-testid="done"][data-tx^="0x"]'))
+  expect(await chain.nonceOf(safe)).toBe(n + 1)
+  expect(await chain.client().getBalance({ address: BOB })).toBe(kept)
 })

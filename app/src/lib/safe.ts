@@ -266,6 +266,12 @@ export function multiSendData(calls: Call[]): Hex {
 }
 
 /** A batch's SafeTx: a delegatecall to MultiSendCallOnly. */
+/** A cancel at `nonce`: 0 ETH from the Safe to itself, no data, as Safe's app's Reject makes it.
+ * Executed, it uses up the nonce, so no other transaction at that nonce can execute. */
+export function cancelTx(safe: Address, nonce: bigint): SafeTx {
+  return safeTx({ to: safe, nonce })
+}
+
 export function batchTx(calls: Call[], nonce: bigint): SafeTx {
   return safeTx({ to: MULTISEND.address, data: multiSendData(calls), operation: 1, nonce })
 }

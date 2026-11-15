@@ -4,7 +4,7 @@
 // It keeps an owner's first confirmation, as the real service does.
 
 import type { Page, Route } from '@playwright/test'
-import { type Address, type Hex, type PublicClient, getAddress, hexToBytes, parseAbi, toHex } from 'viem'
+import { type Address, type Hex, type PublicClient, getAddress, hexToBytes, parseAbi, parseAbiItem, toHex } from 'viem'
 
 const SAFE = parseAbi(['function nonce() view returns (uint256)', 'function getThreshold() view returns (uint256)', 'function getOwners() view returns (address[])'])
 
@@ -28,6 +28,7 @@ export interface Tx {
   transactionHash: Hex | null
 }
 
+const EXECUTED = parseAbiItem('event ExecutionSuccess(bytes32 indexed txHash, uint256 payment)')
 const BASE = 'https://api.safe.global/tx-service/sep/api'
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type, accept' }
 
@@ -52,8 +53,12 @@ export class FakeService {
     return Number(await this.chain.readContract({ address: safe, abi: SAFE, functionName: 'nonce' }))
   }
 
+  /** Executed: the transaction that ran at its nonce (its ExecutionSuccess). Another one at the same
+   * nonce, replaced by a cancel say, stays unexecuted, as the real service keeps it. */
   private async view(t: Tx): Promise<Tx> {
-    return { ...t, isExecuted: (await this.nonceOf(t.safe)) > t.nonce }
+    if ((await this.nonceOf(t.safe)) <= t.nonce) return { ...t, isExecuted: false }
+    const logs = await this.chain.getLogs({ address: t.safe, event: EXECUTED, args: { txHash: t.safeTxHash }, fromBlock: 0n })
+    return { ...t, isExecuted: logs.length > 0, transactionHash: logs[0]?.transactionHash ?? t.transactionHash }
   }
 
   private json(r: Route, status: number, body: unknown) {

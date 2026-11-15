@@ -13,9 +13,9 @@ import { type BoardClient, type BoardStatus, type BoardTree, type Identity, type
 import { chainById } from './chains'
 import { type Ctx, FACTORY_ABI, afterTx, OWNER_ABI, type OnchainTree, type SafeState, factoryAddress, isValidSignature, ownerDeployed, readFresh, readTree, safeState, sendFromGas, short, usableCtx } from './chain'
 import { type BoardRecord, type Hex, type PendingEnrolment, getDevice, hasMember, putSetting, setting, writeStrict } from './db'
-import { type Env, type Proposed, type Step, type Transfer, keptCheck, nextNonce, refusePaymentToOwner, safeTxHash, service } from './flows'
+import { type Env, type Proposed, type Rejected, type Step, type Transfer, keptCheck, nextNonce, refusePaymentToOwner, safeTxHash, service, serviceHas } from './flows'
 import { Refused } from './keylog'
-import { ERC20_ABI, SAFE_ABI, type SafeTx, contractSignature, encodeForCore, fromService, parseSignature, safeTx } from './safe'
+import { ERC20_ABI, SAFE_ABI, type SafeTx, cancelTx, contractSignature, encodeForCore, fromService, parseSignature, safeTx } from './safe'
 import { writerFor } from './service'
 
 const APPROVE_HASH = '0xd4d9bdcd'
@@ -348,6 +348,17 @@ export async function boardConfirm(env: Env, rec: BoardRecord, client: BoardClie
   await writerFor(chainById(chainId).service).confirm(hash, s.signature)
   const note = await keptCheck(env, rec, chainId, safe, hash, s.signature)
   return { note, slot: s.slot }
+}
+
+/** Reject on the board: a cancel at `nonce`, proposed, or confirmed if Safe's service has it (flows.ts's reject). */
+export async function boardReject(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, nonce: number, step: Step, w: Waiting): Promise<Rejected> {
+  const tx = cancelTx(safe, BigInt(nonce))
+  const hash = await safeTxHash(env.core, chainId, safe, tx)
+  if (await serviceHas(chainId, hash)) {
+    const r = await boardConfirm(env, rec, client, chainId, safe, hash, step, w)
+    return { hash, nonce, slot: r.slot ?? -1, note: r.note, confirmed: true }
+  }
+  return { ...(await boardProposeTx(env, rec, client, chainId, safe, tx, step, w)), confirmed: false }
 }
 
 /** The calldata of approveHash(hash), for a transaction to a parent Safe. */
