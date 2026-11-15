@@ -11,7 +11,7 @@ import { type Address, encodeFunctionData, getAddress, hexToBytes, padHex, parse
 import { privateKeyToAccount } from 'viem/accounts'
 import { type BoardClient, type BoardStatus, type BoardTree, type Identity, type Waiting } from '../board/client'
 import { chainById } from './chains'
-import { type Ctx, FACTORY_ABI, afterTx, OWNER_ABI, type OnchainTree, type SafeState, factoryAddress, isValidSignature, ownerDeployed, readTree, safeState, sendFromGas, short, usableCtx } from './chain'
+import { type Ctx, FACTORY_ABI, afterTx, OWNER_ABI, type OnchainTree, type SafeState, factoryAddress, isValidSignature, ownerDeployed, readFresh, readTree, safeState, sendFromGas, short, usableCtx } from './chain'
 import { type BoardRecord, type Hex, type PendingEnrolment, getDevice, hasMember, putSetting, setting, writeStrict } from './db'
 import { type Env, type Proposed, type Step, type Transfer, keptCheck, nextNonce, safeTxHash, service } from './flows'
 import { Refused } from './keylog'
@@ -111,12 +111,37 @@ const enrolKey = (chain: number, safe: Address) => `board-enrolment:${chain}:${s
 
 const NO_TREE: OnchainTree = { root: null, height: 0, start: 0, generation: 0 }
 
+/** The Safe, the owner contract and its tree for the Safe, at one block (readFresh). */
+async function onChain(env: Env, ctx: Ctx, rec: BoardRecord, safe: Address) {
+  return readFresh(ctx, async (b) => {
+    const state = await safeState(ctx, safe, b)
+    const deployed = await ownerDeployed(ctx, env.core, rec.owner, rec.memberKey, b)
+    const onchain = deployed ? await readTree(ctx, rec.owner, safe, 0, b) : NO_TREE
+    return { state, deployed, onchain }
+  })
+}
+
+/**
+ * Why a new key tree for this Safe would do harm, if it would. The owner contract takes a new
+ * tree only from a later start nonce than the enrolled one's, and the board only from a later one
+ * than its own last tree's for the Safe; so while the board holds a tree none of whose nonces is
+ * used, another tree starts past the Safe's nonce, and the board can't sign the nonces between
+ * (the first wired board enrolled twice so, 2026-11-15).
+ */
+export function needlessEnrolment(nonce: number, onchain: OnchainTree, mine: BoardTree[]): string | null {
+  const unused = mine.filter((t) => t.start >= nonce)
+  if (!unused.length) return null
+  const t = unused.reduce((a, b) => (b.start > a.start ? b : a))
+  if (onchain.root && t.root.toLowerCase() === onchain.root.toLowerCase()) {
+    return `Your key tree for this Safe is enrolled (nonces ${t.start} to ${t.start + 2 ** (t.height - 1) - 1}), and none of its nonces is used yet: there’s nothing to enrol.`
+  }
+  return `The board made a key tree for this Safe from nonce ${t.start}, and the network doesn’t show it enrolled. If you enrolled it a moment ago, wait a minute and reload. Another tree would have to start at nonce ${t.start + 1}, and the board couldn’t sign the Safe’s next nonce, ${nonce}.`
+}
+
 export async function boardSafeView(env: Env, rec: BoardRecord, chainId: number, safe: Address, client: BoardClient | null): Promise<BoardSafeView> {
   const ctx = await usableCtx(env.db, env.core, chainId)
-  const state = await safeState(ctx, safe)
+  const { state, deployed, onchain } = await onChain(env, ctx, rec, safe)
   const isOwner = state.owners.some((o) => o.toLowerCase() === rec.owner.toLowerCase())
-  const deployed = await ownerDeployed(ctx, env.core, rec.owner, rec.memberKey)
-  const onchain = deployed ? await readTree(ctx, rec.owner, safe, 0) : NO_TREE
   let boardTrees: BoardTree[] | null = null
   if (client) {
     try {
@@ -144,9 +169,7 @@ export async function boardSafeView(env: Env, rec: BoardRecord, chainId: number,
  */
 export async function boardEnrol(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, step: Step, w: Waiting): Promise<{ start: number; height: number; hash: Hex; gasUsed: bigint; created: boolean }> {
   const ctx = await usableCtx(env.db, env.core, chainId)
-  const state = await safeState(ctx, safe)
-  const deployed = await ownerDeployed(ctx, env.core, rec.owner, rec.memberKey)
-  const onchain = deployed ? await readTree(ctx, rec.owner, safe, 0) : NO_TREE
+  const { state, deployed, onchain } = await onChain(env, ctx, rec, safe)
   let p = await setting<PendingEnrolment>(env.db, enrolKey(chainId, safe))
   if (p && onchain.root && p.start <= onchain.start) {
     // sent already, or overtaken by a later tree
@@ -156,6 +179,8 @@ export async function boardEnrol(env: Env, rec: BoardRecord, client: BoardClient
   if (!p) {
     await checkBoard(rec, client)
     const mine = (await client.trees()).filter((t) => t.chain === chainId && t.safe.toLowerCase() === safe.toLowerCase())
+    const needless = needlessEnrolment(state.nonce, onchain, mine)
+    if (needless) throw new Refused(needless)
     const start = Math.max(state.nonce, onchain.root ? onchain.start + 1 : 0, ...mine.map((t) => t.start + 1))
     step('Check the board: it shows the Safe, the network and the first nonce. Confirm there (hold both buttons). Then it makes the key tree and signs its certificate, about a minute on the board')
     const e = await client.enrol(chainId, safe, start, w)

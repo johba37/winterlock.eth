@@ -7,7 +7,7 @@ import type { Address } from 'viem'
 import { useApp, useBoard } from '../app'
 import type { BoardTree } from '../board/client'
 import { type LinkState, link, useLink } from '../board/link'
-import { choosePort, serialSupported } from '../board/serial'
+import { NO_SERIAL, choosePort, serialSupported } from '../board/serial'
 import { BOTH, LEFT, RIGHT } from '../board/runner'
 import type { Screen as OledScreen, VirtualTransport } from '../board/virtual'
 import { type BoardSafeView, adoptBoard, boardEnrol, boardMismatch, recoverBoard, setupBoard } from '../lib/board-flows'
@@ -263,7 +263,7 @@ export function BoardStart() {
           <Panel>
             <p>
               The board is a small device with a screen and two buttons. It makes and keeps your member key, asks for its PIN at every start, and shows you every transaction before it signs. Connect it by
-              USB, in Chrome or Edge on a computer.
+              USB, in an up-to-date Chrome, Edge or Brave on a computer.
             </p>
           </Panel>
           {!mayHoldKeys() && <p class="error">On iPhone and iPad no browser can reach a board.</p>}
@@ -271,7 +271,7 @@ export function BoardStart() {
             <button type="button" data-testid="connect-usb" disabled={!serialSupported() || act.busy} onClick={() => connectTo('serial')}>
               Connect a board by USB
             </button>
-            {!serialSupported() && <p class="muted small">This browser has no Web Serial: use Chrome or Edge on a computer.</p>}
+            {!serialSupported() && <p class="muted small">{NO_SERIAL}</p>}
             <label class="small row-label">
               <input type="checkbox" checked={all} onChange={(e) => setAll((e.target as HTMLInputElement).checked)} /> Show all serial ports (if your board’s USB chip isn’t listed)
             </label>
@@ -564,6 +564,13 @@ export function BoardInfo() {
 
 // --- a Safe's key tree, with a board ---
 
+/** When the Safe's next nonce is below the enrolled tree's first: who has to act, in a line. */
+export function gapLine(nonce: number, tree: { root: unknown; start: number }, who = 'the board'): string | null {
+  if (!tree.root || nonce >= tree.start) return null
+  const which = tree.start - nonce === 1 ? `nonce ${nonce}` : `nonces ${nonce} to ${tree.start - 1}`
+  return `The Safe is at nonce ${nonce}, and your key tree starts at nonce ${tree.start}: ${who} can’t sign ${which}. Another owner has to execute ${tree.start - nonce === 1 ? 'a transaction at that nonce' : 'transactions at those nonces'} first (sending 0 ETH to the Safe itself will do); then ${who} signs from nonce ${tree.start}.`
+}
+
 export function BoardTreePanel(props: { view: BoardSafeView; chain: number; safe: Address; onDone(): void }) {
   const app = useApp()
   const rec = useBoard()
@@ -572,7 +579,9 @@ export function BoardTreePanel(props: { view: BoardSafeView; chain: number; safe
   const [done, setDone] = useState<{ text: string; tx: string } | null>(null)
   const act = useAction()
   const low = v.left !== undefined && v.capacity !== undefined && v.left < v.capacity / 5
-  const usable = !!v.onchain.root && !!v.tree && (v.left ?? 0) > 0
+  // the board's trees unknown (locked, or not connected): the tree enrolled on-chain counts, and
+  // nothing is offered to enrol (boardEnrol refuses a needless enrolment, too)
+  const usable = !!v.onchain.root && (v.boardTrees === null || !!v.tree) && (v.left ?? 0) > 0
   const unlocked = s.phase === 'connected' && s.status?.state === 'unlocked'
 
   async function doEnrol() {
@@ -582,7 +591,7 @@ export function BoardTreePanel(props: { view: BoardSafeView; chain: number; safe
   }
 
   return (
-    <Panel title="Key tree" tone={usable && !low ? 'plain' : 'warn'} testid="tree-panel">
+    <Panel title="Key tree" tone={usable && !low && !gapLine(v.state.nonce, v.onchain) ? 'plain' : 'warn'} testid="tree-panel">
       {v.onchain.root ? (
         <p data-testid="tree-state" data-left={usable ? v.left : 0}>
           {v.left} of {v.capacity} nonces left for your owner on this Safe (nonces {v.onchain.start} to {v.onchain.start + v.capacity! - 1}).
@@ -596,6 +605,11 @@ export function BoardTreePanel(props: { view: BoardSafeView; chain: number; safe
         </p>
       )}
       {v.treeProblem && <p class="error">{v.treeProblem}</p>}
+      {v.onchain.root && gapLine(v.state.nonce, v.onchain, 'the board') && (
+        <p class="error" data-testid="tree-gap">
+          {gapLine(v.state.nonce, v.onchain, 'the board')}
+        </p>
+      )}
       {v.pending && <p class="small">The board signed a certificate (from nonce {v.pending.start}) that isn’t sent yet: enrolling sends it.</p>}
       <ErrorLine error={act.error} />
       {done && (

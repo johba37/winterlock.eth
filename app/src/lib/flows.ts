@@ -1,7 +1,7 @@
 // What the app does, step by step, following the Python signer (cli.py, cli_devices.py) where it
 // has a counterpart. Screens call these; they report progress through `step`.
 
-import { type Address, encodeFunctionData, getAddress, hexToBytes, isAddress, keccak256, padHex, toHex } from 'viem'
+import { type Address, BaseError, encodeFunctionData, getAddress, hexToBytes, isAddress, keccak256, padHex, toHex } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
 import { CHAINS, chainById, enabledChains } from './chains'
 import {
@@ -15,6 +15,7 @@ import {
   isValidSignature,
   ownerDeployed,
   readDevice,
+  readFresh,
   readTree,
   safeState,
   sendFromGas,
@@ -354,18 +355,24 @@ export interface SafeView {
 /** Where this member stands with a Safe: owner or not, the device, the key tree and its nonces. */
 export async function safeView(env: Env, dev: DeviceRecord, chainId: number, safe: Address): Promise<SafeView> {
   const ctx = await usableCtx(env.db, env.core, chainId)
-  const state = await safeState(ctx, safe)
-  const isOwner = state.owners.some((o) => o.toLowerCase() === dev.owner.toLowerCase())
   const device = await deviceState(env, dev, ctx)
-  let tree: TreeRecord | null = null
-  let treeProblem: string | undefined
-  if (device.kind === 'active') {
-    try {
-      tree = await signingTree(env, dev, ctx, safe, device.generation)
-    } catch (e) {
-      treeProblem = (e as Error).message
+  // the Safe and the tree at one block, never before a transaction this app saw mined (readFresh)
+  const { state, tree, treeProblem } = await readFresh(ctx, async (b) => {
+    const state = await safeState(ctx, safe, b)
+    let tree: TreeRecord | null = null
+    let treeProblem: string | undefined
+    if (device.kind === 'active') {
+      try {
+        tree = await signingTree(env, dev, ctx, safe, device.generation, b)
+      } catch (e) {
+        // the endpoint's errors: asked again, or shown as the view's (not as a missing tree)
+        if (e instanceof BaseError) throw e
+        treeProblem = (e as Error).message
+      }
     }
-  }
+    return { state, tree, treeProblem }
+  })
+  const isOwner = state.owners.some((o) => o.toLowerCase() === dev.owner.toLowerCase())
   const view: SafeView = { ctx, state, isOwner, device, tree, treeProblem }
   if (tree) {
     view.capacity = 2 ** (tree.height - 1)
@@ -375,8 +382,8 @@ export async function safeView(env: Env, dev: DeviceRecord, chainId: number, saf
 }
 
 /** The key log's tree enrolled on-chain for this device and Safe (cli.py's signing_tree). */
-export async function signingTree(env: Env, dev: DeviceRecord, ctx: Ctx, safe: Address, generation: number): Promise<TreeRecord> {
-  const onchain = await readTree(ctx, dev.owner, safe, dev.device)
+export async function signingTree(env: Env, dev: DeviceRecord, ctx: Ctx, safe: Address, generation: number, blockNumber?: bigint): Promise<TreeRecord> {
+  const onchain = await readTree(ctx, dev.owner, safe, dev.device, blockNumber)
   const mine = (await treesFor(env.db, ctx.chain.id, safe)).filter((t) => t.device === dev.device)
   if (!onchain.root) throw new Refused('No key tree is enrolled for this device on this Safe yet: enrol one.')
   if (onchain.generation !== generation) throw new Refused('The key tree enrolled for this device is from before it was certified again: enrol a fresh one.')
@@ -400,8 +407,7 @@ export async function signingTree(env: Env, dev: DeviceRecord, ctx: Ctx, safe: A
 export async function enrol(env: Env, dev: DeviceRecord, chainId: number, safe: Address, step: Step, height = TREE_HEIGHT): Promise<{ tree: TreeRecord; hash: Hex; gasUsed: bigint }> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   const gen = await requireActive(env, dev, ctx)
-  const state = await safeState(ctx, safe)
-  const onchain = await readTree(ctx, dev.owner, safe, dev.device)
+  const { state, onchain } = await readFresh(ctx, async (b) => ({ state: await safeState(ctx, safe, b), onchain: await readTree(ctx, dev.owner, safe, dev.device, b) }))
   const sameGen = onchain.root !== null && onchain.generation === gen
   const mine = (await treesFor(env.db, chainId, safe)).filter((t) => t.device === dev.device && t.generation === gen)
   if (sameGen && !mine.some((t) => t.root.toLowerCase() === onchain.root!.toLowerCase())) {
@@ -411,6 +417,11 @@ export async function enrol(env: Env, dev: DeviceRecord, chainId: number, safe: 
   }
   let tree = mine.filter((t) => !sameGen || t.start > onchain.start).at(-1)
   if (!tree) {
+    // the owner contract takes a new tree only from a later start: while the enrolled one is
+    // unused, another would leave nonces this device can't sign (needlessEnrolment)
+    if (sameGen && onchain.start >= state.nonce) {
+      throw new Refused(`This device’s key tree for this Safe is enrolled (nonces ${onchain.start} to ${onchain.start + 2 ** (onchain.height - 1) - 1}), and none of its nonces is used yet: there’s nothing to enrol.`)
+    }
     const start = Math.max(state.nonce, sameGen ? onchain.start + 1 : 0, ...mine.map((t) => t.start + 1))
     const salt = crypto.getRandomValues(new Uint8Array(32))
     step('Making a key tree for this Safe')

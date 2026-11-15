@@ -1,4 +1,4 @@
-// A board on USB, through Web Serial (Chrome and Edge on desktops): its USB serial chip at 115200
+// A board on USB, through Web Serial (Chromium browsers on desktops): its USB serial chip at 115200
 // baud, 8N1. The port carries the bootloader's text at every start as well as the board's frames;
 // the client's reader finds the frames among it.
 //
@@ -18,12 +18,20 @@ export const CHIPS: { usbVendorId: number; usbProductId: number; name: string }[
 
 export const BAUD = 115200
 
+/** For a browser without Web Serial. On the first wired board (2026-11-15, Ubuntu), Brave 1.99
+ * worked; Brave 1.80 lost the port as soon as it opened; the Snap Store's Firefox saw no ports. */
+export const NO_SERIAL = 'This browser has no Web Serial: use an up-to-date Chrome, Edge or Brave on a computer.'
+
+/** When the chooser listed nothing, or the member closed it. */
+export const NOT_LISTED =
+  'No port was chosen. If your board wasn’t listed: try another USB cable (some carry only power), or tick “Show all serial ports”. On Ubuntu, the Snap Store’s Firefox can’t see serial ports: use Chrome, Edge or Brave.'
+
 export function serialSupported(): boolean {
   return typeof navigator !== 'undefined' && !!navigator.serial
 }
 
 function serial(): Serial {
-  if (!navigator.serial) throw new Error('This browser has no Web Serial: use Chrome or Edge on a computer.')
+  if (!navigator.serial) throw new Error(NO_SERIAL)
   return navigator.serial
 }
 
@@ -36,7 +44,12 @@ export function chipName(info: SerialPortInfo): string {
 
 /** The browser's port chooser (needs a click): the usual chips, or every port. */
 export async function choosePort(allPorts = false): Promise<SerialPort> {
-  return serial().requestPort(allPorts ? {} : { filters: CHIPS.map(({ usbVendorId, usbProductId }) => ({ usbVendorId, usbProductId })) })
+  try {
+    return await serial().requestPort(allPorts ? {} : { filters: CHIPS.map(({ usbVendorId, usbProductId }) => ({ usbVendorId, usbProductId })) })
+  } catch (e) {
+    if ((e as Error)?.name === 'NotFoundError') throw new Error(NOT_LISTED)
+    throw e
+  }
 }
 
 /** Ports this site was allowed before, connected now. */
@@ -51,6 +64,7 @@ export class SerialTransport implements Transport {
   private reader: ReadableStreamDefaultReader<Uint8Array> | undefined
   private reading: Promise<void> | undefined
   private closing = false
+  private openedAt = 0
   private events: TransportEvents | undefined
   private onDisconnect = (e: Event) => {
     if (e.target === this.port) this.lost('the board was unplugged')
@@ -76,6 +90,7 @@ export class SerialTransport implements Transport {
       /* not every driver takes it */
     }
     serial().addEventListener('disconnect', this.onDisconnect)
+    this.openedAt = Date.now()
     this.reading = this.read()
   }
 
@@ -97,7 +112,9 @@ export class SerialTransport implements Transport {
         this.reader = undefined
       }
     }
-    if (!this.closing) this.lost('the board’s serial port closed')
+    if (this.closing) return
+    // Brave 1.80 (Chromium 138) on Ubuntu ended the port at once, every time; 1.99 kept it
+    this.lost(Date.now() - this.openedAt < 5000 ? 'the serial port closed as soon as it opened: an older browser can do this, so update it, or use Chrome or Edge' : 'the board’s serial port closed')
   }
 
   private lost(why: string) {

@@ -6,7 +6,7 @@ import { short } from '../lib/chain'
 import { useApp, useMember } from '../app'
 import { link, useLink } from '../board/link'
 import { type BoardSafeView, approveHashOf, boardConfirm, boardPropose, boardSafeView } from '../lib/board-flows'
-import { BoardTreePanel } from './board'
+import { BoardTreePanel, gapLine } from './board'
 import { ctxFor, fmtEth } from '../lib/chain'
 import { chainById } from '../lib/chains'
 import type { Hex } from '../lib/db'
@@ -221,7 +221,7 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
         </Panel>
       )}
       {view && view.device.kind === 'active' && (
-        <Panel title="Key tree" tone={view.tree && !low ? 'plain' : 'warn'} testid="tree-panel">
+        <Panel title="Key tree" tone={view.tree && !low && !gapLine(view.state.nonce, view.tree) ? 'plain' : 'warn'} testid="tree-panel">
           {view.tree ? (
             <p data-testid="tree-state" data-left={view.left}>
               {view.left} of {view.capacity} nonces left for this device on this Safe (nonces {view.tree.start} to {view.tree.start + view.capacity! - 1}).
@@ -230,6 +230,11 @@ export function SafeScreen(props: { chain: number; safe: Address }) {
           ) : (
             <p data-testid="tree-state" data-left="0">
               {view.treeProblem ?? 'No key tree yet.'} A key tree gives this device 512 one-time keys for this Safe, two per nonce. Enrolling sends one transaction from your gas account.
+            </p>
+          )}
+          {view.tree && gapLine(view.state.nonce, view.tree, 'this device') && (
+            <p class="error" data-testid="tree-gap">
+              {gapLine(view.state.nonce, view.tree, 'this device')}
             </p>
           )}
           <ErrorLine error={act.error} />
