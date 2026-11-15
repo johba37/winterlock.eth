@@ -2,8 +2,9 @@
 
 The bring-up image, the push-button signer and the app with a board, on the first wired board. Everything in this report was built from `board-app` at `ccebaac`. Serial logs are next to this file.
 
-**Result:** the hardware works: display, both buttons, serial both ways. The signer starts blank, sets up through the app and enrols a key tree on Sepolia. Four things came up:
-- The app enrolled twice, and the board's owner on the Safe now can't sign the Safe's next nonce.
+**Result:** the hardware works: display, both buttons, serial both ways. The signer starts blank, sets up through the app and enrols a key tree on Sepolia. Its first confirmation is accepted by the Safe's signature check on-chain. Five things came up:
+- The app enrolled twice, so the board's tree started one nonce past the Safe's. Another owner executed that nonce.
+- The first confirmed transaction sends ETH to the board's own owner contract, which can't receive ETH, so it can't execute. Nothing warned before signing.
 - Ubuntu's Firefox snap can't see serial ports.
 - An older Brave loses the port as soon as it's opened.
 - `board_client.py` loses its first request because opening the port restarts the board.
@@ -90,7 +91,7 @@ The app's message "use Chrome or Edge" (`serial.ts:26`) could name what works: a
 
 **What happened:** the first enrolment succeeded ("Enrolled a key tree for nonces 3 to 514, and created your owner contract (606,041 gas)"). Right after it, the Key tree panel showed its enrol button again. The member took that to mean another step was needed and clicked it. The board made and certified a second tree, and the app sent it. After the second, the button didn't come back. The board lists both trees.
 
-**The consequence:** the owner contract holds one tree per Safe, so the second replaced the first. The first tree's keys were never used, and nothing leaked. But **the enrolled tree starts at nonce 4 while the Safe is at nonce 3**: the board can't sign nonce 3, and the app refuses it ("Nonce 3 is outside your key tree"). A new enrolment would start at 5, since a new tree always starts after the board's last one for that Safe. Another owner has to execute nonce 3 (threshold 1). After that the board signs nonces 4 to 515. The void tree's records stay in the board's storage.
+**The consequence:** the owner contract holds one tree per Safe, so the second replaced the first. The first tree's keys were never used, and nothing leaked. But **the enrolled tree starts at nonce 4 while the Safe was at nonce 3**: the board can't sign nonce 3, and the app refuses it ("Nonce 3 is outside your key tree"). A new enrolment would start at 5, since a new tree always starts after the board's last one for that Safe. Another owner had to execute nonce 3 (threshold 1), which the ECDSA owner did (below). After that the board signs nonces 4 to 515. The void tree's records stay in the board's storage.
 
 **Why the button came back (inference, not verified):** the panel shows the button when it doesn't see a usable tree (`app/src/screens/board.tsx`: `!usable || low || pending`). That happens when the owner or its tree isn't visible on-chain, or the tree isn't found on the board. After the enrolment, `boardEnrol` checks the tree at the block the transaction was mined in (`afterTx`). The panel's refresh (`onDone`) reads at the latest block instead, through `ethereum-sepolia-rpc.publicnode.com`, which spreads requests over several nodes. A node one block behind would show no owner contract, so no tree, and the button reads **Enrol**. The second enrolment didn't create anything, and its refresh found the tree.
 
@@ -99,9 +100,33 @@ The app's message "use Chrome or Edge" (`serial.ts:26`) could name what works: a
 - Ask for confirmation when an enrolment would replace a tree enrolled minutes ago, or one with all its nonces left, and say that the new tree starts after it.
 - Possibly: while the Safe's nonce is below the enrolled tree's start, say so in the panel and name the way out (another owner executes).
 
+## Confirming a transaction
+
+**Nonce 3** was executed by the ECDSA owner `0x8db6B632D743aef641146DC943acb64957155388`: 0.001 ETH to itself. The Safe moved to nonce 4, the first nonce of the board's tree.
+
+**Nonce 4** was proposed in the app and confirmed on the board. The Safe accepts the board's signature, but the transaction can't execute:
+
+| | |
+|---|---|
+| SafeTx hash | `0xc61a3aa1c7ff95cfeb0d59aa20f9eae0d0afb4599765a01d37c3f2a992a89f78` |
+| Transaction | 0.01 ETH to `0x8c08fBFf5A359D2059a7De7776B76CB14C5460F3`: **the board's own owner contract**; no data, CALL, `safeTxGas` 0, `gasPrice` 0 |
+| Confirmation | the board's owner, a contract signature of 1,855 bytes (Safe's Transaction Service: `CONTRACT_SIGNATURE`, 1 of 1) |
+| Execution | the ECDSA owner couldn't execute it: it reverts |
+
+**Why, from a trace** (`execTransaction` from the ECDSA owner on a fork of Sepolia, anvil, 182,843 gas):
+1. `checkSignatures` → the owner's `isValidSignature(0xc61a3aa1…)` → the verifier `0x272138c7…` returns the root `0x19ca77ddaef95687b101182aa105f3486f2b63f76dcd5dc1`, the enrolled tree's root. The owner answers `0x1626ba7e`: **the board's WOTS signature is valid on-chain.**
+2. The Safe then calls `0x8c08…` with 0.01 ETH. The owner proxy emits `Transfer` and delegates to its implementation `0x114caAB223BaccD9BcA92C28ABBCf1edC0C3bCdf`, which reverts: `WinterlockOwner` (`contracts/src/safe/WinterlockOwner.sol`) has no `receive` or `fallback`.
+3. With `safeTxGas` and `gasPrice` at 0, Safe v1.4.1 reverts the whole `execTransaction` when the inner call fails.
+
+`eth_call` of a plain 0.01 ETH transfer from the Safe to `0x8c08…` reverts the same way.
+
+**The way out:** a second version of nonce 4 to a recipient that takes ETH, such as the ECDSA owner or the gas account, confirmed on the board. Each nonce has two one-time keys, so the board signs one more version of nonce 4 and refuses a third.
+
+**Suggested fix:** neither the app nor the board's logic checks the recipient against the member's owner contract. Since an ETH transfer to it always reverts, the app should refuse to propose one, and the board should refuse or warn before signing. The board would otherwise spend one of the nonce's two keys on a transaction that can never run.
+
 ## Not tested yet
 
-- **Confirming a transaction on the board** (SIGN): an ETH transfer, a token transfer, approveHash with the parent's fields, a call that isn't decoded, a refused delegate call. Waits for nonce 3 (above).
+- **A transaction confirmed on the board and executed:** the second version of nonce 4 (above). Then a token transfer, approveHash with the parent's fields, a call that isn't decoded, a refused delegate call.
 - **Unlock after a restart** (the PIN), **three wrong PINs** (the board erases itself), and **recovery** from the words.
 - **Power cuts and flash wear** on the real chip.
 - **Times on the chip** for setup, enrolment and a signature (not measured this time).
