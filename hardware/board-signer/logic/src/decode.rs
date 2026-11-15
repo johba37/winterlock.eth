@@ -197,6 +197,26 @@ pub fn amount(v: &U256, decimals: u8) -> alloc::string::String {
 }
 
 /// The decoded actions for display: the transaction's, then for an approval, its parent's.
+/// Why the member's own owner contract can't take what `d` sends it, if it sends it something:
+/// ETH or an empty call (the contract has no receive, fallback or payable function, so the Safe's
+/// call reverts and the transaction can never execute) or a known token (the contract can't move
+/// it, so it would stay there for good). The first wired board signed 0.01 ETH to its own owner
+/// contract (2026-11-15): valid on-chain, never executable. A call with data and no ETH stays
+/// allowed: the Safe may call its owner (to enrol, for one).
+pub fn to_own_owner(d: &Decoded, owner: &[u8; 20]) -> Option<&'static str> {
+    for a in actions(d) {
+        match a {
+            Action::Eth { to, .. } if to == owner => return Some("ETH to your own owner contract: it can't receive ETH, so this could never execute"),
+            Action::Raw { to, value, .. } if to == owner && !value.is_zero() => {
+                return Some("ETH to your own owner contract: it can't receive ETH, so this could never execute");
+            }
+            Action::Token { to, .. } if to == owner => return Some("tokens to your own owner contract: it can't move them, so they would be stuck"),
+            _ => {}
+        }
+    }
+    None
+}
+
 pub fn actions(d: &Decoded) -> Vec<&Action> {
     let mut v = alloc::vec![&d.action];
     if let Action::Approve { parent, .. } = &d.action {

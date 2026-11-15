@@ -203,6 +203,24 @@ fn transactions_of_each_kind() {
     assert_eq!(code, Code::Refused as u8);
     assert!(why.contains("delegate"), "{why}");
 
+    // ETH or tokens to the board's own owner contract: refused before anything is shown or a key
+    // is used (the first wired board signed such a transfer, 2026-11-15)
+    let (code, why) = sign(&mut b, 30, &SafeTx { to: id.owner, ..eth(5, 1) }, None).unwrap_err();
+    assert_eq!(code, Code::Refused as u8);
+    assert!(why.contains("can't receive ETH"), "{why}");
+    let mut to_owner = usdc(5, 1);
+    to_owner.data[16..36].copy_from_slice(&id.owner);
+    let (code, why) = sign(&mut b, 31, &to_owner, None).unwrap_err();
+    assert_eq!(code, Code::Refused as u8);
+    assert!(why.contains("can't move them"), "{why}");
+    let raw_eth = SafeTx { to: id.owner, data: vec![0x12, 0x34, 0x56, 0x78], value: U256::from_u64(1), nonce: U256::from_u64(5), ..Default::default() };
+    assert!(sign(&mut b, 32, &raw_eth, None).unwrap_err().1.contains("can't receive ETH"));
+    let mut approve_to_owner = approve.clone();
+    let parent_to_owner = SafeTx { to: id.owner, ..eth(4, 1) };
+    approve_to_owner.data[4..36].copy_from_slice(&parent_to_owner.hash(CHAIN, &PARENT));
+    approve_to_owner.nonce = U256::from_u64(5);
+    assert!(sign(&mut b, 33, &approve_to_owner, Some(&parent_to_owner)).unwrap_err().1.contains("can't receive ETH"), "the parent's transfer too");
+
     // refund fields: shown, and a second confirmation
     let gas = SafeTx { gas_price: U256::from_u64(1_000_000_000), refund_receiver: [0xEE; 20], ..eth(6, 1) };
     request(&mut b, ty::SIGN, 19, &sign_payload(CHAIN, &SAFE, &[0; 24], &gas, None));

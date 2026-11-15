@@ -1194,6 +1194,9 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             Ok(d) => d,
             Err(r) => return self.refuse(id, r.text()),
         };
+        if let Some(why) = self.store.identity().and_then(|i| decode::to_own_owner(&decoded, &i.owner)) {
+            return self.refuse(id, why);
+        }
         let Some(nonce) = s.tx.nonce.to_u64() else { return self.refuse(id, "the nonce is too large") };
         let trees = self.store.trees();
         let pick = if s.root == [0; 24] {
