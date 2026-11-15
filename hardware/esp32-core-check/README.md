@@ -117,7 +117,23 @@ The first line: the chip, whether all 90 checks passed, the peak heap use and bo
 
 On the display, `1c` and `2c` are one core and both; `SPX` is the stateless signature; `h6` and `h10` are the WOTS trees; times are in ms. The third page is ERC-8499's, with its units on each line.
 
-## On the board (2026-11-15)
+## On the board (2026-11-15, version 0.2.1)
+
+The same board, with sha2's compact code. The run was stopped after ERC-8499's part; every check up to there passed. Times are means of four, except PBKDF2 alone and the tree:
+
+| ERC-8499 step | 0.2.0 | 0.2.1 |
+|---|---|---|
+| a phrase's root (max) | 25,233 ms (25,237) | 483.6 ms (483.9) |
+| of it, PBKDF2 | 25,210 ms | 481.0 ms |
+| member key seed | 24.7 ms | 836 µs |
+| gas key | 24.8 ms | 817 µs |
+| device root | 24.7 ms | 1.1 ms |
+| tree secret seed | 25.5 ms | 1.0 ms |
+| tree of height 4, from a device's random bytes | 1,361 ms | 1,331 ms |
+
+52 times faster for the phrase's root, 20 to 30 times for the HKDF steps. The tree of height 4 is mostly keccak and barely changed.
+
+## On the board (2026-11-15, version 0.2.0)
 
 Version 0.2.0 on the same board, again without a display. All 90 checks pass.
 
@@ -148,7 +164,7 @@ Not yet tried on a board: the OLED and the BOOT button.
 - **Chip revision.** esp-hal 1.2 supports ESP32 v3.0 and later, and by default it refuses older chips. This build accepts any revision (`.cargo/esp-config.toml`), as the benchmark firmware does, and prints the revision at start.
 - **The FPU** is turned on at start on both cores, as in the benchmark firmware. The core uses no floating point.
 - **The second core** is started for each two-core job and parked when it's done. If it doesn't start, the first core does its half and the check says FAIL.
-- **Code that doesn't fit the flash cache** runs at flash speed. The chip runs code from flash through a 32 KB cache; a hot function larger than that is fetched again on each pass. sha2's unrolled SHA-512 (48.5 KB) did (2026-11-15, above). `tiny_keccak::keccakf` is 2.6 KB.
+- **Code that doesn't fit the flash cache** runs at flash speed. The chip runs code from flash through a 32 KB cache; a hot function larger than that is fetched again on each pass. sha2's unrolled SHA-512 (48.5 KB) did, and took 52 times as long as the 3.8 KB loop (2026-11-15, above). `tiny_keccak::keccakf` is 2.6 KB.
 - **BOOT is GPIO0.** Holding it while pressing EN starts the chip in download mode instead of the firmware, so press it only once the start screen is up.
 
 ## Building from source
