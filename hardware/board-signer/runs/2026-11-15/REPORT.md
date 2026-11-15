@@ -173,7 +173,10 @@ The Safe is at nonce 6.
 - **The start-up lines.** Not a restart: the log shows one boot. `Uart::new` empties UART0's transmit FIFO (esp-hal 1.2.2: "Applying config also resets Tx/Rx FIFOs"), so up to 128 bytes of esp-println's output were lost. The `k-b` in the capture is a stale piece of `winterlock-board` from the FIFO's memory. The test build now waits for the FIFO to empty before taking the UART.
 - **`board_client.py`:** STATUS, TREES, GAS_KEY and CANCEL are asked again after 4 s without an answer, and at once after BOOTED, as the app's client does.
 - **Browsers:** the app names an up-to-date Chrome, Edge or Brave. An empty chooser explains the cable, "Show all serial ports" and the Snap Store's Firefox. A port that closes within 5 s of opening says an older browser can do this.
-- **The Safe of this run:** another owner executes nonce 3; then the board signs nonces 4 to 515. The tree from nonce 3 stays in the board's storage, void.
+- **ETH to the owner contract.** Confirmed: `WinterlockOwner` has no `receive`, `fallback` or payable function, and an `eth_call` from the Safe with ETH to `0x8c08…` reverts, with or without data. A token transfer to it is worse: it succeeds, and the tokens stay there, since the contract can't move them. Fixed on both sides:
+  - The app refuses ETH, an empty call or a token transfer to any Winterlock owner contract, the member's own or another member's. It recognises them by their code. The check covers each call of a batch and an approveHash's parent, and runs before a key signs, for proposals and confirmations alike (`refusePaymentToOwner`). The Send screen refuses at Review, and warns when the Safe's call fails now (too little ETH, a recipient that refuses it).
+  - The board refuses ETH or a known token to its own owner contract, in the transaction or a parent's, before it shows anything (`decode::to_own_owner`).
+- **The Safe of this run:** the ECDSA owner executed nonce 3, the board signed nonces 4 and 5, and the Safe is at nonce 6. The tree from nonce 3 stays in the board's storage, void.
 
 ## Files
 

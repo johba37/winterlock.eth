@@ -172,13 +172,14 @@ The app talks to the board over Web Serial, or, in development builds only, to t
 [`runs/2026-11-15/REPORT.md`](runs/2026-11-15/REPORT.md): an ESP32-D0WDQ6 of revision v1.0 with a CP2102, on Ubuntu.
 
 - **Works:** the OLED (at 0x3C), both push buttons (each press counted once), the serial link both ways, setup through the app in Brave 1.99 (the words, the check, the PIN), and an enrolment on Sepolia (`deployAndEnroll`, 606,041 gas).
+- **Signed on the board, executed on its signature alone:** two versions of one nonce with that nonce's two keys (a transfer, then a rejection proposed in Safe's web app and confirmed in the app), and a plain ETH transfer. The owner contract accepted each WOTS signature, and the Safe executed the rejection and the transfer with the board's signature as the only one.
 - **The entropy source:** the bring-up image's register dump shows esp-hal 1.2.2's `TrngSource::new` turning on I2C0's clock and leaving I2S0's off, and the signer's fix turning I2S0's on and setting it up (`I2S0 CONF2` from 0x20 to 0x39).
 - **Reset on connect:** most opens of the port restart the board (Linux raises DTR and RTS as the port opens, before the program sets them low). The app's client asks again after BOOTED; `board_client.py` now does too.
-- **Found and fixed since:** the Key tree panel, refreshed from a node one block behind, offered to enrol again after an enrolment, and the second tree started one nonce past the Safe's (the app now reads no older state than its own transactions, and refuses an enrolment while the board holds an unused tree for the Safe); the test build's first start-up lines were cut off (taking UART0 empties its FIFO: the test build now waits for it first); the browsers that work are named.
+- **Found and fixed since:** the first confirmed transfer sent ETH to the board's own owner contract, which can't receive it, so it could never execute (the app now refuses ETH and tokens to any Winterlock owner contract, and the board to its own); the Key tree panel, refreshed from a node one block behind, offered to enrol again after an enrolment, and the second tree started one nonce past the Safe's (the app now reads no older state than its own transactions, and refuses an enrolment while the board holds an unused tree for the Safe); the test build's first start-up lines were cut off (taking UART0 empties its FIFO: the test build now waits for it first); the browsers that work are named.
 
 ## Not verified on the board yet
 
-- confirming a transaction (SIGN): transfers, approveHash with the parent's fields, an undecoded call, a refused delegate call
+- other transactions on the board: a token transfer, approveHash with the parent's fields, an undecoded call, a refused delegate call, and a third version at one nonce (the key log refuses it)
 - unlocking after a restart, three wrong PINs (the board erases itself), and recovery from the words
 - flash writes, erases and power cuts on the real chip (QEMU's flash model and the simulated NOR flash are what was tested)
 - the times on the chip: QEMU's say nothing about them. The core check measured 11.7 s for the member key and 42 s for a tree on both cores, and 15 s on average (32 s at most) for a stateless signature on one core; the board spreads a signature's grind and FORS trees over both cores, which should shorten it, unmeasured
