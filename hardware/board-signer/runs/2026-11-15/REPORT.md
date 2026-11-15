@@ -142,9 +142,13 @@ The Safe is at nonce 6.
 
 **Suggested fix:** neither the app nor the board's logic checks the recipient against the member's owner contract. Since an ETH transfer to it always reverts, the app should refuse to propose one, and the board should refuse or warn before signing. The board would otherwise spend one of the nonce's two keys on a transaction that can never run.
 
-## Recovery
+## Unlock, three wrong PINs, recovery
 
-The board was recovered through the app: the 24 words entered letter by letter on the board's buttons, then a new PIN. A recovered board has no key trees, so a new one was enrolled:
+As reported by the member (not watched on serial):
+- **Unlock** with the PIN after a restart worked.
+- **Three wrong PINs in a row** erased the board.
+
+The board was then recovered through the app: the 24 words entered letter by letter on the board's buttons, then a new PIN. A recovered board has no key trees, so a new one was enrolled:
 
 | | |
 |---|---|
@@ -158,13 +162,20 @@ What it shows:
 
 This time there was one enrolment: the member knew not to press Enrol again if the button came back right away.
 
+**Signing after the recovery, a token transfer:** nonce 6, 1 USDC (Circle's Sepolia USDC, `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`, the only Sepolia token in the board's list, `logic/src/decode.rs`) to the ECDSA owner. It was proposed in the app, confirmed on the board and executed from the app with the board's signature alone (slot `00`):
+
+| | |
+|---|---|
+| SafeTx hash | `0x8dcc643276d59c80bc8944aa7edc9d1a35a02ffc89e95737dc9e6880f0835102`: `transfer(0x8db6…, 1000000)` |
+| Execution | `0x0691f49b102cadbbbaa488fe5294b38b3aff9f2f9c61a73efb173b6dfc9991c3`, block 12141636, 315,801 gas, from the gas account |
+
+The Safe is at nonce 7. The recovered board signs with its new tree, and the board decoded a token transfer from its list.
+
 ## Not tested yet
 
-- **Signing after the recovery** with the new tree, at nonce 6.
 
 - **A third version at one nonce, refused by the board's key log.** Nonce 4 was executed before it could be tried, and the app refuses a used nonce before the board sees it. To test it, keep a nonce open: propose version 1 in the app, then versions 2 and 3 in Safe's web app, and confirm each on the board. Execute only at the end.
-- **Other transactions on the board:** a token transfer, approveHash with the parent's fields, a call that isn't decoded, a refused delegate call.
-- **Unlock after a restart** (the PIN) and **three wrong PINs** (the board erases itself).
+- **Other transactions on the board:** approveHash with the parent's fields, a call that isn't decoded (for example a token not in the board's list), a refused delegate call.
 - **Power cuts and flash wear** on the real chip.
 - **Times on the chip** for setup, enrolment and a signature (not measured this time).
 - **The touch-button build** (`--features touch-buttons`): not needed for this board.
