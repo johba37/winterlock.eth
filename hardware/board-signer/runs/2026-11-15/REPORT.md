@@ -142,11 +142,29 @@ The Safe is at nonce 6.
 
 **Suggested fix:** neither the app nor the board's logic checks the recipient against the member's owner contract. Since an ETH transfer to it always reverts, the app should refuse to propose one, and the board should refuse or warn before signing. The board would otherwise spend one of the nonce's two keys on a transaction that can never run.
 
+## Recovery
+
+The board was recovered through the app: the 24 words entered letter by letter on the board's buttons, then a new PIN. A recovered board has no key trees, so a new one was enrolled:
+
+| | |
+|---|---|
+| Transaction | `0xf6e94fa86b2ec64091f73e747e1d2b55ab90bbf1388a5b5c0a62ae9bdb25eb44`, block 12141593, `enroll`, 394,136 gas |
+| Tree | root `0xaf73f4132a815455ac18bdbc84f8d2f4aa67162346082e42`, height 10, nonces 6 to 517 (the Safe's nonce was 6) |
+
+What it shows:
+- **The same member key:** the certificate was accepted by the existing owner `0x8c08…`, which checks it against its member key, and no new owner was created.
+- **The same gas key:** the enrolment was sent from the same gas account, `0xB75FC5C6…`.
+- **The new tree replaces the old one on-chain** (root `0x19ca77dd…`, nonces 4 to 515), whose keys the recovered board doesn't have.
+
+This time there was one enrolment: the member knew not to press Enrol again if the button came back right away.
+
 ## Not tested yet
+
+- **Signing after the recovery** with the new tree, at nonce 6.
 
 - **A third version at one nonce, refused by the board's key log.** Nonce 4 was executed before it could be tried, and the app refuses a used nonce before the board sees it. To test it, keep a nonce open: propose version 1 in the app, then versions 2 and 3 in Safe's web app, and confirm each on the board. Execute only at the end.
 - **Other transactions on the board:** a token transfer, approveHash with the parent's fields, a call that isn't decoded, a refused delegate call.
-- **Unlock after a restart** (the PIN), **three wrong PINs** (the board erases itself), and **recovery** from the words.
+- **Unlock after a restart** (the PIN) and **three wrong PINs** (the board erases itself).
 - **Power cuts and flash wear** on the real chip.
 - **Times on the chip** for setup, enrolment and a signature (not measured this time).
 - **The touch-button build** (`--features touch-buttons`): not needed for this board.
