@@ -20,11 +20,3 @@ embedded-storage  = "0.3"
 [dev-dependencies]
 serde_json = "1.0"
 png        = "0.17"
-
-[profile.test]
-opt-level = 3
-
-[profile.release]
-codegen-units = 1
-lto           = "fat"
-

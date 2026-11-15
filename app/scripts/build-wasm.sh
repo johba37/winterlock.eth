@@ -12,14 +12,14 @@ if [ "$have" != "$want" ]; then
   echo "wasm-bindgen-cli $have found; core-wasm pins $want: cargo install wasm-bindgen-cli --version $want" >&2
   exit 1
 fi
-# The WebAssembly mustn't depend on where the checkout is. rustc gets absolute paths for path
-# dependencies outside a crate's workspace (core/ for core-wasm) and keeps them in panic locations,
-# so a build in another folder gave another IPFS hash. The checkout's root becomes /winterlock and
+# The WebAssembly mustn't depend on where the checkout is: a build in any folder gives the published
+# IPFS hash. The crates are one Cargo workspace rooted at the checkout's root (../../Cargo.toml), so
+# cargo passes rustc the members' paths from the root (core/src/... in panic locations) and hashes
+# those, not absolute paths, into symbols' names and the order of the code. The other absolute paths
+# are remapped: the checkout's root (target/, where build scripts write) becomes /winterlock and
 # cargo's home (crates.io sources) /cargo. CARGO_ENCODED_RUSTFLAGS replaces any RUSTFLAGS, so the
-# build doesn't depend on those either. Cargo also hashes the location of a path dependency outside
-# the workspace into its symbols' names, which the debug `name` section holds: the core's is
-# removed, so the core's WebAssembly is the same in any folder (the virtual board, a development
-# tool, keeps its names).
+# build doesn't depend on those either. Both files keep their debug `name` section (function names
+# in stack traces): it is the same in any folder too.
 root="$(cd "$here/.." && pwd -P)"
 export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$root=/winterlock"$'\x1f'"--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/cargo"
 features=()
@@ -28,11 +28,11 @@ if [ -n "${FEATURES:-}" ]; then
 fi
 crate="$here/../core-wasm"
 (cd "$crate" && cargo build --quiet --release --target wasm32-unknown-unknown "${features[@]}")
-wasm-bindgen --target web --remove-name-section --out-dir "$here/src/wasm" --out-name core \
-  "$crate/target/wasm32-unknown-unknown/release/winterlock_core_wasm.wasm"
+wasm-bindgen --target web --out-dir "$here/src/wasm" --out-name core \
+  "$root/target/wasm32-unknown-unknown/release/winterlock_core_wasm.wasm"
 echo "built src/wasm/core_bg.wasm: $(wc -c < "$here/src/wasm/core_bg.wasm") bytes"
 board="$here/../hardware/board-signer/wasm"
 (cd "$board" && cargo build --quiet --release --target wasm32-unknown-unknown)
 wasm-bindgen --target web --out-dir "$here/src/wasm" --out-name board \
-  "$board/target/wasm32-unknown-unknown/release/winterlock_board_wasm.wasm"
+  "$root/target/wasm32-unknown-unknown/release/winterlock_board_wasm.wasm"
 echo "built src/wasm/board_bg.wasm: $(wc -c < "$here/src/wasm/board_bg.wasm") bytes"

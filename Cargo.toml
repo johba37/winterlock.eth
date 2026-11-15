@@ -1,0 +1,32 @@
+# One workspace for the core and the crates the app builds from it, rooted at the checkout's root.
+# Cargo hashes a path dependency's location into its symbols' names and the order of the code:
+# outside the building crate's workspace by its absolute path, so the app's WebAssembly depended on
+# the checkout's folder; inside the workspace by its path from the root, the same in any folder.
+# One Cargo.lock (here) and one target/ (here) for the members.
+[workspace]
+resolver = "3"
+members  = [
+  "core",
+  "core-wasm",
+  "hardware/board-signer/logic",
+  "hardware/board-signer/wasm",
+]
+# Not members, each with its own Cargo.lock and target/: the ESP32 crates (Espressif's toolchain
+# and their own .cargo/config.toml; their path dependencies on core/ and logic/ still work) and
+# the SLH-DSA benchmark tool (no path dependencies; its timings are with its own release profile).
+exclude = [
+  "hardware/board-signer/firmware",
+  "hardware/esp32-core-check",
+  "hardware/esp32-bench",
+  "contracts/bench/slh-dsa/tools/rust",
+]
+
+# A workspace's profiles are the root's: the members' own, which they all shared.
+[profile.release]
+codegen-units = 1
+lto           = "fat"
+opt-level     = 3
+
+# The tests run the hashes millions of times (core and logic; the bindings have no tests).
+[profile.test]
+opt-level = 3
