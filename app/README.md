@@ -112,21 +112,21 @@ npm run build       # WebAssembly, type check, then dist/
 
 ## Published
 
-**`https://app.winterlock.eth.limo`** serves the build of commit `17118b8` (keys by ERC-8499), IPFS hash `bafybeidntcolypa5x65b6kogxrsv5jqqain7ggrhmeb3apnk2v77x5ddi4`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth". The builds before it: `494703c` (WalletConnect, keys from before ERC-8499), `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`, which the app links to for devices it set up; `a20d51c` (no WalletConnect), `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`.
+**`https://app.winterlock.eth.limo`** serves the build of commit `d33a6ce` (the first with a board), IPFS hash `bafybeih7lsvgq4iiurfnantpers4heu3vdfvucf7vqlhzkw62mrh4vmfwe`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth". The builds before it: `17118b8` (keys by ERC-8499, no board), `bafybeidntcolypa5x65b6kogxrsv5jqqain7ggrhmeb3apnk2v77x5ddi4`; `494703c` (WalletConnect, keys from before ERC-8499), `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`, which the app links to for devices it set up; `a20d51c` (no WalletConnect), `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`.
 
-To check that the hash comes from this code, build that commit and hash `dist/` with [kubo](https://docs.ipfs.tech/install/command-line/). The build holds WalletConnect's project ID, which isn't in the repository: it is the 32-character hex string in the published `assets/index-*.js` (`const …="<the ID>"`, just before WalletConnect's state).
+To check that the hash comes from this code, build that commit and hash `dist/` with [kubo](https://docs.ipfs.tech/install/command-line/). The build holds WalletConnect's project ID, which isn't in the repository: it is the 32-character hex string in the published `assets/index-*.js` (`const …="<the ID>"`, just before WalletConnect's state). Build it in the folder the published build was made in: the core's WebAssembly holds the paths of six of its source files, so another folder gives another hash. The published `assets/core_bg-*.wasm` names that folder: run `strings` on it and take the part before `/core/src/`.
 
 ```sh
-git checkout 17118b8 && cd app && npm ci
+git worktree add <that folder> d33a6ce && cd <that folder>/app && npm ci
 VITE_WALLETCONNECT_PROJECT_ID=<the ID> npm run build
 ipfs add -r -n -Q --cid-version=1 dist
 ```
 
-A second build on the same machine gave the same hash; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130, Node 24.14.0 and kubo 0.43.1.
+A clean rebuild in the same folder gave the same hash, and a build in another folder a different one; a build on another machine hasn't been compared yet. That build used rustc 1.98.1, wasm-bindgen 0.2.130, Node 24.14.0 and kubo 0.43.1.
 
 The site's storage belongs to its origin. Serving the app from another address gives an empty app, without the device keys stored at `app.winterlock.eth.limo`.
 
-**Updating from the build of `494703c`:** the database stays at version 2. A device that build set up shows the "Keys of an earlier version" screen on every route, with a link to `494703c`, and can only be forgotten here (D15). **From `a20d51c`:** the database goes from version 1 to 2 (a store for dapps' transactions), keeping everything in it. A tab still open on the older build blocks that: the new one says to close it and reload.
+**Updating from the build of `17118b8`:** the database stays at version 2 and keeps everything in it. **From `494703c`:** the database stays at version 2 too. A device that build set up shows the "Keys of an earlier version" screen on every route, with a link to `494703c`, and can only be forgotten here (D15). **From `a20d51c`:** the database goes from version 1 to 2 (a store for dapps' transactions), keeping everything in it. A tab still open on the older build blocks that: the new one says to close it and reload.
 
 ## Rules it keeps (docs/notes/signer-app.md, "Risks a browser adds")
 
