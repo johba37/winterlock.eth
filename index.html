@@ -84,17 +84,22 @@ p { margin: 0; }
 .wm-word { height: 1.05rem; width: auto; }
 .wm-eth { height: 0.55rem; width: auto; color: var(--lamp-ink); margin-left: -0.15rem; }
 .masthead nav { display: flex; gap: 1.5rem; font-size: 1rem; }
-.masthead nav a { color: var(--ink); text-decoration: none; }
+.masthead nav a { color: var(--ink); text-decoration: none; white-space: nowrap; }
 .masthead nav a:hover { text-decoration: underline; }
 
 /* Hero */
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 30rem);
-  gap: 4rem;
+  grid-template-rows: auto 1fr;
+  grid-template-areas: "intro check" "more check";
+  column-gap: 4rem;
   align-items: start;
   padding-block: 4.5rem 5.5rem;
 }
+.hero-intro { grid-area: intro; }
+.hero-more { grid-area: more; }
+.hero .core { grid-area: check; }
 .hero h1 {
   font-size: clamp(2.5rem, 5.4vw, 4.1rem);
   font-weight: 300;
@@ -131,21 +136,23 @@ p { margin: 0; }
 .button.primary { background: var(--ink); color: var(--on-ink); }
 .button.primary:hover { background: color-mix(in srgb, var(--ink) 86%, var(--glacier)); }
 
-/* The live chain */
+/* The checker */
 .core {
   margin: 0;
   background: var(--surface);
   border: 1px solid var(--frost);
   border-radius: 14px;
-  padding: 1.5rem 1.5rem 1.25rem;
+  padding: 1.6rem 1.5rem 1.25rem;
+  scroll-margin-top: 1.5rem;
 }
-.core h2 { font-size: 1.3125rem; font-weight: 700; letter-spacing: -0.005em; }
-.core-intro { margin-top: 0.4rem; font-size: 1rem; line-height: 1.5; color: var(--slate); }
+.core-kicker { font-weight: 800; font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--lamp-ink); }
+.core h2 { margin-top: 0.35rem; font-size: 1.9rem; font-weight: 700; line-height: 1.15; letter-spacing: -0.02em; }
+.core-intro { margin-top: 0.6rem; font-size: 1.0625rem; line-height: 1.5; color: var(--slate); }
 
-.sign-form { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 0.5rem; align-items: end; margin-top: 1.25rem; }
-.sign-form label, .sign-form input { grid-column: 1 / -1; }
-.sign-form label { font-size: 0.9375rem; font-weight: 600; }
-.sign-form input {
+.check-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem; align-items: stretch; margin-top: 1.35rem; }
+.check-form label, .check-form input { grid-column: 1 / -1; }
+.check-form label { font-size: 0.9375rem; font-weight: 600; }
+.check-form input, .check-form select {
   min-width: 0;
   font: inherit;
   font-size: 1rem;
@@ -153,82 +160,26 @@ p { margin: 0; }
   background: var(--bg);
   border: 1px solid var(--frost);
   border-radius: 8px;
-  padding: 0.6rem 0.75rem;
+  padding: 0.7rem 0.75rem;
 }
-.sign-form input:focus-visible { outline-offset: 1px; }
-.sign-form button {
+.check-form input { font-family: var(--mono); font-size: 0.9375rem; }
+.check-form input::placeholder { color: var(--slate); opacity: 0.8; }
+.check-form input:focus-visible, .check-form select:focus-visible { outline-offset: 1px; }
+.check-form button {
   font: inherit;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  padding: 0.62rem 0.95rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  padding: 0.7rem 1.6rem;
   border-radius: 8px;
-  border: 1.5px solid var(--ink);
-  background: transparent;
-  color: var(--ink);
+  border: 1.5px solid var(--lamp);
+  background: var(--lamp);
+  color: #131517;
   cursor: pointer;
   white-space: nowrap;
 }
-.sign-form button[type="submit"] { background: var(--ink); color: var(--on-ink); }
-.sign-form button:disabled { opacity: 0.45; cursor: progress; }
-
-.msg-hash { margin: 0.9rem 0 0.6rem; min-height: 3em; font-size: 0.9375rem; line-height: 1.5; color: var(--slate); }
-.msg-hash code { color: var(--ink); }
-.msg-hash mark { background: var(--band); color: var(--lamp-ink); font-weight: 700; border-radius: 3px; padding: 0 0.1em; }
-
-.chain { --row: 1.8rem; --idx: 2.6rem; --dot: 1.25rem; list-style: none; margin: 0; padding: 0; }
-.chain li {
-  position: relative;
-  display: grid;
-  grid-template-columns: var(--idx) var(--dot) minmax(0, 1fr) 5.25rem;
-  column-gap: 0.7rem;
-  align-items: center;
-  height: var(--row);
-  border-radius: 6px;
-}
-.chain li::before {
-  content: "";
-  position: absolute;
-  left: calc(var(--idx) + 0.7rem + var(--dot) / 2 - 1px);
-  top: 50%;
-  width: 2px;
-  height: var(--row);
-  background: var(--frost);
-}
-.chain li:last-child::before { display: none; }
-.chain li.lit::before { background: var(--glacier); }
-.chain li.leaked.lit::before { background: var(--breach); }
-.chain .idx { font-family: var(--mono); font-size: 0.875rem; color: var(--slate); text-align: right; }
-.chain .node {
-  position: relative;
-  z-index: 1;
-  justify-self: center;
-  width: 0.8rem;
-  height: 0.8rem;
-  border-radius: 50%;
-  border: 2px solid var(--frost);
-  background: var(--surface);
-  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.3s;
-}
-.chain .val { font-family: var(--mono); font-size: 0.9375rem; white-space: nowrap; overflow: hidden; color: var(--ink); }
-.chain .val span + span { margin-left: 0.6ch; }
-.chain .mask { color: var(--frost); letter-spacing: 0.08em; }
-.chain .note { font-size: 0.875rem; color: var(--slate); }
-
-.chain .secret .node { border-radius: 2px; border-color: var(--ink); background: var(--ink); }
-.chain .secret .note { color: var(--ink); font-weight: 600; }
-.chain .public .node { background: var(--glacier); border-color: var(--glacier); }
-.chain .public .note { color: var(--glacier); font-weight: 700; }
-.chain .derived .node { border-color: var(--glacier); }
-.chain .revealed { background: var(--band); }
-.chain .revealed .node { background: var(--lamp); border-color: var(--lamp); }
-.chain .revealed .note { color: var(--lamp-ink); font-weight: 700; }
-.chain .leaked .node { background: var(--breach); border-color: var(--breach); }
-.chain .leaked .val, .chain .leaked .note { color: var(--breach); }
-.chain .leaked .note { font-weight: 700; }
-.chain .match .node { box-shadow: 0 0 0 5px color-mix(in srgb, var(--glacier) 28%, transparent); }
-
-.status { margin-top: 0.9rem; min-height: 4.6em; font-size: 0.9375rem; line-height: 1.5; }
-.status.warn { color: var(--breach); }
+.check-form button:hover { filter: brightness(1.07); }
+.check-error { margin-top: 0.6rem; font-size: 0.9375rem; line-height: 1.45; color: var(--breach); }
+.check-example { margin-top: 0.9rem; font-size: 0.9375rem; line-height: 1.5; color: var(--slate); }
 .fineprint { margin-top: 0.9rem; padding-top: 0.9rem; border-top: 1px solid var(--frost); font-size: 0.875rem; line-height: 1.5; color: var(--slate); }
 
 /* Sections */
@@ -276,14 +227,36 @@ p { margin: 0; }
 .facts dd { margin: 0; color: var(--slate); }
 .testnet-note { margin-top: 2.25rem; max-width: 40rem; color: var(--slate); }
 
+/* What it looks like */
+.look { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3rem; margin-top: 2.75rem; align-items: start; }
+.look figure { margin: 0; }
+.look .frame {
+  height: 26rem;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--frost);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.look .frame a { display: block; line-height: 0; border-radius: 10px; }
+.look .shot { display: block; max-width: 100%; max-height: 23.5rem; width: auto; height: auto; border: 1px solid var(--frost); border-radius: 10px; }
+.look figcaption { margin-top: 1.1rem; font-size: 1.0625rem; max-width: 34rem; }
+.look figcaption b { display: block; font-size: 1.3125rem; line-height: 1.3; margin-bottom: 0.4rem; }
+.device { width: min(100%, 17rem); background: #1B1D1F; border: 1px solid #34383C; border-radius: 18px; padding: 1.1rem 1.1rem 1rem; box-shadow: 0 14px 30px rgba(0, 0, 0, 0.22); }
+.device img { display: block; width: 100%; height: auto; image-rendering: pixelated; border: 7px solid #000; border-radius: 5px; background: #000; }
+.device .keys { display: flex; justify-content: space-between; margin-top: 0.95rem; padding-inline: 1.5rem; }
+.device .keys span { width: 2.1rem; height: 2.1rem; border-radius: 50%; background: #3A3D40; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.14); }
+.join-note { color: var(--slate); }
+
 footer { border-top: 1px solid var(--frost); padding: 2.25rem 0 3rem; font-size: 0.9375rem; color: var(--slate); }
 footer .wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.6rem 2rem; }
 footer p { max-width: 44rem; }
 footer .links { display: flex; gap: 1.25rem; align-items: start; }
 footer a { color: var(--slate); }
 
-/* Load: the chain builds upward from the secret, once. */
-/* Riveted demo panel */
+/* Riveted panel */
 .core {
   background-image: radial-gradient(circle at 12px 12px, var(--frost) 2.2px, transparent 2.7px),
                     radial-gradient(circle at calc(100% - 12px) 12px, var(--frost) 2.2px, transparent 2.7px),
@@ -291,15 +264,13 @@ footer a { color: var(--slate); }
                     radial-gradient(circle at calc(100% - 12px) calc(100% - 12px), var(--frost) 2.2px, transparent 2.7px);
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .chain li { animation: rise 0.45s both; animation-delay: calc(var(--i) * 40ms + 150ms); }
-  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-}
-
 @media (max-width: 960px) {
-  .hero { grid-template-columns: 1fr; gap: 3.5rem; padding-top: 3rem; }
+  .hero { grid-template-columns: 1fr; grid-template-rows: auto; grid-template-areas: "intro" "check" "more"; row-gap: 2.5rem; padding-top: 3rem; }
+  .hero-more .why { margin-top: 0; }
+  #to-check { display: none; }
   .core { max-width: 34rem; }
-  .parts, .steps { grid-template-columns: 1fr; gap: 2.25rem; }
+  .parts, .steps, .look { grid-template-columns: 1fr; gap: 2.25rem; }
+  .look figure { max-width: 34rem; }
   .flow { grid-template-columns: 1fr; gap: 1.6rem; }
   .flow li:not(:last-child)::after { content: "\2193"; right: auto; left: 1.2rem; top: auto; bottom: -1.45rem; transform: none; }
 }
@@ -309,11 +280,10 @@ footer a { color: var(--slate); }
   .masthead nav { gap: 1rem; }
   .lede { font-size: 1.1875rem; }
   .core { padding: 1.15rem 1rem 1rem; border-radius: 12px; }
-  .sign-form { grid-template-columns: 1fr 1fr; }
-  .chain { --idx: 2.1rem; --dot: 1rem; }
-  .chain li { grid-template-columns: var(--idx) var(--dot) minmax(0, 1fr) 4.4rem; column-gap: 0.55rem; }
-  .chain li::before { left: calc(var(--idx) + 0.55rem + var(--dot) / 2 - 1px); }
-  .chain .val span:nth-child(4) { display: none; }
+  .core h2 { font-size: 1.65rem; }
+  .look .frame { height: 23rem; }
+  .look .shot { max-height: 20.5rem; }
+  .masthead nav a.opt { display: none; }
   .block { padding: 3.5rem 0; }
   footer .wrap { grid-template-columns: 1fr; }
 }
@@ -324,49 +294,85 @@ footer a { color: var(--slate); }
 <header class="wrap masthead">
   <a class="wordmark" href="./" aria-label="winterlock.eth"><svg class="wm-mark" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M1 8.5H31V12.5H1ZM1 19.5H31V23.5H1ZM11.82 2H16.02L14.3 7.2H10.1ZM7.93 13.8H12.13L10.67 18.2H6.47ZM4.3 24.8H8.5L6.78 30H2.58ZM21.22 2H25.42L23.7 7.2H19.5ZM13.7 24.8H17.9L16.18 30H11.98Z"/><path fill="var(--lamp)" d="M17.33 13.8H21.53L20.07 18.2H15.87Z"/></svg><svg class="wm-word" viewBox="0 0 130.4 20" aria-hidden="true"><path fill="currentColor" d="M0 0L3.6 0L3.6 20L2.4 20L0 17.6ZM16 17.6L13.6 20L12.4 20L12.4 0L16 0ZM4.9 20L4.9 16.4L6.2 16.4L6.2 7L9.8 7L9.8 16.4L11.1 16.4L11.1 20ZM18.2 0L21.8 0L21.8 20L18.2 20ZM24 0L28 0L37 20L33 20ZM24 3.17L27.6 11.17L27.6 20L24 20ZM37 16.83L33.4 8.83L33.4 0L37 0ZM39.2 0L50.2 0L50.2 3.6L39.2 3.6ZM42.9 4.9L46.5 4.9L46.5 20L42.9 20ZM52.4 0L56 0L56 20L52.4 20ZM57.3 0L62.4 0L62.4 3.6L57.3 3.6ZM57.3 8.2L61.2 8.2L61.2 11.8L57.3 11.8ZM57.3 16.4L62.4 16.4L62.4 20L57.3 20ZM64.6 0L68.2 0L68.2 20L64.6 20ZM69.5 0L74.2 0L76.6 2.4L76.6 10.6L75.4 11.8L69.5 11.8L69.5 8.2L73 8.2L73 3.6L69.5 3.6ZM70 13.1L73.8 13.1L76.6 20L72.8 20ZM78.8 0L82.4 0L82.4 20L78.8 20ZM83.7 16.4L88.8 16.4L88.8 20L83.7 20ZM96.35 0L93.4 0L91 2.4L91 17.6L93.4 20L96.35 20L96.35 16.4L94.6 16.4L94.6 3.6L96.35 3.6ZM97.65 3.6L99.4 3.6L99.4 16.4L97.65 16.4L97.65 20L100.6 20L103 17.6L103 2.4L100.6 0L97.65 0ZM110.55 0L107.6 0L105.2 2.4L105.2 17.6L107.6 20L110.55 20L110.55 16.4L108.8 16.4L108.8 3.6L110.55 3.6ZM111.85 0L113.8 0L116.2 2.4L116.2 6L112.6 6L112.6 3.6L111.85 3.6ZM111.85 16.4L112.6 16.4L112.6 14L116.2 14L116.2 17.6L113.8 20L111.85 20ZM118.4 0L122 0L122 20L118.4 20ZM123.3 6.4L126.1 0L130.4 0L126.4 10L130.4 20L126.1 20L123.3 13.6Z"/></svg><svg class="wm-eth" viewBox="0 0 43.2 20" aria-hidden="true"><path fill="currentColor" d="M0 16.4L3.6 16.4L3.6 20L0 20ZM5.8 0L9.4 0L9.4 20L5.8 20ZM10.7 0L15.8 0L15.8 3.6L10.7 3.6ZM10.7 8.2L14.6 8.2L14.6 11.8L10.7 11.8ZM10.7 16.4L15.8 16.4L15.8 20L10.7 20ZM18 0L29 0L29 3.6L18 3.6ZM21.7 4.9L25.3 4.9L25.3 20L21.7 20ZM31.2 0L34.8 0L34.8 8.2L38.3 8.2L38.3 11.8L34.8 11.8L34.8 20L31.2 20ZM39.6 0L43.2 0L43.2 20L39.6 20Z"/></svg></a>
   <nav aria-label="Project links">
-    <a href="https://forum.safefoundation.org/t/post-quantum-owners-for-safe-hash-based-signers-winterlock/7165" rel="noopener noreferrer">Forum</a>
-    <a href="#testnet">Testnet</a>
-    <a href="https://github.com/johba37/winterlock.eth" rel="noopener noreferrer">GitHub</a>
+    <a href="check/">Check a Safe</a>
+    <a href="#contact">Contact</a>
+    <a class="opt" href="#testnet">Testnet</a>
+    <a class="opt" href="https://github.com/johba37/winterlock.eth" rel="noopener noreferrer">GitHub</a>
   </nav>
 </header>
 
 <main>
   <section class="wrap hero">
-    <div>
+    <div class="hero-intro">
       <p class="kicker">Hash-based owners for Safe</p>
       <div class="trackrule" aria-hidden="true"></div>
       <h1 class="stencil-h"><span class="vh">Get ready for turbulent times in math.</span><svg class="sl" viewBox="0 0 162.4 20" aria-hidden="true"><path fill="currentColor" d="M5.35 0L2.4 0L0 2.4L0 17.6L2.4 20L5.35 20L5.35 16.4L3.6 16.4L3.6 3.6L5.35 3.6ZM6.65 0L9.6 0L12 2.4L12 6L8.4 6L8.4 3.6L6.65 3.6ZM6.65 20L6.65 16.4L8.4 16.4L8.4 12.6L6.2 12.6L6.2 9L12 9L12 17.6L9.6 20ZM14.2 0L17.8 0L17.8 20L14.2 20ZM19.1 0L24.2 0L24.2 3.6L19.1 3.6ZM19.1 8.2L23 8.2L23 11.8L19.1 11.8ZM19.1 16.4L24.2 16.4L24.2 20L19.1 20ZM26.4 0L37.4 0L37.4 3.6L26.4 3.6ZM30.1 4.9L33.7 4.9L33.7 20L30.1 20ZM47.3 0L50.9 0L50.9 20L47.3 20ZM52.2 0L56.9 0L59.3 2.4L59.3 10.6L58.1 11.8L52.2 11.8L52.2 8.2L55.7 8.2L55.7 3.6L52.2 3.6ZM52.7 13.1L56.5 13.1L59.3 20L55.5 20ZM61.5 0L65.1 0L65.1 20L61.5 20ZM66.4 0L71.5 0L71.5 3.6L66.4 3.6ZM66.4 8.2L70.3 8.2L70.3 11.8L66.4 11.8ZM66.4 16.4L71.5 16.4L71.5 20L66.4 20ZM73.7 20L73.7 2.4L76.1 0L79.05 0L79.05 3.6L77.3 3.6L77.3 8.2L82.1 8.2L82.1 3.6L80.35 3.6L80.35 0L83.3 0L85.7 2.4L85.7 20L82.1 20L82.1 11.8L77.3 11.8L77.3 20ZM87.9 0L91.5 0L91.5 20L87.9 20ZM92.8 0L97.5 0L99.9 2.4L99.9 17.6L97.5 20L92.8 20L92.8 16.4L96.3 16.4L96.3 3.6L92.8 3.6ZM102.1 0L105.7 0L105.7 8.2L110.5 8.2L110.5 0L114.1 0L114.1 9.4L111.7 11.8L104.5 11.8L102.1 9.4ZM106.3 13.1L109.9 13.1L109.9 20L106.3 20ZM124 0L127.6 0L127.6 20L124 20ZM128.9 0L134 0L134 3.6L128.9 3.6ZM128.9 8.2L132.8 8.2L132.8 11.8L128.9 11.8ZM141.55 0L138.6 0L136.2 2.4L136.2 17.6L138.6 20L141.55 20L141.55 16.4L139.8 16.4L139.8 3.6L141.55 3.6ZM142.85 3.6L144.6 3.6L144.6 16.4L142.85 16.4L142.85 20L145.8 20L148.2 17.6L148.2 2.4L145.8 0L142.85 0ZM150.4 0L154 0L154 20L150.4 20ZM155.3 0L160 0L162.4 2.4L162.4 10.6L161.2 11.8L155.3 11.8L155.3 8.2L158.8 8.2L158.8 3.6L155.3 3.6ZM155.8 13.1L159.6 13.1L162.4 20L158.6 20Z"/></svg><svg class="sl" viewBox="0 0 190.9 20" aria-hidden="true"><path fill="currentColor" d="M0 0L11 0L11 3.6L0 3.6ZM3.7 4.9L7.3 4.9L7.3 20L3.7 20ZM13.2 0L16.8 0L16.8 16.4L18.55 16.4L18.55 20L15.6 20L13.2 17.6ZM25.2 17.6L22.8 20L19.85 20L19.85 16.4L21.6 16.4L21.6 0L25.2 0ZM27.4 0L31 0L31 20L27.4 20ZM32.3 0L37 0L39.4 2.4L39.4 10.6L38.2 11.8L32.3 11.8L32.3 8.2L35.8 8.2L35.8 3.6L32.3 3.6ZM32.8 13.1L36.6 13.1L39.4 20L35.6 20ZM41.6 0L45.2 0L45.2 20L41.6 20ZM46.5 0L50.2 0L52.6 2.4L52.6 8.6L53.6 9.8L53.6 17.6L51.2 20L46.5 20L46.5 16.4L50 16.4L50 11.8L46.5 11.8L46.5 8.2L49 8.2L49 3.6L46.5 3.6ZM55.8 0L59.4 0L59.4 16.4L61.15 16.4L61.15 20L58.2 20L55.8 17.6ZM67.8 17.6L65.4 20L62.45 20L62.45 16.4L64.2 16.4L64.2 0L67.8 0ZM70 0L73.6 0L73.6 20L70 20ZM74.9 16.4L80 16.4L80 20L74.9 20ZM82.2 0L85.8 0L85.8 20L82.2 20ZM87.1 0L92.2 0L92.2 3.6L87.1 3.6ZM87.1 8.2L91 8.2L91 11.8L87.1 11.8ZM87.1 16.4L92.2 16.4L92.2 20L87.1 20ZM94.4 0L98.4 0L107.4 20L103.4 20ZM94.4 3.17L98 11.17L98 20L94.4 20ZM107.4 16.83L103.8 8.83L103.8 0L107.4 0ZM109.6 0L120.6 0L120.6 3.6L109.6 3.6ZM113.3 4.9L116.9 4.9L116.9 20L113.3 20ZM130.5 0L141.5 0L141.5 3.6L130.5 3.6ZM134.2 4.9L137.8 4.9L137.8 20L134.2 20ZM143.7 0L147.3 0L147.3 20L143.7 20ZM149.5 2.4L151.9 0L153.1 0L153.1 20L149.5 20ZM165.5 20L161.9 20L161.9 0L163.1 0L165.5 2.4ZM154.4 0L160.6 0L160.6 3.6L159.3 3.6L159.3 13L155.7 13L155.7 3.6L154.4 3.6ZM167.7 0L171.3 0L171.3 20L167.7 20ZM172.6 0L177.7 0L177.7 3.6L172.6 3.6ZM172.6 8.2L176.5 8.2L176.5 11.8L172.6 11.8ZM172.6 16.4L177.7 16.4L177.7 20L172.6 20ZM182.3 0L190.9 0L190.9 3.6L183.5 3.6L183.5 6.9L179.9 6.9L179.9 2.4ZM179.9 8.2L188.5 8.2L190.9 10.6L190.9 17.6L188.5 20L179.9 20L179.9 16.4L187.3 16.4L187.3 11.8L179.9 11.8Z"/></svg><svg class="sl lit" viewBox="0 0 92.1 20" aria-hidden="true"><path fill="currentColor" d="M0 0L3.6 0L3.6 20L0 20ZM5.8 0L9.8 0L18.8 20L14.8 20ZM5.8 3.17L9.4 11.17L9.4 20L5.8 20ZM18.8 16.83L15.2 8.83L15.2 0L18.8 0ZM28.7 2.4L31.1 0L32.3 0L32.3 20L28.7 20ZM44.7 20L41.1 20L41.1 0L42.3 0L44.7 2.4ZM33.6 0L39.8 0L39.8 3.6L38.5 3.6L38.5 13L34.9 13L34.9 3.6L33.6 3.6ZM46.9 20L46.9 2.4L49.3 0L52.25 0L52.25 3.6L50.5 3.6L50.5 8.2L55.3 8.2L55.3 3.6L53.55 3.6L53.55 0L56.5 0L58.9 2.4L58.9 20L55.3 20L55.3 11.8L50.5 11.8L50.5 20ZM61.1 0L72.1 0L72.1 3.6L61.1 3.6ZM64.8 4.9L68.4 4.9L68.4 20L64.8 20ZM74.3 0L77.9 0L77.9 8.2L81.4 8.2L81.4 11.8L77.9 11.8L77.9 20L74.3 20ZM82.7 0L86.3 0L86.3 20L82.7 20ZM88.5 16.4L92.1 16.4L92.1 20L88.5 20Z"/></svg></h1>
       <p class="lede">Every Safe is guarded by ECDSA keys. Quantum computers, or AI-accelerated math, may break elliptic curves sooner than planned. Winterlock gives your Safe owners whose signatures rest on hash functions alone.</p>
+    </div>
+
+    <section class="core" id="check" aria-labelledby="check-title">
+      <p class="core-kicker">Free check, no wallet needed</p>
+      <h2 id="check-title">Is your Safe exposed?</h2>
+      <p class="core-intro">Paste your Safe&rsquo;s address. The check reads its owners and shows who could sign for it if elliptic curves broke, and what would change that.</p>
+
+      <form class="check-form" id="check-form" action="check/">
+        <label for="safe">Safe address, or a link from Safe&rsquo;s app</label>
+        <input id="safe" name="safe" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="eth:0x&hellip; or https://app.safe.global/&hellip;">
+        <select id="network" aria-label="Network, for an address without a prefix">
+          <option value="eth">Ethereum</option>
+          <option value="base">Base</option>
+          <option value="arb1">Arbitrum One</option>
+          <option value="oeth">OP Mainnet</option>
+          <option value="gno">Gnosis</option>
+          <option value="sep">Sepolia (testnet)</option>
+        </select>
+        <button type="submit">Check</button>
+      </form>
+      <p class="check-error" id="check-error" role="alert" hidden></p>
+
+      <p class="check-example">Or look at a result first: <a href="check/#/sep:0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07">a test Safe with hash-based owners</a>.</p>
+
+      <p class="fineprint">The check only reads public data: nothing to connect, nothing to sign. Your Safe&rsquo;s address goes to an RPC endpoint and to Safe&rsquo;s Transaction Service, and nowhere else. No computer able to break elliptic curves exists today, and nobody knows when one will.</p>
+    </section>
+
+    <div class="hero-more">
       <ul class="why">
         <li><b>Your keys are already public.</b> Every executed Safe transaction reveals its signers' public keys: the first targets if ECDSA weakens.</li>
         <li><b>Hashes have no structure to attack.</b> The standard post-quantum signatures rest on lattices, which do. Vitalik Buterin <a href="https://x.com/VitalikButerin/status/2107976296320106851" rel="noopener noreferrer">recommends</a> hash-based constructions, and Ethereum's lean roadmap signs with hashes too.</li>
         <li><b>Nothing moves.</b> Same Safe, same address, same app: only the owners change.</li>
       </ul>
       <p class="actions">
-        <a class="button primary" href="#use">How to use it</a>
-        <a class="button" href="https://forum.safefoundation.org/t/post-quantum-owners-for-safe-hash-based-signers-winterlock/7165" rel="noopener noreferrer">Discuss on the Safe forum</a>
+        <a class="button primary" href="#check" id="to-check">Check your Safe</a>
+        <a class="button" href="#contact">Get in contact</a>
       </p>
     </div>
 
-    <figure class="core" aria-labelledby="core-title">
-      <h2 id="core-title">Sign with a hash chain</h2>
-      <p class="core-intro">This is one Winternitz chain, built in your browser: a random secret hashed 15 times. Only the top is public. Signing reveals one point, and anyone can hash upward from it to check that it reaches the public key.</p>
+  </section>
 
-      <form class="sign-form" id="sign-form">
-        <label for="message">Message</label>
-        <input id="message" name="message" type="text" autocomplete="off" spellcheck="false" value="Pay 5 ETH to the grants Safe">
-        <button type="submit" id="sign">Sign</button>
-        <button type="button" id="new-key">New key</button>
-      </form>
-
-      <p class="msg-hash" id="msg-hash">The first hex digit of your message's hash decides which point on the chain gets revealed.</p>
-
-      <ol class="chain" id="chain" aria-label="Hash chain, from public key x15 down to secret x0"></ol>
-
-      <p class="status" id="status" role="status" aria-live="polite">Only the top of the chain, x15, is public. Sign a message to see how a verifier checks it.</p>
-
-      <p class="fineprint">A Winterlock one-time key has 48 chains like this one, and the message's digits must add up to a fixed total, so nobody can push a digit higher. This demo uses plain SHA-256 and sends nothing anywhere.</p>
-    </figure>
+  <section class="block" id="look" aria-labelledby="look-title">
+    <div class="wrap">
+      <h2 id="look-title">What it looks like</h2>
+      <p class="sub">A member works with three things: a signer that holds the keys, an app in the browser, and the Safe app the team already uses.</p>
+      <div class="look">
+        <figure>
+          <div class="frame">
+            <div class="device" role="img" aria-label="The board&rsquo;s screen, page 4 of 4. Sign? Send 1.5 ETH to 0xB04d..8623, Safe 0x5a11..346f, nonce 41. Left button: reject. Hold both buttons: sign.">
+              <img src="img/board-sign.png" width="384" height="192" alt="">
+              <div class="keys" aria-hidden="true"><span></span><span></span></div>
+            </div>
+          </div>
+          <figcaption><b>The signer</b>A small board keeps the member&rsquo;s keys. It shows every transaction on its own screen and signs only when the member holds both buttons. The prototype runs on an ESP32.</figcaption>
+        </figure>
+        <figure>
+          <div class="frame"><a href="img/app.png"><img class="shot" src="img/app.png" width="860" height="1380" alt="The Winterlock app&rsquo;s transaction screen: Send 0.25 ETH, no signatures yet, and the prompt to check the board and confirm there." loading="lazy"></a></div>
+          <figcaption><b>The app</b>A browser app reads the Safe&rsquo;s queue, shows what each transaction does and hands it to the signer. With a board, the app holds no member key.</figcaption>
+        </figure>
+        <figure>
+          <div class="frame"><a href="https://app.safe.global/transactions/history?safe=sep:0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07" rel="noopener noreferrer"><img class="shot" src="img/safe.png" width="656" height="724" alt="The audit log in Safe&rsquo;s own app for an executed transaction of a test Safe: created, signed 1 of 2 and 2 of 2 by Winterlock owners, then executed." loading="lazy"></a></div>
+          <figcaption><b>Your Safe</b>Safe&rsquo;s own app shows the queue and the confirmations as it always has: here, a test Safe&rsquo;s transaction signed by two Winterlock owners. Same Safe, same address, nothing to learn again.</figcaption>
+        </figure>
+      </div>
+    </div>
   </section>
 
   <section class="block" id="use" aria-labelledby="use-title">
@@ -443,14 +449,16 @@ footer a { color: var(--slate); }
     </div>
   </section>
 
-  <section class="block join" aria-labelledby="join-title">
+  <section class="block join" id="contact" aria-labelledby="contact-title">
     <div class="wrap">
-      <h2 id="join-title">Get involved</h2>
-      <p>We're looking for DAOs and treasuries to join as design partners, cryptographers to review the design, and Safe developers with opinions on owners, modules and guards.</p>
+      <h2 id="contact-title">Talk to an expert</h2>
+      <p>Checked your Safe and want to plan ahead? We help treasuries and DAOs read their result, weigh the options and try a migration on a testnet. Winterlock is a research prototype, so this is planning and piloting: nobody will ask you to move funds.</p>
       <p class="actions">
-        <a class="button primary" href="https://forum.safefoundation.org/t/post-quantum-owners-for-safe-hash-based-signers-winterlock/7165" rel="noopener noreferrer">Discuss on the Safe forum</a>
+        <a class="button primary" href="CONTACT-LINK-PENDING" id="contact-link">Get in contact</a>
+        <a class="button" href="https://forum.safefoundation.org/t/post-quantum-owners-for-safe-hash-based-signers-winterlock/7165" rel="noopener noreferrer">Discuss on the Safe forum</a>
         <a class="button" href="https://github.com/johba37/winterlock.eth/issues" rel="noopener noreferrer">Open an issue on GitHub</a>
       </p>
+      <p class="join-note">We&rsquo;re also looking for cryptographers to review the design, and Safe developers with opinions on owners, modules and guards.</p>
     </div>
   </section>
 </main>
@@ -466,167 +474,30 @@ footer a { color: var(--slate); }
 </footer>
 
 <script>
-/* SHA-256, small and synchronous so the demo works on any gateway or file:// */
-var SHA_K = new Uint32Array([
-  0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
-  0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
-  0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
-  0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,
-  0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,
-  0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,
-  0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
-  0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2
-]);
-function sha256(bytes) {
-  var ror = function (x, n) { return (x >>> n) | (x << (32 - n)); };
-  var len = bytes.length, padded = ((len + 9 + 63) >> 6) << 6;
-  var m = new Uint8Array(padded); m.set(bytes); m[len] = 0x80;
-  var dv = new DataView(m.buffer);
-  dv.setUint32(padded - 8, Math.floor(len / 0x20000000));
-  dv.setUint32(padded - 4, (len << 3) >>> 0);
-  var h = new Uint32Array([0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19]);
-  var w = new Uint32Array(64);
-  for (var o = 0; o < padded; o += 64) {
-    for (var i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
-    for (i = 16; i < 64; i++) {
-      var x = w[i - 15], y = w[i - 2];
-      w[i] = w[i - 16] + (ror(x, 7) ^ ror(x, 18) ^ (x >>> 3)) + w[i - 7] + (ror(y, 17) ^ ror(y, 19) ^ (y >>> 10));
-    }
-    var a = h[0], b = h[1], c = h[2], d = h[3], e = h[4], f = h[5], g = h[6], k = h[7];
-    for (i = 0; i < 64; i++) {
-      var t1 = (k + (ror(e, 6) ^ ror(e, 11) ^ ror(e, 25)) + ((e & f) ^ (~e & g)) + SHA_K[i] + w[i]) | 0;
-      var t2 = ((ror(a, 2) ^ ror(a, 13) ^ ror(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) | 0;
-      k = g; g = f; f = e; e = (d + t1) | 0; d = c; c = b; b = a; a = (t1 + t2) | 0;
-    }
-    h[0] += a; h[1] += b; h[2] += c; h[3] += d; h[4] += e; h[5] += f; h[6] += g; h[7] += k;
-  }
-  var out = new Uint8Array(32), ov = new DataView(out.buffer);
-  for (i = 0; i < 8; i++) ov.setUint32(i * 4, h[i]);
-  return out;
-}
-function toHex(bytes) {
-  var s = "";
-  for (var i = 0; i < bytes.length; i++) s += (bytes[i] < 16 ? "0" : "") + bytes[i].toString(16);
-  return s;
-}
-function utf8(str) { return new TextEncoder().encode(str); }
-
+/* The check box: build the checker's route, check/#/eth:0x..., from what was typed. */
 (function () {
-  var N = 16;
-  var chainEl = document.getElementById("chain");
-  var form = document.getElementById("sign-form");
-  var input = document.getElementById("message");
-  var signBtn = document.getElementById("sign");
-  var newBtn = document.getElementById("new-key");
-  var statusEl = document.getElementById("status");
-  var hashEl = document.getElementById("msg-hash");
-  var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-  var NOTES = { hidden: "", secret: "secret", public: "public key", revealed: "signature", derived: "derived", leaked: "leaked" };
-  var FIRST_MESSAGE = "Pay 5 ETH to the grants Safe";
-  var SECOND_MESSAGE = "Send 500 ETH to a stranger";
-
-  var rows = [], chain = [], state = [], signs = [], busy = false;
-
-  for (var i = N - 1; i >= 0; i--) {
-    var li = document.createElement("li");
-    li.style.setProperty("--i", i);
-    li.innerHTML = '<span class="idx">x' + i + '</span><span class="node" aria-hidden="true"></span><span class="val"></span><span class="note"></span>';
-    rows[i] = li;
-    chainEl.appendChild(li);
-  }
-
-  function grouped(bytes) {
-    var hex = toHex(bytes).slice(0, 16);
-    return hex.match(/.{4}/g).map(function (g) { return "<span>" + g + "</span>"; }).join("");
-  }
-
-  function paint(i) {
-    var s = state[i], li = rows[i];
-    li.classList.remove("hidden", "secret", "public", "revealed", "derived", "leaked");
-    li.classList.add(s);
-    var hidden = s === "hidden" || s === "secret";
-    li.querySelector(".val").innerHTML = hidden ? '<span class="mask" aria-label="unknown">················</span>' : grouped(chain[i]);
-    li.querySelector(".note").textContent = NOTES[s];
-  }
-
-  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  function stepMs() { return reduceMotion.matches ? 0 : 85; }
-
-  function newKey(announce) {
-    chain[0] = crypto.getRandomValues(new Uint8Array(32));
-    for (var i = 1; i < N; i++) chain[i] = sha256(chain[i - 1]);
-    signs = [];
-    for (i = 0; i < N; i++) {
-      state[i] = i === N - 1 ? "public" : i === 0 ? "secret" : "hidden";
-      rows[i].classList.remove("lit", "match");
-      paint(i);
+  var form = document.getElementById("check-form");
+  var input = document.getElementById("safe");
+  var network = document.getElementById("network");
+  var error = document.getElementById("check-error");
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var text = input.value.trim();
+    var m = /([a-z0-9-]+):(0x[0-9a-fA-F]{40})(?![0-9a-fA-F])/i.exec(text);
+    var route = m ? m[1].toLowerCase() + ":" + m[2]
+      : /^0x[0-9a-fA-F]{40}$/.test(text) ? network.value + ":" + text : "";
+    if (!route) {
+      error.textContent = "Enter a Safe\u2019s address, such as eth:0x\u2026 (0x and 40 hexadecimal digits), or a link from Safe\u2019s app.";
+      error.hidden = false;
+      input.focus();
+      return;
     }
-    input.value = FIRST_MESSAGE;
-    signBtn.textContent = "Sign";
-    statusEl.classList.remove("warn");
-    hashEl.textContent = "The first hex digit of your message's hash decides which point on the chain gets revealed.";
-    if (announce) statusEl.textContent = "New key. Only x15 is public again.";
-  }
-
-  function plural(n, word) { return n + " " + word + (n === 1 ? "" : "s"); }
-
-  async function sign() {
-    if (busy) return;
-    busy = true;
-    signBtn.disabled = newBtn.disabled = true;
-    rows[N - 1].classList.remove("match");
-
-    var msgHash = toHex(sha256(utf8(input.value)));
-    var d = parseInt(msgHash[0], 16);
-    hashEl.innerHTML = "Message hash <code><mark>" + msgHash[0] + "</mark>" + msgHash.slice(1, 12) + "…</code><br>Its first hex digit is " +
-      (d > 9 ? msgHash[0] + " (" + d + ")" : d) + ", so this chain reveals x" + d + ".";
-
-    var prior = signs.length;
-    var prevMin = prior ? Math.min.apply(null, signs) : N;
-    signs.push(d);
-
-    state[d] = "revealed";
-    paint(d);
-    await wait(stepMs() * 3);
-
-    var cur = chain[d];
-    for (var i = d + 1; i < N; i++) {
-      cur = sha256(cur);
-      if (state[i] === "hidden") state[i] = prior > 0 && i < prevMin ? "leaked" : "derived";
-      rows[i].classList.add("lit");
-      paint(i);
-      await wait(stepMs());
-    }
-    var valid = toHex(cur) === toHex(chain[N - 1]);
-    rows[N - 1].classList.add("match");
-
-    var msg;
-    if (!valid) {
-      msg = "Something went wrong: the chain did not reach the public key.";
-    } else if (prior === 0) {
-      if (d === N - 1) msg = "Valid. Digit 15 is signed by revealing x15, the public key itself. In a full signature the checksum chains make sure that can't be abused.";
-      else if (d === 0) msg = "Valid. The verifier hashed x0 15 times and reached the public key. Digit 0 means revealing the chain's secret itself, which is fine exactly once: this key is never used again.";
-      else msg = "Valid. The verifier hashed your signature x" + d + " " + plural(N - 1 - d, "time") + " and reached the public key. Everything below x" + d + " is still secret.";
-    } else if (d < prevMin) {
-      var range = d === prevMin - 1 ? "x" + d + " is" : "x" + d + " through x" + (prevMin - 1) + " are";
-      msg = "Valid, but this key has now signed " + plural(signs.length, "message") + ". " + range + " now public too, so anyone can sign any digit from " + d + " up on this chain. Across all 67 chains, two signatures are often enough to forge a third. That's why each Winterlock key signs exactly once.";
-    } else {
-      msg = "Valid, and by luck this chain leaked nothing new: digit " + d + " was already reachable from x" + prevMin + ". Across all 67 chains, signing twice almost always leaks somewhere, so each Winterlock key signs exactly once.";
-    }
-    statusEl.classList.toggle("warn", prior > 0 && d < prevMin);
-    statusEl.textContent = msg;
-
-    if (prior === 0) {
-      input.value = SECOND_MESSAGE;
-      signBtn.textContent = "Sign again with this key";
-    }
-    busy = false;
-    signBtn.disabled = newBtn.disabled = false;
-  }
-
-  form.addEventListener("submit", function (e) { e.preventDefault(); sign(); });
-  newBtn.addEventListener("click", function () { newKey(true); });
-  newKey(false);
+    error.hidden = true;
+    location.href = "check/#/" + route;
+  });
+  document.getElementById("to-check").addEventListener("click", function () {
+    setTimeout(function () { input.focus({ preventScroll: true }); }, 0);
+  });
 })();
 </script>
 </body>

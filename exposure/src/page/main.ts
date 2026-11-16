@@ -14,6 +14,9 @@ import type { OwnerClass, OwnerReport, SafeReport } from '../lib/types'
 
 type Child = Node | string | null | undefined | false
 
+/** The landing page's contact section: the page is built to sit in the landing site's check/ folder. */
+const CONTACT = '../#contact'
+
 function h(tag: string, props: Record<string, string | boolean | undefined> | null, ...children: Child[]): HTMLElement {
   const el = document.createElement(tag)
   for (const [k, v] of Object.entries(props ?? {})) {
@@ -152,6 +155,8 @@ function report(r: SafeReport, chain: Chain): Node[] {
       out.push(h('p', { class: 'hint' }, 'Hash-based owners for Safe are at the research stage: Winterlock’s run on Sepolia only, and its contracts are not audited.'))
     }
   }
+
+  out.push(h('p', { class: 'talk' }, 'Want to talk this result through, or plan ahead for your Safe? ', h('a', { href: CONTACT }, 'Get in contact'), '.'))
 
   const extras = h('ul', { class: 'plain' })
   extras.append(h('li', null, r.modules.length ? `Modules: ${r.modules.map(named).join(', ')}${r.modulesComplete ? '' : ', and more'}.` : 'No module is enabled.'))
