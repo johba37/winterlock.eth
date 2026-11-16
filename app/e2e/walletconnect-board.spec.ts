@@ -1,19 +1,23 @@
 // WalletConnect with the virtual board as the member's only device, on the local chain (local.ts,
 // fake-service.ts), and a dapp on the official SDK in this test process, paired through Reown's
 // live relay. A dapp's transaction goes to the board's SIGN, which shows it and signs on confirm;
-// a batch is refused before it reaches the board, which refuses delegate calls.
+// a batch is refused before it reaches the board, which refuses delegate calls. An approveHash
+// with the approved transaction's fields after it, as Safe's app sends it (src/lib/nested.ts), is
+// signed without them: the board shows the approved transaction, and the app proposes it to the
+// service.
 //
 // Needs anvil and the Python signer's virtualenv (local.ts), and WINTERLOCK_ENV_FILE with
 // WALLETCONNECT_PROJECT_ID (never printed). Spends nothing.
 
 import { type Browser, type BrowserContext, type Page, expect, test } from '@playwright/test'
 import { SignClient } from '@walletconnect/sign-client'
-import { type Address, type Hex, createWalletClient, encodeFunctionData, getAddress, http, parseAbi, toHex } from 'viem'
+import { type Address, type Hex, concat, createWalletClient, encodeAbiParameters, encodeFunctionData, getAddress, http, parseAbi, parseAbiParameters, toHex, zeroAddress } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
+import { NESTED_MAGIC, approvedHashSignature } from '../src/lib/nested'
 import { ERC20_ABI } from '../src/lib/safe'
 import { log, projectId, redact } from './env'
 import { FakeService } from './fake-service'
-import { BOB, LocalChain, boardRecord, haveChainTools, joinSafe, tid as t, useLocalRpc } from './local'
+import { BOB, LocalChain, SAFE_ABI, boardRecord, haveChainTools, joinSafe, tid as t, useLocalRpc } from './local'
 import { TEST_TOKEN_CODE } from './test-token'
 import { VBoard } from './vboard'
 
@@ -23,11 +27,15 @@ const BASE = `http://localhost:${process.env.E2E_PORT ?? 5190}`
 // anvil's first default account: a public test key, local chains only
 const ANVIL_KEY = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80'
 const TOKEN_ABI = parseAbi(['function balanceOf(address) view returns (uint256)'])
+const ENVELOPES = parseAbiParameters(
+  '(uint256 chainId, address safe, uint256 nonce, address to, uint256 value, bytes data, uint8 operation, uint256 safeTxGas, uint256 baseGas, uint256 gasPrice, address gasToken, address refundReceiver)[]',
+)
 
 const chain = new LocalChain()
 let ctx: BrowserContext
 let page: Page
 let vb: VBoard
+let svc: FakeService
 let dapp: Awaited<ReturnType<typeof SignClient.init>>
 let topic = ''
 let safe: Address
@@ -94,7 +102,8 @@ test.describe.serial('WalletConnect with the virtual board', () => {
     ctx = await browser.newContext({ baseURL: BASE })
     page = await ctx.newPage()
     page.on('pageerror', (e) => log(`  page error: ${redact(e.message)}`))
-    await new FakeService(chain.client() as any).install(page)
+    svc = new FakeService(chain.client() as any)
+    await svc.install(page)
     vb = new VBoard(page)
   })
 
@@ -181,6 +190,50 @@ test.describe.serial('WalletConnect with the virtual board', () => {
     await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
     expect(await ask('wallet_getCallsStatus', [hash])).toMatchObject({ status: 200 })
     expect(await chain.client().readContract({ address: token, abi: TOKEN_ABI, functionName: 'balanceOf', args: [BOB] })).toBe(2_000_000n)
+  })
+
+  test('approveHash with the fields Safe’s app sends along: the board shows the approved transfer, and the app proposes it to the service', async () => {
+    const team = await chain.createSafe([safe], 32n)
+    const value = 10n ** 16n
+    const tn = await chain.nonceOf(team)
+    const th = await chain.hashOf(team, BOB, value, '0x', 0, tn)
+    const fields = (v: bigint) =>
+      concat([
+        NESTED_MAGIC,
+        encodeAbiParameters(ENVELOPES, [
+          [{ chainId: BigInt(CHAIN), safe: team, nonce: BigInt(tn), to: BOB, value: v, data: '0x', operation: 0, safeTxGas: 0n, baseGas: 0n, gasPrice: 0n, gasToken: zeroAddress, refundReceiver: zeroAddress }],
+        ]),
+      ])
+    const plain = encodeFunctionData({ abi: SAFE_ABI, functionName: 'approveHash', args: [th] })
+    // fields that don't hash to the approved hash: refused before the member sees a request (the
+    // SDK gives the dapp JSON-RPC's own text for -32602; the app's log has the reason)
+    const e = await refusal(ask('eth_sendTransaction', [{ from: safe, to: team, data: concat([plain, fields(value + 1n)]) }]))
+    expect(e.code).toBe(-32602)
+    await expect(t(page, 'wc-log')).toContainText('Refused eth_sendTransaction (-32602): the transaction sent along with approveHash doesn’t hash to the approved hash')
+    await expect(t(page, 'wc-request')).toHaveCount(0)
+    const pending = ask<Hex>('eth_sendTransaction', [{ from: safe, to: team, data: concat([plain, fields(value)]) }])
+    const { pages, answer, hash, done } = await confirmOnBoard(pending, async (card) => {
+      await expect(card.getByTestId('tx-summary').first()).toContainText('Approves transaction')
+      await expect(card.getByTestId('wc-approved')).toHaveAttribute('data-listed', 'false')
+      await expect(card.getByTestId('wc-approved').getByTestId('tx-summary')).toContainText(`Send 0.01 ETH to ${BOB}`)
+    })
+    log(`  board pages: ${pages.join(' | ')}`)
+    expect(pages[0]).toMatch(/^Approve/)
+    expect(pages.some((x) => x.startsWith('Parent: Send'))).toBe(true)
+    expect(pages).not.toContain('Not decoded')
+    await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
+    expect(answer).toBe(await done.getByTestId('wc-executed').getAttribute('data-tx'))
+    // signed without the fields: the Safe's transaction is approveHash alone
+    expect(hash).toBe((await chain.hashOf(safe, team, 0n, plain, 0, (await chain.nonceOf(safe)) - 1)).toLowerCase())
+    expect(await chain.client().readContract({ address: team, abi: SAFE_ABI, functionName: 'approvedHashes', args: [safe, th] })).toBe(1n)
+    // Safe's app leaves proposing the approved transaction to the wallet
+    await expect(done.getByTestId('wc-done-text')).toContainText('the app proposed it there with this Safe’s approval')
+    const post = svc.posts.find((p) => p.path === `/v2/safes/${team}/multisig-transactions/`)
+    expect(post?.body).toMatchObject({ to: BOB, value: String(value), nonce: tn, contractTransactionHash: th, sender: safe, signature: approvedHashSignature(safe) })
+    // the other Safe executes on the approval
+    const before = await chain.client().getBalance({ address: BOB })
+    await chain.send(team, encodeFunctionData({ abi: SAFE_ABI, functionName: 'execTransaction', args: [BOB, value, '0x', 0, 0n, 0n, 0n, zeroAddress, zeroAddress, approvedHashSignature(safe)] }))
+    expect((await chain.client().getBalance({ address: BOB })) - before).toBe(value)
   })
 
   test('a message is refused; the member disconnects', async () => {

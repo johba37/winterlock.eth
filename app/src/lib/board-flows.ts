@@ -15,10 +15,10 @@ import { type Ctx, FACTORY_ABI, afterTx, OWNER_ABI, type OnchainTree, type SafeS
 import { type BoardRecord, type Hex, type PendingEnrolment, getDevice, hasMember, putSetting, setting, writeStrict } from './db'
 import { type Env, type Proposed, type Rejected, type Step, type Transfer, keptCheck, nextNonce, refusePaymentToOwner, safeTxHash, service, serviceHas } from './flows'
 import { Refused } from './keylog'
+import { APPROVE_HASH } from './nested'
 import { ERC20_ABI, SAFE_ABI, type SafeTx, cancelTx, contractSignature, encodeForCore, fromService, parseSignature, safeTx } from './safe'
 import { writerFor } from './service'
 
-const APPROVE_HASH = '0xd4d9bdcd'
 const APPROVE_ABI = parseAbi(['function approveHash(bytes32 hashToApprove)'])
 
 // --- the board as the member ---
@@ -236,11 +236,16 @@ export function approveHashOf(tx: SafeTx): Hex | null {
   return slice(tx.data, 4, 36)
 }
 
-/** The parent Safe's transaction an approveHash approves: its fields from Safe's service, checked
- * here to hash to the argument. The board checks them again. */
-export async function parentOf(env: Env, chainId: number, tx: SafeTx): Promise<SafeTx | null> {
+/** The parent Safe's transaction an approveHash approves: its fields from `known` (a dapp sent them
+ * with the request: nested.ts) or from Safe's service, checked here to hash to the argument. The
+ * board checks them again. */
+export async function parentOf(env: Env, chainId: number, tx: SafeTx, known?: SafeTx): Promise<SafeTx | null> {
   const h = approveHashOf(tx)
   if (!h) return null
+  if (known) {
+    if ((await safeTxHash(env.core, chainId, tx.to, known)).toLowerCase() !== h.toLowerCase()) throw new Refused('The fields sent along with the approval don’t hash to the approved hash: refusing.')
+    return known
+  }
   const rec = await service(chainId)
     .transaction(h)
     .catch(() => {
@@ -291,8 +296,8 @@ async function prepare(env: Env, rec: BoardRecord, client: BoardClient, chainId:
   return { ctx, hash, root: onchain.root }
 }
 
-async function boardSign(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, p: Prepared, tx: SafeTx, step: Step, w: Waiting) {
-  const parent = await parentOf(env, chainId, tx)
+async function boardSign(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, p: Prepared, tx: SafeTx, step: Step, w: Waiting, known?: SafeTx) {
+  const parent = await parentOf(env, chainId, tx, known)
   if (parent) await refusePaymentToOwner(env, p.ctx, tx.to, parent, rec.owner)
   step(
     parent
@@ -308,11 +313,12 @@ async function boardSign(env: Env, rec: BoardRecord, client: BoardClient, chainI
 
 /** Propose a Safe transaction, confirmed on the board, to Safe's service: the checks, the board's
  * SIGN (it shows what the transaction does), the owner contract's check, the proposal, the kept
- * check. A delegate call is refused here: the board refuses them by design. */
-export async function boardProposeTx(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, tx: SafeTx, step: Step, w: Waiting): Promise<Proposed> {
+ * check. A delegate call is refused here: the board refuses them by design. `approved` is the
+ * parent Safe's transaction an approveHash approves, when its fields came with a dapp's request. */
+export async function boardProposeTx(env: Env, rec: BoardRecord, client: BoardClient, chainId: number, safe: Address, tx: SafeTx, step: Step, w: Waiting, approved?: SafeTx): Promise<Proposed> {
   if (tx.operation !== 0) throw new Refused('The board refuses delegate calls, so it can’t sign this (a batch is one).')
   const p = await prepare(env, rec, client, chainId, safe, tx, step)
-  const s = await boardSign(env, rec, client, chainId, safe, p, tx, step, w)
+  const s = await boardSign(env, rec, client, chainId, safe, p, tx, step, w, approved)
   step('Proposing it at Safe’s service')
   await writerFor(chainById(chainId).service).propose(safe, tx, p.hash, rec.owner, s.signature)
   const note = await keptCheck(env, rec, chainId, safe, p.hash, s.signature)

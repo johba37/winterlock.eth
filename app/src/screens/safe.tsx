@@ -339,10 +339,10 @@ export function TxScreen(props: { chain: number; safe: Address; hash: Hex }) {
     const r = await act.run(async (step) => {
       const x = await execute(app.env, dev, props.chain, props.safe, props.hash, step)
       // a dapp that got this SafeTx hash asks for its receipt
-      await noteExecution(app.env.db, props.hash, x.tx).catch(() => {})
+      await noteExecution(app.env.db, props.hash, x.tx, x.note).catch(() => {})
       return x
     })
-    if (r) setDone({ text: `Executed (${r.gasUsed.toLocaleString()} gas).`, tx: r.tx })
+    if (r) setDone({ text: `Executed (${r.gasUsed.toLocaleString()} gas).${r.note ? ` ${r.note}` : ''}`, tx: r.tx })
     setK(k + 1)
   }
 

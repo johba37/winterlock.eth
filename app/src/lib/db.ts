@@ -158,6 +158,24 @@ export interface DappTxRecord {
   answered: boolean
   /** the transaction that executed it, once known */
   execution?: { tx: Hex; success: boolean }
+  /** for an approveHash whose approved transaction's fields came with the request and were taken
+   * off the call (nested.ts): that transaction of the Safe `safe`, as Safe's service takes it, to
+   * propose it there once the approval is executed (flows.ts, listApproved) */
+  approved?: { safe: Hex; hash: Hex; tx: ServiceFields }
+}
+
+/** A Safe transaction's fields as Safe's service takes them (safe.ts, toService). */
+export interface ServiceFields {
+  to: string
+  value: string
+  data: string
+  operation: number
+  safeTxGas: string
+  baseGas: string
+  gasPrice: string
+  gasToken: string
+  refundReceiver: string
+  nonce: number
 }
 
 export interface HeldRecord {

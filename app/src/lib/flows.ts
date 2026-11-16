@@ -25,6 +25,7 @@ import {
 } from './chain'
 import {
   type CertRecord,
+  type DappTxRecord,
   type DeviceRecord,
   type HeldRecord,
   type Hex,
@@ -41,6 +42,7 @@ import {
   writeStrict,
 } from './db'
 import { type Core, Refused, recordThenSign } from './keylog'
+import { approvedHashSignature, envelopes, splitApprove } from './nested'
 import {
   type Decoded,
   ERC20_ABI,
@@ -790,7 +792,15 @@ export async function collect(env: Env, chainId: number, safe: Address, hash: He
 
 /** Execute a fully confirmed transaction, paid by the gas account (cli.py's execute). `onSent` gets
  * the transaction's hash once it is sent, before it is mined. */
-export async function execute(env: Env, dev: { gasKey: Hex; gasAddress: Hex }, chainId: number, safe: Address, hash: Hex, step: Step, onSent?: (tx: Hex) => void): Promise<{ tx: Hex; gasUsed: bigint }> {
+export async function execute(
+  env: Env,
+  dev: { gasKey: Hex; gasAddress: Hex },
+  chainId: number,
+  safe: Address,
+  hash: Hex,
+  step: Step,
+  onSent?: (tx: Hex) => void,
+): Promise<{ tx: Hex; gasUsed: bigint; note?: string }> {
   const ctx = await usableCtx(env.db, env.core, chainId)
   step('Fetching the proposal and its confirmations')
   const rec = await service(chainId).transaction(hash)
@@ -816,7 +826,46 @@ export async function execute(env: Env, dev: { gasKey: Hex; gasAddress: Hex }, c
   const r = executionResult(sent.receipt, safe, hash)
   if (r === 'failure') throw new Error(`Executed, but the Safe's call failed (ExecutionFailure): ${sent.hash}`)
   if (r !== 'success') throw new Error(`No ExecutionSuccess event in ${sent.hash}`)
-  return { tx: sent.hash, gasUsed: sent.receipt.gasUsed }
+  return { tx: sent.hash, gasUsed: sent.receipt.gasUsed, note: await listApproved(env, chainId, safe, hash, tx, step) }
+}
+
+/** After this Safe's approveHash on another Safe is executed: see that Safe's service holds the
+ * approved transaction. Safe's app, when it sends a transaction's fields along with the approveHash
+ * (nested.ts), doesn't propose a new transaction itself and leaves that to the wallet. The fields
+ * are the ones kept with the dapp's record when the app took them off the call, or they still
+ * follow the call. If the service lacks the transaction, the app proposes it with this Safe's
+ * on-chain approval as the signature. Returns what it did, for the member, or nothing. */
+export async function listApproved(env: Env, chainId: number, safe: Address, hash: Hex, tx: SafeTx, step: Step): Promise<string | undefined> {
+  const split = tx.operation === 0 && tx.value === 0n ? splitApprove(tx.data) : null
+  if (!split) return undefined
+  // the execution stands whatever happens here: a failure is told, not thrown
+  try {
+    let approved: SafeTx | undefined
+    if (split.rest === '0x') {
+      const kept = (await get<DappTxRecord>(env.db, 'dapp', hash.toLowerCase()))?.approved
+      if (kept && kept.hash === split.hash && kept.safe.toLowerCase() === tx.to.toLowerCase()) approved = fromService(kept.tx)
+    } else {
+      approved = envelopes(split.rest)?.[0]?.tx
+    }
+    if (!approved) return undefined
+    if ((await safeTxHash(env.core, chainId, tx.to, approved)).toLowerCase() !== split.hash) return undefined
+    if (await serviceHas(chainId, split.hash)) return undefined
+    step('Proposing the approved transaction to Safe’s service')
+    const writer = writerFor(chainById(chainId).service)
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await writer.propose(tx.to, approved, split.hash, safe, approvedHashSignature(safe))
+        break
+      } catch (e) {
+        // the service reads approvedHashes on its own node, which may be a block behind
+        if (attempt >= 3 || !(e instanceof ServiceError) || e.status === undefined || e.status >= 500) throw e
+        await new Promise((r) => setTimeout(r, 3000))
+      }
+    }
+    return `Safe’s service didn’t have the approved transaction: the app proposed it there with this Safe’s approval, so the other owners of ${tx.to} see it.`
+  } catch (e) {
+    return `The approval is on-chain, but Safe’s service didn’t take the approved transaction (${short(e)}): the other owners of ${tx.to} won’t see it in their queue until it is proposed there.`
+  }
 }
 
 // --- revoking ---
