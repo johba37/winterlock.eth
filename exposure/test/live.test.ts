@@ -66,6 +66,32 @@ describe.skipIf(!LIVE)('live, Sepolia', () => {
   })
 })
 
+describe.skipIf(!LIVE)("live, Sepolia: the landing page's Safes, with owner v1", () => {
+  // owner v1 proxies (docs/decisions.md, 2026-11-05: proxy owners): protected
+  for (const [address, owners] of [
+    ['0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07', 2],
+    ['0x1726e1f9Ad2a6580E6a3BeaeF040a2cCE4708767', 3],
+  ] as const) {
+    it(`${address}: ${owners} Winterlock owners v1, protected`, async () => {
+      const r = await check('sep', address)
+      log(summary(r))
+      expect(r.official).toEqual({ proxy: true, singleton: true })
+      expect(r.owners.map((o) => (o.facts.kind === 'winterlock' ? o.facts.version : o.facts.kind))).toEqual(Array(owners).fill(1))
+      expect(r.verdict.kind).toBe('protected')
+    })
+  }
+
+  // the earlier full-contract owners (docs/decisions.md, 2026-11-05: Safe owner, live on Sepolia;
+  // commit fdf67c8): 7,114 bytes each, whose creation code no file in the repository pins, so the
+  // check doesn't recognise them
+  it("0x5B81D3ce1Ca48be48F154D8AD060Cf9f883E86B2: full-contract owners, can't tell", async () => {
+    const r = await check('sep', '0x5B81D3ce1Ca48be48F154D8AD060Cf9f883E86B2')
+    log(summary(r))
+    expect(r.owners.map((o) => (o.facts.kind === 'contract' ? o.facts.size : o.facts.kind))).toEqual([7114, 7114, 7114])
+    expect(r.verdict).toMatchObject({ kind: 'cannot-tell', reasons: ['unknown-owners'] })
+  })
+})
+
 describe.skipIf(!LIVE)('live, Ethereum', () => {
   for (const [name, address] of [
     ['ychad.eth (Yearn)', '0xFEB4acf3df3cDEA7399794D0869ef76A6EfAff52'],

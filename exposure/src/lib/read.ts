@@ -9,7 +9,7 @@ import { PASSKEY_FACTORIES, PASSKEY_SHARED_SIGNER, PROXY_CODE_HASHES, SENTINEL, 
 import { changesFor, classify, verdictOf } from './model'
 import { SafeService, type ServiceOptions } from './service'
 import type { Balances, Limit, OwnerFacts, OwnerReport, SafeReport } from './types'
-import { memberKeyOf } from './winterlock'
+import { winterlockOwnerOf } from './winterlock'
 
 const SAFE_ABI = parseAbi([
   'function getOwners() view returns (address[])',
@@ -260,8 +260,8 @@ async function readOwner(ctx: Context, safe: Address, owner: Address, depth: num
   if (c === '0x') return { kind: 'key', nonce: nonce.value }
   // EIP-7702: 0xef0100 followed by the delegate's address
   if (c.length === 2 + 23 * 2 && c.startsWith('0xef0100')) return { kind: 'delegated-key', nonce: nonce.value, delegate: getAddress(`0x${c.slice(8)}`) }
-  const memberKey = memberKeyOf(owner, c)
-  if (memberKey) return { kind: 'winterlock', memberKey }
+  const winterlock = winterlockOwnerOf(owner, c)
+  if (winterlock) return { kind: 'winterlock', ...winterlock }
   if (isAddressEqual(owner, PASSKEY_SHARED_SIGNER)) {
     const r = await settled(client.readContract({ address: owner, abi: SHARED_SIGNER_ABI, functionName: 'getConfiguration', args: [safe], blockNumber }))
     if (r.ok) return { kind: 'passkey-shared', configured: r.value.verifiers !== 0n, x: r.value.x, y: r.value.y }

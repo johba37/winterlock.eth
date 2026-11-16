@@ -51,6 +51,15 @@ test.describe('live lookups on Sepolia', () => {
     expect(w.errors).toEqual([])
   })
 
+  test("the landing page's 2-of-2 Safe of Winterlock owners v1: protected", async ({ page, baseURL }) => {
+    const w = watch(page)
+    await page.goto('/#/sep:0x68f64486FC720D1dB14507bC7Fa64896bE6Bef07')
+    await expect(page.locator('#verdict')).toHaveText('Protected by hash-based owners', { timeout: 60_000 })
+    await expect(page.locator('.owners td.evidence')).toHaveText([/Winterlock owner v1/, /Winterlock owner v1/])
+    expect(new Set(w.origins)).toEqual(new Set([baseURL, 'https://ethereum-sepolia-rpc.publicnode.com']))
+    expect(w.errors).toEqual([])
+  })
+
   test('typed into the form: a Safe with an exposed ECDSA owner at threshold 1: exposed', async ({ page, baseURL }) => {
     const w = watch(page)
     await page.goto('/')

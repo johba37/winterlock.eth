@@ -29,7 +29,8 @@ export type OwnerFacts =
   | { kind: 'key'; nonce: number; signatures?: OwnerSignatures | null }
   /** An EOA with an EIP-7702 delegation: still an ECDSA key, and it signed the delegation. */
   | { kind: 'delegated-key'; nonce: number; delegate: Address }
-  | { kind: 'winterlock'; memberKey: Hex }
+  /** A Winterlock owner: owner v2, or the earlier owner v1. */
+  | { kind: 'winterlock'; version: 1 | 2; memberKey: Hex }
   /** Safe's passkey signer: a P-256 key whose public key (x, y) is in the contract's code. */
   | { kind: 'passkey'; factoryVersion: string; x: bigint; y: bigint }
   /** Safe's shared passkey signer: the P-256 public key is in the Safe's storage, if configured. */

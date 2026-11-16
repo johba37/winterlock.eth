@@ -167,7 +167,7 @@ export function ownerEvidence(f: OwnerFacts, chainId: number): string {
     case 'delegated-key':
       return `A key with an EIP-7702 delegation to ${f.delegate}${nameOf(f.delegate) ? ` (${nameOf(f.delegate)})` : ''}. Signing the delegation made its public key known, and the key can still sign on its own.`
     case 'winterlock':
-      return `Its code is a Winterlock owner (v2) of the pinned implementation, with member key ${f.memberKey.slice(0, 10)}…; it signs with hash-based keys only.`
+      return `Its code is a Winterlock owner v${f.version} of the pinned implementation${f.version === 1 ? ' (the earlier version, without device keys)' : ''}, with member key ${f.memberKey.slice(0, 10)}…; it signs with hash-based keys only.`
     case 'passkey':
       return `Safe’s passkey signer (${f.factoryVersion}): its P-256 public key is stored on-chain, in the contract’s code. P-256 is an elliptic curve, as open to this attack as ECDSA’s.`
     case 'passkey-shared':

@@ -9,5 +9,5 @@ export { EXPOSING_TYPES, allLimits, changesFor, classify, exposingCount, nestedC
 export { CheckError, type CheckErrorCode, type CheckOptions, checkSafe } from './read'
 export { SafeService, type ServiceOptions, type ServiceRead } from './service'
 export * from './types'
-export { WINTERLOCK_FACTORY, WINTERLOCK_IMPLEMENTATION, memberKeyOf, ownerAddress } from './winterlock'
+export { WINTERLOCK_FACTORY, WINTERLOCK_IMPLEMENTATION, WINTERLOCK_VERSIONS, type WinterlockVersion, memberKeyOf, ownerAddress, winterlockOwnerOf } from './winterlock'
 export * as explain from './explain'

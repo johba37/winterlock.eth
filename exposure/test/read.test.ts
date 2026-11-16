@@ -53,6 +53,17 @@ describe('owners and verdicts', () => {
     expect(service.urls).toEqual([])
   })
 
+  it('Winterlock owners v1: hash-based too, with their version', async () => {
+    chain.safe(SAFE, { owners: [chain.winterlock(KEYS[0], 1), chain.winterlock(KEYS[1], 1), chain.key(addr('alice'), 2)], threshold: 2 })
+    const r = await run()
+    expect(r.owners.map((o) => [o.facts.kind, o.facts.kind === 'winterlock' ? o.facts.version : null, o.class])).toEqual([
+      ['winterlock', 1, 'hash-based'],
+      ['winterlock', 1, 'hash-based'],
+      ['key', null, 'exposed'],
+    ])
+    expect(r.verdict.kind).toBe('protected')
+  })
+
   it("a key that sent transactions: exposed, and the service isn't needed", async () => {
     chain.safe(SAFE, { owners: [chain.key(addr('alice'), 5), chain.winterlock(KEYS[0])], threshold: 1 })
     const r = await run()

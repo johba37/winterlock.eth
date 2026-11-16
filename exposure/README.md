@@ -16,7 +16,7 @@ No computer able to derive private keys from public keys exists today, and nobod
 | | Safe's passkey signer (`SafeWebAuthnSignerProxy` of factory v0.2.0 or v0.2.1) | its P-256 public key is in its code |
 | | Safe's shared passkey signer (v0.2.1), set up for this Safe | its P-256 public key is in the Safe's storage |
 | **Not known to be exposed** (quantum-vulnerable) | A key with no such evidence | none found. It may have signed on another network, for another Safe or off-chain: absence of evidence isn't safety |
-| **Hash-based** | A Winterlock owner v2: a 77-byte clone of the pinned implementation at the address the pinned factory gives its member key | `memberKeyOf`, a port of `member_key_of` in `core/src/owner.rs`, tested against the core's vectors |
+| **Hash-based** | A Winterlock owner, v2 or the earlier v1: a 77-byte clone of its version's pinned implementation at the address its version's pinned factory gives its member key | `winterlockOwnerOf`, a port of `member_key_of` in `core/src/owner.rs`, tested against the core's vectors (v2) and against the creation code the signer pinned for v1 (`test/vectors/owner-v1.json`, from commit 357c25f) |
 | **Can't tell** | Any other contract; the shared passkey signer not set up for this Safe; a Safe in a cycle, deeper than the depth limit or past the cap on Safes read; an owner the RPC endpoint didn't answer for | |
 
 **A Safe among the owners** is read in turn, and counts by its own verdict: Exposed as exposed, Exposed as owners sign as not known to be exposed, Protected as hash-based, Can't tell as can't tell.
@@ -41,7 +41,7 @@ The guard, the module guard (Safe 1.5.0) and the fallback handler are reported a
 - **CCIP-Read is off** (EIP-3668): the check makes its own viem client on the caller's endpoint, so a contract it reads can't make it fetch a URL of the contract's choosing.
 - **Every limit hit is in the report** (`limits`): pages not read, the service unreachable, rate-limited or without a record of the Safe, Safes not read, modules beyond the first page.
 - **Never covered:** what modules, a guard or the fallback handler can do; token approvals; signatures on other networks, for other Safes or off-chain (a key has the same address on every network); whether the signatures the service lists are genuine (it is taken at its word).
-- **Not recognised:** Winterlock owner v1 (the earlier Sepolia test Safes' owners count as "can't tell"); Safe4337Module counts as a module like any other.
+- **Not recognised:** the full-contract Winterlock owners from before the proxies (commit fdf67c8, 7,114 bytes each, on the Sepolia Safe `0x5B81...86B2`), whose creation code no file in the repository pins: they count as "can't tell". Safe4337Module counts as a module like any other.
 
 ## The facts it relies on
 
@@ -49,6 +49,7 @@ Checked on 2026-11-16; `test/live.test.ts` re-checks the derived ones.
 
 - **Safe's Transaction Service** (6.14.0 on all six networks): paths, the 200-per-page cap and the `signatureType` values from its source (`safe-global/safe-transaction-service`, `safe-global/safe-eth-py`'s `SafeSignatureType`) and live answers. Reads need no API key and are allowed from any origin; without a key the service allows 2 requests per second (Safe's documentation) and 5,000 per window (its `X-RateLimit-Limit` header). A transaction is returned only if trusted, which every transaction with an owner's signature is.
 - **Official Safes:** singleton addresses per network from `safe-global/safe-deployments` (1.0.0 to 1.5.0; 1.0.0 to 1.2.0 only on Ethereum and Gnosis). Proxy code: each official factory's proxy, deployed in an `eth_call` (`proxyCreationCode()` plus the singleton) on Ethereum; for 1.0.0 to 1.3.0 this matches the factory's `proxyRuntimeCode()`, and the factories' code hashes match safe-deployments'.
+- **Winterlock owner v1:** its implementation `0xC4Aa38F766020e66136cd6cb1c547CeCAd175f2e` and factory `0x13D4cB5F9A9D076dB123CE8Eb5f404e2FA01fEa5` derive from the creation code the Python signer pinned for v1 (`git show d2dda10:signer/winterlock_signer/contracts.json`), as `docs/decisions.md` records them. The v1 contract has hash-based paths only: one-time WOTS keys and the stateless verifier, no admin and no upgrade.
 - **Passkey signers:** factories, singletons and the shared signer from `safe-global/safe-modules-deployments` (`safe-passkey-module` v0.2.0, v0.2.1), the factories' `SINGLETON()` on Ethereum and Sepolia, and the contracts in `@safe-global/safe-passkey`.
 - **Networks:** Ethereum (`eth`), Sepolia (`sep`), Base (`base`), Arbitrum One (`arb1`), OP Mainnet (`oeth`) and Gnosis (`gno`). Each service URL answered; each default RPC endpoint answered the right chain ID and JSON-RPC batches, with CORS for any site.
 - **Tokens:** USDC and WETH addresses from the board's list (`hardware/board-signer/logic/src/decode.rs`), plus USDC on OP Mainnet from Circle's "USDC contract addresses" page. Gnosis has none: only xDAI is shown.

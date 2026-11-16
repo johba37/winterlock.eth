@@ -3,7 +3,7 @@
 
 import { type Address, type Hex, createPublicClient, custom, decodeFunctionData, encodeFunctionResult, getAddress, keccak256, pad, parseAbi, toHex } from 'viem'
 import { PASSKEY_FACTORIES, PASSKEY_SHARED_SIGNER, SENTINEL, SLOTS } from '../src/lib/known'
-import { WINTERLOCK_IMPLEMENTATION, ownerAddress, proxyRuntime } from '../src/lib/winterlock'
+import { WINTERLOCK_VERSIONS, ownerAddress, proxyRuntime } from '../src/lib/winterlock'
 
 /** The runtime code of SafeProxyFactory 1.4.1's proxies (read from the factory on Ethereum). */
 export const PROXY_141: Hex =
@@ -143,9 +143,10 @@ export class FakeChain {
     return this.set(address, { nonce })
   }
 
-  /** A Winterlock owner v2 for a member key, at its real address. */
-  winterlock(key: Hex): Address {
-    return this.set(ownerAddress(key), { code: proxyRuntime(WINTERLOCK_IMPLEMENTATION, key) })
+  /** A Winterlock owner (v2 unless told) for a member key, at its real address. */
+  winterlock(key: Hex, version: 1 | 2 = 2): Address {
+    const v = WINTERLOCK_VERSIONS.find((x) => x.version === version)!
+    return this.set(ownerAddress(key, v), { code: proxyRuntime(v.implementation, key) })
   }
 
   /** Safe's passkey signer from factory v0.2.1, with the factory answering for it. */
