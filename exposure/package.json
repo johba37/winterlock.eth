@@ -1,0 +1,30 @@
+{
+  "name": "winterlock-exposure",
+  "version": "0.1.0",
+  "private": true,
+  "description": "How a Safe's owners would stand against an attacker who can derive private keys from public keys: a TypeScript library on viem, and a static lookup page.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./src/lib/index.ts"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run typecheck && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p src/lib/tsconfig.json",
+    "test": "vitest run",
+    "test:live": "EXPOSURE_LIVE=1 vitest run test/live.test.ts",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "viem": "2.57.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "24.19.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12"
+  }
+}

@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quantum exposure check for Safe</title>
+<meta name="description" content="Who could sign for a Safe if private keys could be derived from public keys: each owner, the evidence, and what the check couldn’t see. Reads only.">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22 width=%2232%22 height=%2232%22 role=%22img%22 aria-label=%22Winterlock Permanent Way mark: a stencilled hash sign that is also a stretch of track%22%3E%3Cstyle%3E.ink%7Bfill:#131517%7D.lamp%7Bfill:#B36F05%7D.ink-s%7Bstroke:#131517;fill:none%7D.lamp-s%7Bstroke:#B36F05;fill:none%7D.muted%7Bfill:#4E5458%7D.acc%7Bfill:#19566E%7D%40media (prefers-color-scheme:dark)%7B.ink%7Bfill:#EFEAE0%7D.lamp%7Bfill:#F2A73C%7D.ink-s%7Bstroke:#EFEAE0%7D.lamp-s%7Bstroke:#F2A73C%7D.muted%7Bfill:#A6A196%7D.acc%7Bfill:#86C0D4%7D%7D%3C/style%3E%3Cpath class=%22ink%22 d=%22M1 7.6H31V12.4H1ZM1 19.6H31V24.4H1ZM10.88 1.5H15.88L14.33 6.2H9.33ZM6.83 13.8H11.83L10.37 18.2H5.37ZM2.87 25.8H7.87L6.31 30.5H1.31ZM20.68 1.5H25.68L24.13 6.2H19.13ZM12.67 25.8H17.67L16.11 30.5H11.11Z%22/%3E%3Cpath class=%22lamp%22 d=%22M16.63 13.8H21.63L20.17 18.2H15.17Z%22/%3E%3C/svg%3E%0A">
+</head>
+<body>
+
+<header class="wrap masthead">
+  <a class="wordmark" href="./" aria-label="winterlock.eth: quantum exposure check"><svg class="wm-mark" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M1 8.5H31V12.5H1ZM1 19.5H31V23.5H1ZM11.82 2H16.02L14.3 7.2H10.1ZM7.93 13.8H12.13L10.67 18.2H6.47ZM4.3 24.8H8.5L6.78 30H2.58ZM21.22 2H25.42L23.7 7.2H19.5ZM13.7 24.8H17.9L16.18 30H11.98Z"/><path fill="var(--lamp)" d="M17.33 13.8H21.53L20.07 18.2H15.87Z"/></svg><svg class="wm-word" viewBox="0 0 130.4 20" aria-hidden="true"><path fill="currentColor" d="M0 0L3.6 0L3.6 20L2.4 20L0 17.6ZM16 17.6L13.6 20L12.4 20L12.4 0L16 0ZM4.9 20L4.9 16.4L6.2 16.4L6.2 7L9.8 7L9.8 16.4L11.1 16.4L11.1 20ZM18.2 0L21.8 0L21.8 20L18.2 20ZM24 0L28 0L37 20L33 20ZM24 3.17L27.6 11.17L27.6 20L24 20ZM37 16.83L33.4 8.83L33.4 0L37 0ZM39.2 0L50.2 0L50.2 3.6L39.2 3.6ZM42.9 4.9L46.5 4.9L46.5 20L42.9 20ZM52.4 0L56 0L56 20L52.4 20ZM57.3 0L62.4 0L62.4 3.6L57.3 3.6ZM57.3 8.2L61.2 8.2L61.2 11.8L57.3 11.8ZM57.3 16.4L62.4 16.4L62.4 20L57.3 20ZM64.6 0L68.2 0L68.2 20L64.6 20ZM69.5 0L74.2 0L76.6 2.4L76.6 10.6L75.4 11.8L69.5 11.8L69.5 8.2L73 8.2L73 3.6L69.5 3.6ZM70 13.1L73.8 13.1L76.6 20L72.8 20ZM78.8 0L82.4 0L82.4 20L78.8 20ZM83.7 16.4L88.8 16.4L88.8 20L83.7 20ZM96.35 0L93.4 0L91 2.4L91 17.6L93.4 20L96.35 20L96.35 16.4L94.6 16.4L94.6 3.6L96.35 3.6ZM97.65 3.6L99.4 3.6L99.4 16.4L97.65 16.4L97.65 20L100.6 20L103 17.6L103 2.4L100.6 0L97.65 0ZM110.55 0L107.6 0L105.2 2.4L105.2 17.6L107.6 20L110.55 20L110.55 16.4L108.8 16.4L108.8 3.6L110.55 3.6ZM111.85 0L113.8 0L116.2 2.4L116.2 6L112.6 6L112.6 3.6L111.85 3.6ZM111.85 16.4L112.6 16.4L112.6 14L116.2 14L116.2 17.6L113.8 20L111.85 20ZM118.4 0L122 0L122 20L118.4 20ZM123.3 6.4L126.1 0L130.4 0L126.4 10L130.4 20L126.1 20L123.3 13.6Z"/></svg><svg class="wm-eth" viewBox="0 0 43.2 20" aria-hidden="true"><path fill="currentColor" d="M0 16.4L3.6 16.4L3.6 20L0 20ZM5.8 0L9.4 0L9.4 20L5.8 20ZM10.7 0L15.8 0L15.8 3.6L10.7 3.6ZM10.7 8.2L14.6 8.2L14.6 11.8L10.7 11.8ZM10.7 16.4L15.8 16.4L15.8 20L10.7 20ZM18 0L29 0L29 3.6L18 3.6ZM21.7 4.9L25.3 4.9L25.3 20L21.7 20ZM31.2 0L34.8 0L34.8 8.2L38.3 8.2L38.3 11.8L34.8 11.8L34.8 20L31.2 20ZM39.6 0L43.2 0L43.2 20L39.6 20Z"/></svg></a>
+  <nav aria-label="Page links">
+    <a href="#how">How it works</a>
+    <a href="https://github.com/johba37/winterlock.eth/tree/main/exposure" rel="noopener noreferrer">Source</a>
+  </nav>
+</header>
+
+<main>
+  <section class="wrap hero">
+    <div>
+      <p class="kicker">Quantum exposure check for Safe</p>
+      <div class="trackrule" aria-hidden="true"></div>
+      <h1>Who could sign for your Safe if elliptic curves broke?</h1>
+      <p class="lede" id="background"></p>
+      <p class="intro">This page reads a Safe’s owners from the chain and from Safe’s Transaction Service, and shows how the Safe would stand against an attacker able to derive private keys from public keys: what it checked, what it found, and what it couldn’t check. It only reads: it never asks for a signature or a wallet.</p>
+    </div>
+
+    <form class="core lookup" id="lookup" novalidate>
+      <h2>Check a Safe</h2>
+      <label for="safe">Safe address, or a link from Safe’s app</label>
+      <input id="safe" name="safe" type="text" autocomplete="off" spellcheck="false" placeholder="eth:0x… or https://app.safe.global/…">
+      <div class="row">
+        <div class="field">
+          <label for="chain">Network</label>
+          <select id="chain" name="chain"></select>
+        </div>
+        <button type="submit" id="go">Check</button>
+      </div>
+      <p class="form-error" id="form-error" role="alert" hidden></p>
+      <details class="settings" id="settings">
+        <summary>RPC endpoint</summary>
+        <label for="rpc">JSON-RPC URL for <span id="rpc-chain"></span></label>
+        <input id="rpc" name="rpc" type="url" autocomplete="off" spellcheck="false">
+        <p class="hint">Kept in this browser only, per network. <button type="button" class="linklike" id="rpc-reset">Use the default</button></p>
+      </details>
+      <p class="fineprint" id="peers"></p>
+    </form>
+  </section>
+
+  <section class="wrap result" id="result" aria-live="polite" aria-busy="false"></section>
+
+  <section class="block" id="how" aria-labelledby="how-title">
+    <div class="wrap prose">
+      <h2 id="how-title">How the check works</h2>
+      <div class="cols">
+        <div>
+          <h3>When a key is open to attack</h3>
+          <p>An ECDSA key pairs a private key with a public key on an elliptic curve. Today nobody can work out the private key from the public one. A large enough quantum computer could, and so might new mathematics. No computer able to do this exists today, and nobody knows when one will.</p>
+          <p>An address is a hash of the public key, not the key itself. The public key becomes known when the key signs: a transaction, a Safe confirmation, a message. From any of its signatures, anyone can compute it. So the check asks, for each owner, whether its public key is known.</p>
+        </div>
+        <div>
+          <h3>Each owner</h3>
+          <dl class="defs" id="classes"></dl>
+        </div>
+        <div>
+          <h3>The Safe</h3>
+          <dl class="defs">
+            <div><dt>Exposed</dt><dd>At least as many owners as the threshold are exposed. An attacker able to derive private keys from public keys could move funds without anyone signing.</dd></div>
+            <div><dt>Exposed as owners sign</dt><dd>Fewer than that are exposed, but the quantum-vulnerable owners can reach the threshold. Each signature exposes a key.</dd></div>
+            <div><dt>Protected by hash-based owners</dt><dd>The quantum-vulnerable owners, with any the check can’t classify, are fewer than the threshold, and no module is enabled. Every set of signatures that reaches the threshold includes a hash-based owner.</dd></div>
+            <div><dt>Can’t tell</dt><dd>Owners the check can’t classify could make the difference, a module is enabled, or the contract isn’t made of Safe’s official contracts.</dd></div>
+          </dl>
+        </div>
+      </div>
+      <div class="cols">
+        <div>
+          <h3>What it reads</h3>
+          <p>From the network, through the RPC endpoint and at one block: the Safe’s proxy and singleton, owners, threshold, modules, guard and fallback handler; each owner’s code and transaction count; and the Safe’s balance of the native currency and of USDC and WETH where their addresses were checked against the issuer’s documentation.</p>
+          <p>From Safe’s Transaction Service, only when an owner is a key that hasn’t sent a transaction: the confirmations on the Safe’s transactions, executed or queued, and on its messages. At most five pages of 200 of each; a Safe nested in another is read the same way, up to three levels deep and ten Safes in all.</p>
+        </div>
+        <div>
+          <h3>What it can’t see</h3>
+          <ul class="plain" id="scope"></ul>
+        </div>
+        <div>
+          <h3>Where this comes from</h3>
+          <p>This check is part of <a href="https://github.com/johba37/winterlock.eth" rel="noopener noreferrer">Winterlock</a>, which gives a Safe owners whose signatures rest on hash functions instead of elliptic curves. Winterlock is a research prototype on Sepolia, and its contracts are not audited.</p>
+          <p>The check’s code is a small open library that other Safe tools can use, and this page is its static front end.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Winterlock is an independent community initiative and is not affiliated with Safe or the Safe Ecosystem Foundation. This page loads no trackers, no external fonts and no scripts from other servers.</p>
+    <div class="links">
+      <a href="https://github.com/johba37/winterlock.eth/tree/main/exposure" rel="noopener noreferrer">Source</a>
+    </div>
+  </div>
+</footer>
+
+<noscript><p class="wrap">This check needs JavaScript: it reads the chain from your browser.</p></noscript>
+<script type="module" src="./src/page/main.ts"></script>
+</body>
+</html>

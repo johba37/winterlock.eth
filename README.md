@@ -53,6 +53,7 @@ This repository also holds the landing page published at winterlock.eth: a singl
 | `core-wasm/` | The core's WebAssembly bindings for the app |
 | `Cargo.toml` | The Rust workspace of `core/`, `core-wasm/` and the board's `logic/` and `wasm/`: one `Cargo.lock` and `target/` at the root, and the app's WebAssembly the same in any folder |
 | `app/` | The signer app: a browser app for members who don't use a terminal, on the core in WebAssembly (Sepolia; see `app/README.md`) |
+| `exposure/` | A quantum exposure check for Safe accounts: who can sign for a Safe and how its owners would stand against an attacker able to derive private keys from public keys. A TypeScript library on viem and a static lookup page (see `exposure/README.md`) |
 | `hardware/` | ESP32 firmware: a keccak256 benchmark, and a check of the Rust core on the board |
 
 ## Contracts

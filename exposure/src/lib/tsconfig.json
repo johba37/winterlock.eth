@@ -1,0 +1,9 @@
+{
+  "//": "The library alone, without the DOM's types: it runs in Node as well as in a browser (npm run typecheck checks this too).",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"]
+  },
+  "include": ["."]
+}
