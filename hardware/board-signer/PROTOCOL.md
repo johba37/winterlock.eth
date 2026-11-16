@@ -36,7 +36,7 @@ All numbers are big-endian.
 | 0x07 | SIGN | chain (8), Safe (20), tree root (24, or zeros for the newest tree of this Safe), transaction length (2), transaction, parent length (2), parent transaction (0 bytes if none) | SIGNED, once the member confirms |
 | 0x08 | CANCEL | none | DONE; the request in progress (if any) is answered with ERROR "cancelled" first |
 
-A transaction is the app's encoding of a SafeTx's fields (as core-wasm's): to (20) ‖ value (32) ‖ operation (1) ‖ safeTxGas (32) ‖ baseGas (32) ‖ gasPrice (32) ‖ gasToken (20) ‖ refundReceiver (20) ‖ nonce (32) ‖ data. **Never a hash:** the board computes the SafeTx hash itself. For an `approveHash(bytes32)` on a parent Safe, the parent transaction's fields come along; the parent Safe is the call's target, and the board checks that the parent's fields hash to the argument.
+A transaction is the app's encoding of a SafeTx's fields (as core-wasm's): to (20) ‖ value (32) ‖ operation (1) ‖ safeTxGas (32) ‖ baseGas (32) ‖ gasPrice (32) ‖ gasToken (20) ‖ refundReceiver (20) ‖ nonce (32) ‖ data. **Never a hash:** the board computes the SafeTx hash itself. For an `approveHash(bytes32)` on a parent Safe, the parent transaction's fields come along; the parent Safe is the call's target, and the board checks that the parent's fields hash to the argument. For an `execTransaction` on a parent Safe nothing comes along: the parent's transaction is in the call's data, which the board reads when it is in exactly the encoding Solidity's encoder gives (ten head words, the data, the signatures, nothing after).
 
 ## Answers and events
 

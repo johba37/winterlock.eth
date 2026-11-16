@@ -171,6 +171,39 @@ fn transactions_of_each_kind() {
     assert_eq!(code, Code::Refused as u8);
     assert!(why.contains("don't hash"), "{why}");
 
+    // execTransaction on a parent Safe: the parent's transfer is read from the call and shown
+    let exec = SafeTx { to: PARENT, data: exec_data(&eth(0, 3_000_000_000_000_000_000), &[7; 65]), nonce: U256::from_u64(8), ..Default::default() };
+    request(&mut b, ty::SIGN, 40, &sign_payload(CHAIN, &SAFE, &[0; 24], &exec, None));
+    assert_eq!(title(&b), "Execute");
+    assert!(text(&b).iter().any(|x| x.contains("65 signature bytes")), "{:?}", text(&b));
+    b.button(Right);
+    assert_eq!(title(&b), "Parent: Send");
+    assert!(text(&b).iter().any(|x| x.contains("3 ETH")), "{:?}", text(&b));
+    while b.screen().right != "hold both: sign" {
+        b.button(Right);
+    }
+    assert!(text(&b).iter().any(|x| x.contains("Execute parent's tx:")), "{:?}", text(&b));
+    b.button(Both);
+    let s5 = parse_signed(&answer(&b, 40).expect("one confirmation is enough").payload);
+    verify(&e, &id.owner, &exec, &s5);
+    b.button(Right);
+    // with anything after the call, it isn't read (Safe's app appends the transaction's fields:
+    // the app takes them off)
+    let mut longer = SafeTx { nonce: U256::from_u64(9), ..exec.clone() };
+    longer.data.extend_from_slice(&[0; 32]);
+    request(&mut b, ty::SIGN, 41, &sign_payload(CHAIN, &SAFE, &[0; 24], &longer, None));
+    assert_eq!(title(&b), "NOT DECODED");
+    b.button(Left);
+    assert_eq!(parse_error(&answer(&b, 41).unwrap().payload).0, Code::Rejected as u8);
+    b.button(Right);
+    // the parent's delegate call, and its ETH to the board's own owner contract: refused
+    let parent_dc = SafeTx { operation: Operation::DelegateCall, ..eth(0, 1) };
+    let (_, why) = sign(&mut b, 42, &SafeTx { data: exec_data(&parent_dc, &[7; 65]), ..longer.clone() }, None).unwrap_err();
+    assert!(why.contains("delegate call"), "{why}");
+    let parent_to_owner = SafeTx { to: id.owner, ..eth(0, 1) };
+    let (_, why) = sign(&mut b, 43, &SafeTx { data: exec_data(&parent_to_owner, &[7; 65]), ..longer.clone() }, None).unwrap_err();
+    assert!(why.contains("can't receive ETH"), "{why}");
+
     // anything else: not decoded, and a second confirmation
     let raw = SafeTx { to: [0xCC; 20], data: vec![0x12, 0x34, 0x56, 0x78, 0, 1], value: U256::from_u64(5), nonce: U256::from_u64(2), ..Default::default() };
     request(&mut b, ty::SIGN, 16, &sign_payload(CHAIN, &SAFE, &[0; 24], &raw, None));
@@ -252,7 +285,7 @@ fn transactions_of_each_kind() {
     assert!(why.contains("enrol first"), "{why}");
 
     l.borrow().assert_no_reuse();
-    assert_eq!(l.borrow().signatures, 6);
+    assert_eq!(l.borrow().signatures, 7);
 }
 
 #[test]

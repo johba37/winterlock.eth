@@ -49,7 +49,7 @@ describe('the virtual board through the board client', () => {
     const { t, c, booted } = await connected(store)
     expect(booted).toEqual(['blank'])
     const s0 = await c.status()
-    expect([s0.state, s0.testHooks, s0.version, s0.storageSize]).toEqual(['blank', false, '0.1.0 virtual', 0x2f0000])
+    expect([s0.state, s0.testHooks, s0.version, s0.storageSize]).toEqual(['blank', false, '0.1.1 virtual', 0x2f0000])
 
     // --- setup: the words on the board, three asked back, a PIN twice ---
     const appRandom = crypto.getRandomValues(new Uint8Array(32))

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The board signer's firmware in QEMU, driven over its serial port by the Python client (board_client.py) and checked
 with the Python signer: setup, a restart and unlock, enrolment, an ETH transfer, an approveHash with the parent's
-fields, a call that isn't decoded, a refused delegate call, QEMU killed in the middle of a key log write (twice: after
+fields, an execTransaction on a parent Safe, a call that isn't decoded, a refused delegate call, QEMU killed in the middle of a key log write (twice: after
 the record's header, and after the whole record) and started again from the same flash image, three wrong PINs that
 erase the board, and a recovery from the words. The release image is booted too: it starts, and refuses the test
 hooks' message types.
@@ -25,7 +25,7 @@ sys.path.insert(0, HERE)
 
 from board_client import (TEST_BUTTONS, Board, BoardError, TcpLink, encode_tx)  # noqa: E402
 from winterlock_signer import erc8499, leansphincs, owner, phrase, safe as safemod, wots  # noqa: E402
-from winterlock_signer.abi import b2h, checksum  # noqa: E402
+from winterlock_signer.abi import b2h, calldata, checksum  # noqa: E402
 from winterlock_signer.keccak import keccak256  # noqa: E402
 
 QEMU = os.environ.get("QEMU", "qemu-system-xtensa")
@@ -251,6 +251,32 @@ def main():
     k = check_signature(ident, tree, approve, sg, ledger)
     key_line(f"approveHash: pages {[p[0] for p in pages]}; parent page '{pages[1][0]}: {pages[1][2].strip()}'; "
              f"key {k}; verifies")
+    q.board.press("R")
+
+    # execTransaction on a parent Safe: the parent's transfer is in the call
+    exec_data = calldata("execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes)",
+                         ["address", "uint256", "bytes", "uint8", "uint256", "uint256", "uint256", "address", "address",
+                          "bytes"],
+                         [checksum(BOB), 3 * 10**18, b"", 0, 0, 0, 0, checksum(bytes(20)), checksum(bytes(20)),
+                          bytes(12) + SAFE + bytes(32) + b"\x01"])
+    execute = safemod.SafeTx(to=checksum(PARENT), data=exec_data, nonce=6)
+    rid = q.board.sign(CHAIN, SAFE, encode_tx(PARENT, data=exec_data, nonce=6))
+    pages, s = confirm(q.board, rid)
+    assert pages[0][0].startswith("Execute") and pages[1][0].startswith("Parent: Send"), pages
+    sg = q.board.parse_signed(q.board.wait(rid, 120))
+    k = check_signature(ident, tree, execute, sg, ledger)
+    key_line(f"execTransaction: pages {[p[0] for p in pages]}; parent page '{pages[1][0]}: {pages[1][2].strip()}'; "
+             f"{len(exec_data)} bytes of call data; key {k}; verifies")
+    q.board.press("R")
+    # the same call with bytes after it isn't read
+    rid = q.board.sign(CHAIN, SAFE, encode_tx(PARENT, data=exec_data + bytes(32), nonce=7))
+    assert q.board.screen()[0].startswith("NOT DECODED"), q.board.screen()
+    q.board.press("L")
+    try:
+        q.board.wait(rid, 60)
+        raise AssertionError("signed after a reject")
+    except BoardError:
+        pass
     q.board.press("R")
 
     # a call that isn't decoded: a second confirmation

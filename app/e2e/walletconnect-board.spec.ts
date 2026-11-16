@@ -4,7 +4,8 @@
 // a batch is refused before it reaches the board, which refuses delegate calls. An approveHash
 // with the approved transaction's fields after it, as Safe's app sends it (src/lib/nested.ts), is
 // signed without them: the board shows the approved transaction, and the app proposes it to the
-// service.
+// service. An execTransaction on another Safe, sent the same way, is signed without the fields too,
+// and the board shows the transaction it executes.
 //
 // Needs anvil and the Python signer's virtualenv (local.ts), and WINTERLOCK_ENV_FILE with
 // WALLETCONNECT_PROJECT_ID (never printed). Spends nothing.
@@ -40,6 +41,16 @@ let dapp: Awaited<ReturnType<typeof SignClient.init>>
 let topic = ''
 let safe: Address
 let token: Address
+
+/** What Safe's app sends after a call on the Safe `team`: the fields of a transfer of `value` to BOB
+ * at `nonce`. */
+const fieldsFor = (team: Address, nonce: number, value: bigint) =>
+  concat([
+    NESTED_MAGIC,
+    encodeAbiParameters(ENVELOPES, [
+      [{ chainId: BigInt(CHAIN), safe: team, nonce: BigInt(nonce), to: BOB, value, data: '0x', operation: 0, safeTxGas: 0n, baseGas: 0n, gasPrice: 0n, gasToken: zeroAddress, refundReceiver: zeroAddress }],
+    ]),
+  ])
 
 async function sendAnvil(to: Address | undefined, data: Hex) {
   const w = createWalletClient({
@@ -197,13 +208,7 @@ test.describe.serial('WalletConnect with the virtual board', () => {
     const value = 10n ** 16n
     const tn = await chain.nonceOf(team)
     const th = await chain.hashOf(team, BOB, value, '0x', 0, tn)
-    const fields = (v: bigint) =>
-      concat([
-        NESTED_MAGIC,
-        encodeAbiParameters(ENVELOPES, [
-          [{ chainId: BigInt(CHAIN), safe: team, nonce: BigInt(tn), to: BOB, value: v, data: '0x', operation: 0, safeTxGas: 0n, baseGas: 0n, gasPrice: 0n, gasToken: zeroAddress, refundReceiver: zeroAddress }],
-        ]),
-      ])
+    const fields = (v: bigint) => fieldsFor(team, tn, v)
     const plain = encodeFunctionData({ abi: SAFE_ABI, functionName: 'approveHash', args: [th] })
     // fields that don't hash to the approved hash: refused before the member sees a request (the
     // SDK gives the dapp JSON-RPC's own text for -32602; the app's log has the reason)
@@ -234,6 +239,35 @@ test.describe.serial('WalletConnect with the virtual board', () => {
     const before = await chain.client().getBalance({ address: BOB })
     await chain.send(team, encodeFunctionData({ abi: SAFE_ABI, functionName: 'execTransaction', args: [BOB, value, '0x', 0, 0n, 0n, 0n, zeroAddress, zeroAddress, approvedHashSignature(safe)] }))
     expect((await chain.client().getBalance({ address: BOB })) - before).toBe(value)
+  })
+
+  test('execTransaction on another Safe with the fields Safe’s app sends along: the board shows the transfer it executes', async () => {
+    const team = await chain.createSafe([safe], 33n)
+    const value = 2n * 10n ** 16n
+    const tn = await chain.nonceOf(team)
+    // the team Safe takes the calling owner's approval as its signature: r = the owner, s = 0, v = 1
+    const plain = encodeFunctionData({ abi: SAFE_ABI, functionName: 'execTransaction', args: [BOB, value, '0x', 0, 0n, 0n, 0n, zeroAddress, zeroAddress, approvedHashSignature(safe)] })
+    // fields of another transaction than the call's: refused before the member sees a request
+    const e = await refusal(ask('eth_sendTransaction', [{ from: safe, to: team, data: concat([plain, fieldsFor(team, tn, value + 1n)]) }]))
+    expect(e.code).toBe(-32602)
+    await expect(t(page, 'wc-log')).toContainText('Refused eth_sendTransaction (-32602): the transaction sent along with execTransaction isn’t the one the call executes')
+    await expect(t(page, 'wc-request')).toHaveCount(0)
+    const before = await chain.client().getBalance({ address: BOB })
+    const pending = ask<Hex>('eth_sendTransaction', [{ from: safe, to: team, data: concat([plain, fieldsFor(team, tn, value)]) }])
+    const { pages, answer, hash, done } = await confirmOnBoard(pending, async (card) => {
+      await expect(card.getByTestId('tx-summary').first()).toContainText('Executes a transaction of the Safe at')
+      await expect(card.getByTestId('tx-executed')).toContainText(`Send 0.02 ETH to ${BOB}`)
+    })
+    log(`  board pages: ${pages.join(' | ')}`)
+    expect(pages[0]).toMatch(/^Execute/)
+    expect(pages.some((x) => x.startsWith('Parent: Send'))).toBe(true)
+    expect(pages).not.toContain('Not decoded')
+    await expect(done.getByTestId('wc-executed')).toBeVisible({ timeout: 120_000 })
+    expect(answer).toBe(await done.getByTestId('wc-executed').getAttribute('data-tx'))
+    // signed without the fields, and the team Safe's transfer ran
+    expect(hash).toBe((await chain.hashOf(safe, team, 0n, plain, 0, (await chain.nonceOf(safe)) - 1)).toLowerCase())
+    expect((await chain.client().getBalance({ address: BOB })) - before).toBe(value)
+    expect(await chain.nonceOf(team)).toBe(tn + 1)
   })
 
   test('a message is refused; the member disconnects', async () => {
