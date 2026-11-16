@@ -11,7 +11,7 @@ import { chainById } from '../lib/chains'
 import { type DappInfo, txFor } from '../lib/dapp'
 import { type DappTxRecord, all } from '../lib/db'
 import { boardProposeTx } from '../lib/board-flows'
-import { execute, proposeTx } from '../lib/flows'
+import { execute, proposeTx, serviceHas } from '../lib/flows'
 import { decode, tokensOf } from '../lib/safe'
 import { type DappDone, type DappProposal, type DappRequest, PROJECT_ID, noteExecution, useWc, wcMode, wcModule } from '../lib/wc-state'
 import { ErrorLine, Explorer, Panel, Progress, Screen, useAction } from '../ui'
@@ -219,12 +219,22 @@ function RequestCard(props: { r: DappRequest; now: number }) {
   const act = useAction()
   const r = props.r
   const { tokens, want } = useTokens(r.chain)
-  const decoding = decode(txFor(r.calls, 0n), r.safe)
-  useEffect(() => {
-    for (const t of tokensOf(decoding.decoded)) want(t)
-  }, [r.id])
   // with threshold 1 the app executes at once on the confirm (walletconnect.ts, confirmRequest)
   const [threshold, setThreshold] = useState<number>()
+  // an approveHash that came with the approved transaction's fields (nested.ts): whether Safe's
+  // service holds that transaction decides, above threshold 1, whether the fields stay in the call
+  const a = r.approved
+  const [listed, setListed] = useState<boolean>()
+  useEffect(() => {
+    if (a) serviceHas(r.chain, a.hash).then(setListed, () => {})
+  }, [r.id])
+  const kept = !!a && listed === false && threshold !== undefined && threshold > 1
+  const decoding = decode(txFor(a && !kept ? [{ ...r.calls[0], data: a.plain }] : r.calls, 0n), r.safe)
+  const approved = a ? decode(a.tx, a.safe) : undefined
+  useEffect(() => {
+    for (const t of tokensOf(decoding.decoded)) want(t)
+    if (approved) for (const t of tokensOf(approved.decoded)) want(t)
+  }, [r.id])
   useEffect(() => {
     ctxFor(app.env.db, r.chain)
       .then((c) => safeState(c, r.safe))
@@ -238,7 +248,7 @@ function RequestCard(props: { r: DappRequest; now: number }) {
     await act.run(async (step, signal) =>
       (await wcModule()).confirmRequest(
         r.id,
-        (chain, safe, tx, s) => (board ? boardProposeTx(app.env, board, link.need(), chain, safe, tx, s, { signal }) : proposeTx(app.env, app.device!, chain, safe, tx, s)),
+        (chain, safe, tx, s, parent) => (board ? boardProposeTx(app.env, board, link.need(), chain, safe, tx, s, { signal }, parent) : proposeTx(app.env, app.device!, chain, safe, tx, s)),
         (chain, safe, hash, s, onSent) => execute(app.env, member, chain, safe, hash, s, onSent),
         step,
       ),
@@ -259,6 +269,30 @@ function RequestCard(props: { r: DappRequest; now: number }) {
               <li key={w}>{w}</li>
             ))}
           </ul>
+        )}
+        {a && approved && (
+          <div data-testid="wc-approved" data-hash={a.hash} data-listed={listed === undefined ? '' : String(listed)}>
+            <p class="small">
+              {kept
+                ? 'This is approveHash, followed by the fields of the transaction it approves. They hash to the approved hash.'
+                : 'The dapp sent that transaction’s fields along, and they hash to the approved hash.'}{' '}
+              It is the transaction at nonce {String(a.tx.nonce)} of the Safe at <code>{a.safe}</code>:
+            </p>
+            <Describe d={approved.decoded} tokens={tokens} safe={a.safe} />
+            {approved.warnings.length > 0 && (
+              <ul class="warnings small">
+                {approved.warnings.map((w) => (
+                  <li key={w}>{w}</li>
+                ))}
+              </ul>
+            )}
+            {kept && (
+              <p class="small" data-testid="wc-approved-kept">
+                Safe’s service doesn’t hold that transaction, and your confirmation alone doesn’t execute this one: the app leaves the fields in the call so that they aren’t lost
+                {board ? ', and the board shows the call as not decoded' : ''}.
+              </p>
+            )}
+          </div>
         )}
         <p class="muted small">
           From the Safe <code>{r.safe}</code> on {chainById(r.chain).name}, at the Safe’s next free nonce, with no refund fields ({r.method}).
@@ -311,7 +345,7 @@ function DoneCard(props: { d: DappDone }) {
   async function doExecute() {
     await act.run(async (step) => {
       const r = await execute(app.env, member, d.chain, d.safe, d.hash, step)
-      await noteExecution(app.env.db, d.hash, r.tx)
+      await noteExecution(app.env.db, d.hash, r.tx, r.note)
       return r
     })
   }

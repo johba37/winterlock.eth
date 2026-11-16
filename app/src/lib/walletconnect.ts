@@ -26,6 +26,7 @@ import {
   type RawReceipt,
   RpcFail,
   answerFor,
+  approvedOf,
   callsStatus,
   dappInfo,
   findExecution,
@@ -37,8 +38,8 @@ import {
   txFor,
 } from './dapp'
 import { type DappTxRecord, type Hex, all, get, putSetting, writeStrict } from './db'
-import { type Env, type Proposed, type Step, collect, nextNonce, service } from './flows'
-import type { SafeTx } from './safe'
+import { type Env, type Proposed, type Step, collect, nextNonce, safeTxHash, service, serviceHas } from './flows'
+import { type SafeTx, toService } from './safe'
 import { type DappRequest, type DappSession, PROJECT_ID, logWc, setWc, wcState } from './wc-state'
 
 export const RELAY = 'wss://relay.walletconnect.org'
@@ -53,10 +54,10 @@ let env: Env
 let mode: { batches: boolean; noBatches?: string } = { batches: true }
 
 /** How the member signs and proposes a Safe transaction (flows.proposeTx with this device). */
-export type Propose = (chain: number, safe: Address, tx: SafeTx, step: Step) => Promise<Proposed>
+export type Propose = (chain: number, safe: Address, tx: SafeTx, step: Step, approved?: SafeTx) => Promise<Proposed>
 /** How the member's gas account executes a proposal that is ready (flows.execute); `onSent` gets the
  * transaction's hash before it is mined. */
-export type Execute = (chain: number, safe: Address, hash: Hex, step: Step, onSent: (tx: Hex) => void) => Promise<{ tx: Hex }>
+export type Execute = (chain: number, safe: Address, hash: Hex, step: Step, onSent: (tx: Hex) => void) => Promise<{ tx: Hex; note?: string }>
 /** pasted links: pairing topic → the Safe whose screen took it */
 const targets = new Map<string, { chain: number; safe: Address }>()
 
@@ -314,7 +315,10 @@ async function onRequest(r: WalletKitTypes.SessionRequest) {
         return
       }
       const expiry = request.expiryTimestamp ? request.expiryTimestamp * 1000 : undefined
-      const item: DappRequest = { id, topic, ...where, dapp: s.dapp, method: p.method, calls: p.calls, expiry, received: Date.now(), expired: !!expiry && expiry < Date.now(), busy: false }
+      // an approveHash from Safe's app carries the approved transaction's fields: checked here
+      const chain = s.chain
+      const approved = await approvedOf(p.calls, chain, s.safe, (safe, tx) => safeTxHash(env.core, chain, safe, tx))
+      const item: DappRequest = { id, topic, ...where, dapp: s.dapp, method: p.method, calls: p.calls, approved, expiry, received: Date.now(), expired: !!expiry && expiry < Date.now(), busy: false }
       setWc((st) => ({ ...st, requests: [...st.requests, item] }))
       return
     }
@@ -377,6 +381,12 @@ function update(id: number, f: (r: DappRequest) => DappRequest) {
  * `eth_sendTransaction` is then answered with the execution's transaction hash once it is sent, which
  * a dapp can follow on its own node. `wallet_sendCalls` gets its id first, as always. If executing
  * fails, the dapp gets the SafeTx hash and the proposal stands, to be executed from the screen.
+ *
+ * An approveHash that came with the approved transaction's fields (nested.ts) is signed without
+ * them, as Safe's own wallet does, when that loses nothing: Safe's service holds the transaction
+ * already, or this confirmation executes at once, after which the app proposes the transaction
+ * there itself (flows.ts, listApproved; the fields are kept with the record until then). Otherwise
+ * the call is signed as the dapp sent it, so the fields stay with the proposal.
  */
 export async function confirmRequest(id: number, propose: Propose, exec: Execute, step: Step) {
   const r = wcState().requests.find((x) => x.id === id)
@@ -389,9 +399,16 @@ export async function confirmRequest(id: number, propose: Propose, exec: Execute
     const st = await safeState(ctx, r.safe)
     const mine = (await all<DappTxRecord>(env.db, 'dapp')).filter((x) => x.chain === r.chain && x.safe.toLowerCase() === r.safe.toLowerCase())
     const nonce = await nextNonce(r.chain, r.safe, st.nonce, mine.map((x) => x.nonce))
+    const a = r.approved
+    let plain = false
+    if (a) {
+      step('Asking Safe’s service for the transaction this approves')
+      plain = (st.threshold === 1 && nonce === st.nonce) || (await serviceHas(r.chain, a.hash))
+      if (!plain) step('Safe’s service doesn’t hold that transaction, and this doesn’t execute at once: signing the call as the dapp sent it, with the fields in it')
+    }
     // a batch's MultiSendCallOnly code is checked with the rest, before signing (flows.ts, prepare)
-    const tx = txFor(r.calls, BigInt(nonce))
-    const p = await propose(r.chain, r.safe, tx, step)
+    const tx = txFor(a && plain ? [{ ...r.calls[0], data: a.plain }] : r.calls, BigInt(nonce))
+    const p = await propose(r.chain, r.safe, tx, step, a && plain ? a.tx : undefined)
     let rec: DappTxRecord = {
       safeTxHash: p.hash.toLowerCase() as Hex,
       chain: r.chain,
@@ -404,6 +421,7 @@ export async function confirmRequest(id: number, propose: Propose, exec: Execute
       dapp: { name: r.dapp.name, url: r.dapp.url },
       at: Date.now(),
       answered: false,
+      ...(a && plain ? { approved: { safe: a.safe, hash: a.hash, tx: toService(a.tx) } } : {}),
     }
     await writeStrict(env.db, 'dapp', [rec])
     const waiting = () => !r.expiry || Date.now() < r.expiry
@@ -431,6 +449,7 @@ export async function confirmRequest(id: number, propose: Propose, exec: Execute
     const isReady = !!col && col.sigs.length >= col.threshold && col.nonce === nonce
     let executed: Hex | undefined
     let executeError: string | undefined
+    let executeNote: string | undefined
     if (isReady) {
       if (r.method === 'wallet_sendCalls') await answer(answerFor(r.method, rec.safeTxHash))
       let answering: Promise<void> | undefined
@@ -440,6 +459,7 @@ export async function confirmRequest(id: number, propose: Propose, exec: Execute
           if (r.method === 'eth_sendTransaction') answering = answer(h, true)
         })
         executed = out.tx
+        executeNote = out.note
       } catch (err) {
         executeError = short(err)
       }
@@ -454,7 +474,7 @@ export async function confirmRequest(id: number, propose: Propose, exec: Execute
       ...s,
       requests: s.requests.filter((x) => x.id !== id),
       done: [
-        { id, chain: r.chain, safe: r.safe, dapp: r.dapp, hash: rec.safeTxHash, nonce, answered, note: p.note, ready: isReady && !executed, executed, atOnce: !!executed, executeError, gotTx },
+        { id, chain: r.chain, safe: r.safe, dapp: r.dapp, hash: rec.safeTxHash, nonce, answered, note: [p.note, executeNote].filter(Boolean).join(' ') || undefined, ready: isReady && !executed, executed, atOnce: !!executed, executeError, gotTx },
         ...s.done,
       ].slice(0, 20),
     }))

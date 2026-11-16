@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from 'preact/hooks'
 import type { Address } from 'viem'
-import type { DappInfo } from './dapp'
+import type { Approved, DappInfo } from './dapp'
 import { type DappTxRecord, type Hex, get, putSetting, setting, writeStrict } from './db'
 import type { Env } from './flows'
 import type { Call } from './safe'
@@ -41,7 +41,10 @@ export interface DappRequest {
   safe: Address
   dapp: DappInfo
   method: 'eth_sendTransaction' | 'wallet_sendCalls'
+  /** as the dapp sent them */
   calls: Call[]
+  /** what the one call, an approveHash, approves: the fields Safe's app sent after it, checked */
+  approved?: Approved
   /** ms; the dapp stops waiting then */
   expiry?: number
   received: number
@@ -121,10 +124,11 @@ export function useWc(): WcState {
 
 /** After this app executed a Safe transaction (from a dapp's card or the transaction's screen): if a
  * dapp got its SafeTx hash, keep the execution for its receipt and status. */
-export async function noteExecution(db: IDBDatabase, hash: Hex, tx: Hex) {
+export async function noteExecution(db: IDBDatabase, hash: Hex, tx: Hex, note?: string) {
   const rec = await get<DappTxRecord>(db, 'dapp', hash.toLowerCase())
   if (rec) await writeStrict(db, 'dapp', [{ ...rec, execution: { tx, success: true } }])
-  setWc((s) => ({ ...s, done: s.done.map((d) => (d.hash === hash.toLowerCase() ? { ...d, ready: false, executed: tx } : d)) }))
+  const withNote = (d: DappDone) => [d.note, note].filter(Boolean).join(' ') || undefined
+  setWc((s) => ({ ...s, done: s.done.map((d) => (d.hash === hash.toLowerCase() ? { ...d, ready: false, executed: tx, note: withNote(d) } : d)) }))
 }
 
 /** The SDK's module, loaded on first use. */

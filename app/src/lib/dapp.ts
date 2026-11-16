@@ -5,7 +5,9 @@
 //
 //   eth_sendTransaction       a SafeTx (a call) the member confirms and proposes; the dapp gets the
 //                             SafeTx hash after the proposal, as Safe's own app answers, or the
-//                             execution's hash when the app executes at once (threshold 1)
+//                             execution's hash when the app executes at once (threshold 1).
+//                             Safe's app sends an approveHash with the approved transaction's
+//                             fields after it (nested.ts): they are checked against the hash
 //   wallet_sendCalls          EIP-5792: one call, or a batch as a delegatecall to MultiSendCallOnly
 //                             v1.4.1; the dapp gets {id: SafeTx hash}
 //   wallet_getCallsStatus     100 pending, 200 executed, 400 replaced at its nonce, 500 reverted
@@ -17,6 +19,7 @@
 
 import { type Address, getAddress, isAddress, isHex, toHex } from 'viem'
 import type { DappTxRecord, Hex } from './db'
+import { approveCall, envelopes, splitApprove } from './nested'
 import { type Call, type SafeTx, batchTx, controlsSafe, safeTx } from './safe'
 
 export const SIGN_METHODS = [
@@ -296,6 +299,38 @@ function sendCalls(bundle: unknown, ctx: Ctx): Call[] {
  * app picks the nonce, and the gas fields are zero. */
 export function txFor(calls: Call[], nonce: bigint): SafeTx {
   return calls.length === 1 ? safeTx({ ...calls[0], nonce }) : batchTx(calls, nonce)
+}
+
+/** What a request's approveHash approves, when Safe's app sent that transaction's fields after the
+ * call (nested.ts) and they hash to the approved hash. */
+export interface Approved {
+  /** the Safe whose transaction it is: the call's target */
+  safe: Address
+  /** lower case */
+  hash: Hex
+  tx: SafeTx
+  /** the call's data without the fields: approveHash(hash) */
+  plain: Hex
+}
+
+/** The transaction a request's one call approves, if the call is approveHash on another Safe
+ * followed by Safe's envelope. Fields that are for another chain or Safe, or don't hash to the
+ * approved hash, refuse the request, as Safe's own wallet does. Anything else after approveHash's
+ * argument isn't Safe's envelope: the call stays as sent and shows as not decoded. `hashOf` is the
+ * core's SafeTx hash on `chain`. */
+export async function approvedOf(calls: Call[], chain: number, safe: Address, hashOf: (safe: Address, tx: SafeTx) => Promise<Hex>): Promise<Approved | undefined> {
+  if (calls.length !== 1) return undefined
+  const c = calls[0]
+  if (c.value !== 0n || c.to.toLowerCase() === safe.toLowerCase()) return undefined
+  const split = splitApprove(c.data)
+  if (!split || split.rest === '0x') return undefined
+  const first = envelopes(split.rest)?.[0]
+  if (!first) return undefined
+  const refuse = (why: string) => new RpcFail(CODE.params, `the transaction sent along with approveHash ${why}: refused`)
+  if (first.chainId !== BigInt(chain)) throw refuse(`is for chain ${first.chainId}, not ${chain}`)
+  if (first.safe.toLowerCase() !== c.to.toLowerCase()) throw refuse(`is for the Safe ${first.safe}, not the one called, ${c.to}`)
+  if ((await hashOf(c.to, first.tx)).toLowerCase() !== split.hash) throw refuse('doesn’t hash to the approved hash')
+  return { safe: c.to, hash: split.hash, tx: first.tx, plain: approveCall(split.hash) }
 }
 
 /** The dapp's answer once the transaction is proposed. */
