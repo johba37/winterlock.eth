@@ -3,3 +3,5 @@
 __pycache__/
 # Cargo's builds: the workspace's at the root (Cargo.toml), the other crates' next to them
 target/
+# The assembled landing site (build-site.sh)
+site-dist/

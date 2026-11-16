@@ -31,13 +31,15 @@ signer/winterlock-signer --home ~/.winterlock-laptop device new --owner 0x... --
 signer/winterlock-signer device certify --device 1 --key 0x... --chain sepolia             # on the phrase's home: compare the code
 ```
 
-This repository also holds the landing page published at winterlock.eth: a single static `index.html` with two self-hosted fonts. It makes no requests to other servers, so it works from any IPFS gateway, from `ipfs://` in Brave, or straight from disk. The hero includes a live Winternitz hash-chain demo that runs entirely in the browser.
+This repository also holds the site published at winterlock.eth: a static `index.html` with two self-hosted fonts and three images, and the exposure check (`exposure/`, built) in its `check/` folder. The landing page makes no requests to other servers, so it works from any IPFS gateway or from `ipfs://` in Brave. Its check box opens the exposure check, which reads a Safe from an RPC endpoint and Safe's Transaction Service and from nowhere else.
 
 ## Files
 
 | Path | What it is |
 |---|---|
-| `index.html` | The landing page: markup, styles and the demo script |
+| `index.html` | The landing page: markup, styles and the check box's script |
+| `img/` | The landing page's images: the board's screen, the app and Safe's app |
+| `build-site.sh` | Assembles the published site: `index.html`, `fonts/`, `img/` and the built exposure check in `check/` |
 | `fonts/` | Atkinson Hyperlegible Next and Mono (variable, Latin subset) with their SIL Open Font License texts |
 | `docs/brand/` | The look: mark, lockups, colours, and the stencil lettering generator |
 | `docs/overview.md` | Winterlock in one page: how it works, numbers, what's live, terms |
@@ -205,15 +207,17 @@ This works live on Sepolia through Reown's relay, with a dapp built on the offic
 ## Preview locally
 
 ```sh
-python3 -m http.server 8000
+./build-site.sh && (cd site-dist && python3 -m http.server 8000)
 # then open http://localhost:8000
 ```
 
+Served from the repository's root, the landing page shows too, but its check box needs the built check in `check/`.
+
 ## Publish to winterlock.eth
 
-1. **Pin the site to IPFS.** Upload only `index.html` and `fonts/` to a pinning service such as Fleek, Pinata, Filebase or 4EVERLAND, or with a local node. Copy those two into an empty folder first, so nothing else in the repository (the contracts, the signer, local tool folders) is published:
+1. **Pin the site to IPFS.** `build-site.sh` assembles it in an empty folder, so nothing else in the repository (the contracts, the signer, local tool folders) is published: `index.html`, `fonts/`, `img/` and the exposure check, built, in `check/`. Upload that folder to a pinning service such as Fleek, Pinata, Filebase or 4EVERLAND, or add it with a local node:
    ```sh
-   site=$(mktemp -d) && cp -r index.html fonts "$site"/ && ipfs add -r --cid-version 1 "$site"
+   ./build-site.sh && ipfs add -r --cid-version 1 site-dist
    ```
    Note the CID of the folder (it starts with `bafy…`). Pinning with two services keeps the page up if one of them drops it.
 2. **Point the name at it.** On [app.ens.domains](https://app.ens.domains), open `winterlock.eth` → Profile → Edit profile → Other → Content Hash, enter `ipfs://<CID>` and sign with the Manager wallet. This needs a little mainnet ETH for gas.

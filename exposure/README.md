@@ -79,6 +79,8 @@ explain.verdictText(report)          // the verdict in sentences
 
 It talks to two servers only, the RPC endpoint and Safe's Transaction Service, and says so next to the form: both see which Safe was looked up. Its Content Security Policy (`vite.config.ts`) allows scripts, styles and fonts from the page itself only, with no inline script or style; `connect-src` is open to `https:` (and localhost) because the RPC endpoint is the reader's choice. It has the landing page's colours and fonts (`../fonts`, with their licences in `dist/fonts/`), light and dark.
 
+The page is built to sit in a `check/` folder of the landing site (the repository's `index.html`): its links to Winterlock and to the contact section are relative (`../`, `../#contact`), and the landing page's check box opens `check/#/eth:0x...`.
+
 ```sh
 npm install
 npm run dev              # http://localhost:5173

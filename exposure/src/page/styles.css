@@ -147,6 +147,8 @@ p { margin: 0; }
 .settings[open] summary { margin-bottom: 0.25rem; }
 .hint { color: var(--slate); font-size: 0.9375rem; }
 .result .hint { margin-top: 0.75rem; max-width: 50rem; }
+.result .talk { margin-top: 1.5rem; max-width: 50rem; padding: 0.9rem 1rem; background: var(--surface); border: 1px solid var(--frost); border-left: 3px solid var(--lamp); border-radius: 8px; }
+.result .talk a { font-weight: 700; }
 .linklike { font: inherit; color: var(--glacier); background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 .fineprint { margin-top: 0.6rem; padding-top: 0.9rem; border-top: 1px solid var(--frost); font-size: 0.875rem; line-height: 1.5; color: var(--slate); }
 .fineprint code { color: var(--ink); overflow-wrap: anywhere; }
