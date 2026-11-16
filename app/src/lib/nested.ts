@@ -15,8 +15,9 @@
 // wallet, so the app sees that the transaction gets there (flows.ts, listApproved).
 //
 // Nothing here hashes: the caller checks the first envelope with the core's SafeTx hash. Safe's app
-// calls the approved transaction the child's and the approving Safe the parent; the board's code
-// names them the other way round (decode.rs), so this file says "the approved transaction".
+// calls the approving Safe the parent and the Safe it owns nested (its transaction the child's);
+// the board's screens say "Nested" for that Safe too, while the code that feeds the board still
+// names it the parent (decode.rs). This file says "the approved transaction".
 
 import { type Address, concat, decodeAbiParameters, getAddress, padHex, parseAbiParameters, size, slice } from 'viem'
 import type { Hex } from './db'

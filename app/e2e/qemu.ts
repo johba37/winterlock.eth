@@ -173,7 +173,7 @@ export async function setupOnQemu(q: QemuBoard, pin: number[]): Promise<string[]
 
 /** A request's pages, then both held on the last (and again for a second confirmation). */
 export async function confirmOnQemu(q: QemuBoard): Promise<string[][]> {
-  let s = await q.until(/^(Send|Approve|NOT DECODED|Cancel|Enrol key tree)/)
+  let s = await q.until(/^(Send|Approve|Execute|NOT DECODED|Cancel|Enrol key tree)/)
   const pages = [s]
   while (!/hold both: (sign|enrol)$/.test(s.at(-1)!)) {
     s = await q.press('R')

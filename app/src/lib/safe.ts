@@ -189,6 +189,30 @@ export function execCalldata(t: SafeTx, signatures: Hex): Hex {
   })
 }
 
+/** execTransaction(address,uint256,bytes,uint8,uint256,uint256,uint256,address,address,bytes) */
+export const EXEC_TRANSACTION = '0x6a761202'
+
+/** The transaction an execTransaction call runs and the signatures it passes, with the call in the
+ * encoding Solidity's own encoder gives (`plain`) and whatever follows it (`rest`). Null if `data`
+ * isn't that call or doesn't start with that encoding. The transaction's nonce isn't in the call:
+ * it is the called Safe's own when the call runs, and 0 here. */
+export function splitExec(data: Hex): { tx: SafeTx; signatures: Hex; plain: Hex; rest: Hex } | null {
+  if (size(data) < 4 || data.slice(0, 10).toLowerCase() !== EXEC_TRANSACTION) return null
+  try {
+    const d = decodeFunctionData({ abi: SAFE_ABI, data })
+    if (d.functionName !== 'execTransaction') return null
+    const [to, value, inner, operation, safeTxGas, baseGas, gasPrice, gasToken, refundReceiver, signatures] = d.args
+    if (operation !== 0 && operation !== 1) return null
+    const tx: SafeTx = { to: getAddress(to), value, data: inner.toLowerCase() as Hex, operation, safeTxGas, baseGas, gasPrice, gasToken: getAddress(gasToken), refundReceiver: getAddress(refundReceiver), nonce: 0n }
+    const plain = execCalldata(tx, signatures).toLowerCase() as Hex
+    const all = data.toLowerCase()
+    if (!all.startsWith(plain)) return null
+    return { tx, signatures, plain, rest: all.length > plain.length ? (`0x${all.slice(plain.length)}` as Hex) : '0x' }
+  } catch {
+    return null
+  }
+}
+
 /** The signatures blob of an execTransaction call, if `input` is one. */
 export function execSignatures(input: Hex): Hex | undefined {
   try {
@@ -311,6 +335,7 @@ export type Decoded =
   | { kind: 'batch'; calls: { call: Call; decoding: Decoding }[] }
   | { kind: 'self'; what: string; to: Address; value: bigint; data: Hex }
   | { kind: 'approve'; to: Address; hash: Hex }
+  | { kind: 'exec'; to: Address; inner: Decoding; signatures: number }
   | { kind: 'raw'; to: Address; value: bigint; data: Hex; selector: Hex }
 
 export const MAX_UINT256 = 2n ** 256n - 1n
@@ -319,6 +344,7 @@ export const MAX_UINT256 = 2n ** 256n - 1n
 export function tokensOf(d: Decoded): Address[] {
   if (d.kind === 'erc20' || d.kind === 'allowance') return [d.token]
   if (d.kind === 'batch') return d.calls.flatMap((c) => tokensOf(c.decoding.decoded))
+  if (d.kind === 'exec') return tokensOf(d.inner.decoded)
   return []
 }
 
@@ -346,8 +372,10 @@ export interface Decoding {
   warnings: string[]
 }
 
-/** What a transaction does, decoded here rather than taken from a service (safe.py's decode). */
-export function decode(t: SafeTx, safe: Address): Decoding {
+/** What a transaction does, decoded here rather than taken from a service (safe.py's decode).
+ * `executed` is for the transaction another Safe's execTransaction runs: its own approveHash or
+ * execTransaction isn't read, one level as on the board. */
+export function decode(t: SafeTx, safe: Address, executed = false): Decoding {
   const warnings: string[] = []
   const calls = batchCalls(t)
   if (t.operation === 1 && !calls) warnings.push('DELEGATECALL: the called code runs as the Safe itself and can change anything in it')
@@ -380,7 +408,15 @@ export function decode(t: SafeTx, safe: Address): Decoding {
       /* not a transfer or an allowance */
     }
   }
-  if (!self && t.operation === 0 && t.value === 0n && size(t.data) === 36 && t.data.slice(0, 10).toLowerCase() === '0xd4d9bdcd') {
+  // execTransaction on another Safe, in Solidity's own encoding and nothing after it: this Safe
+  // executes one of that Safe's transactions, which is in the call
+  const exec = !self && !executed && t.operation === 0 && t.value === 0n ? splitExec(t.data) : null
+  if (exec && exec.rest === '0x') {
+    const inner = decode(exec.tx, t.to, true)
+    warnings.push('This executes a transaction of another Safe: check that one too', ...inner.warnings.map((w) => `The executed transaction: ${w}`))
+    return { decoded: { kind: 'exec', to: t.to, inner, signatures: size(exec.signatures) }, warnings }
+  }
+  if (!self && !executed && t.operation === 0 && t.value === 0n && size(t.data) === 36 && t.data.slice(0, 10).toLowerCase() === '0xd4d9bdcd') {
     // approveHash(bytes32) on another Safe: this Safe approves one of that Safe's transactions
     warnings.push('This approves a transaction of another Safe: check that one too')
     return { decoded: { kind: 'approve', to: t.to, hash: `0x${t.data.slice(10)}` as Hex }, warnings }

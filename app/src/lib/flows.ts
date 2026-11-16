@@ -551,6 +551,8 @@ export function payees(d: Decoded): { to: Address; what: 'eth' | 'token' }[] {
       return d.value > 0n ? [{ to: d.to, what: 'eth' }] : []
     case 'batch':
       return d.calls.flatMap((c) => payees(c.decoding.decoded))
+    case 'exec':
+      return payees(d.inner.decoded)
     default:
       return []
   }

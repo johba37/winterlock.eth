@@ -41,7 +41,7 @@ export interface DappRequest {
   safe: Address
   dapp: DappInfo
   method: 'eth_sendTransaction' | 'wallet_sendCalls'
-  /** as the dapp sent them */
+  /** as the dapp sent them (an execTransaction on another Safe without the fields Safe's app adds) */
   calls: Call[]
   /** what the one call, an approveHash, approves: the fields Safe's app sent after it, checked */
   approved?: Approved

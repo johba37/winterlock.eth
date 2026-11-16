@@ -82,7 +82,7 @@ export class VBoard {
   /** Steps through a request's pages and holds both on the last (and again if it asks). Returns
    * each page's first line. */
   async confirm(): Promise<string[]> {
-    await this.until(/^(Send|Approve|NOT DECODED|Cancel|Enrol key tree)$/)
+    await this.until(/^(Send|Approve|Execute|NOT DECODED|Cancel|Enrol key tree)$/)
     const seen = [(await this.lines())[0]]
     for (let i = 0; i < 20 && !/hold both: (sign|enrol)$/.test((await this.lines()).at(-1)!); i++) {
       await this.press('R')

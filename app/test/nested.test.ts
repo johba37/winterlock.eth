@@ -1,15 +1,16 @@
 // Safe's nested transaction envelope (src/lib/nested.ts): the fields Safe's app sends after an
 // approveHash, checked against the approved hash with the core, taken off the call, and proposed
-// to Safe's service after the approval is executed. The sample is the call Safe{Wallet} v1.105.0
+// to Safe's service after the approval is executed; and the same fields after an execTransaction
+// on another Safe, checked against the call and taken off it. The sample is the call Safe{Wallet} v1.105.0
 // sent on Sepolia on 2026-11-16 for a transfer of 0.0001 ETH from a test Safe. No network.
 
-import { type Address, concat, encodeAbiParameters, getAddress, parseAbiParameters, size } from 'viem'
+import { type Address, concat, encodeAbiParameters, encodeFunctionData, getAddress, parseAbiParameters, size } from 'viem'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CODE, RpcFail, approvedOf } from '../src/lib/dapp'
+import { CODE, RpcFail, approvedOf, withoutExecFields } from '../src/lib/dapp'
 import { type DappTxRecord, type Hex, writeStrict } from '../src/lib/db'
 import { listApproved, safeTxHash } from '../src/lib/flows'
 import { APPROVE_HASH, NESTED_MAGIC, approveCall, approvedHashSignature, envelopes, splitApprove } from '../src/lib/nested'
-import { type SafeTx, safeTx, toService } from '../src/lib/safe'
+import { ERC20_ABI, type SafeTx, decode, execCalldata, safeTx, splitExec, toService } from '../src/lib/safe'
 import { directCore, freshDb } from './helpers'
 
 const CHAIN = 11155111
@@ -114,6 +115,81 @@ describe('a request’s approveHash with the fields', () => {
     const inner = safeTx({ to: SAFE, value: 5n, nonce: 9n })
     const two = withEnvelopes(HASH, [envelope(TRANSFER), envelope(inner, SAFE)])
     expect((await approvedOf([call(two)], CHAIN, SAFE, hashOf(CHAIN)))?.tx).toEqual(TRANSFER)
+  })
+})
+
+describe('execTransaction on another Safe', () => {
+  const SIGS = approvedHashSignature(SAFE)
+  const PLAIN = execCalldata(TRANSFER, SIGS)
+  const withFields = (tx: SafeTx, safe: Address = TEAM, chainId = BigInt(CHAIN)) => concat([PLAIN, NESTED_MAGIC, encodeAbiParameters(ENVELOPES, [[envelope(tx, safe, chainId)]])])
+  const fails = (f: () => unknown): string => {
+    try {
+      f()
+    } catch (e) {
+      expect(e).toBeInstanceOf(RpcFail)
+      expect((e as RpcFail).code).toBe(CODE.params)
+      return (e as RpcFail).message
+    }
+    throw new Error('not refused')
+  }
+
+  it('reads the transaction and the signatures from the call, in Solidity’s own encoding', () => {
+    expect(size(PLAIN)).toBe(4 + 10 * 32 + 32 + 32 + 96)
+    expect(splitExec(PLAIN)).toEqual({ tx: { ...TRANSFER, nonce: 0n }, signatures: SIGS, plain: PLAIN, rest: '0x' })
+    expect(splitExec(`${PLAIN}abcd`)?.rest).toBe('0xabcd')
+    expect(splitExec(approveCall(HASH))).toBeNull()
+    expect(splitExec('0x6a761202')).toBeNull()
+    // another offset for the data: what a contract would still take, not what the encoder gives
+    const moved = `0x${PLAIN.slice(2, 10 + 2 * 64)}${'0'.repeat(61)}160${PLAIN.slice(10 + 3 * 64)}` as Hex
+    expect(size(moved)).toBe(size(PLAIN))
+    expect(splitExec(moved)).toBeNull()
+    // an address with bytes above it
+    expect(splitExec(`0x6a761202ff${PLAIN.slice(12)}` as Hex)).toBeNull()
+  })
+
+  it('takes Safe’s fields off the call when they say what it executes', () => {
+    expect(withoutExecFields([call(withFields(TRANSFER))], CHAIN, SAFE)).toEqual([call(PLAIN)])
+    // the envelope's nonce isn't in the call: any is taken
+    expect(withoutExecFields([call(withFields({ ...TRANSFER, nonce: 7n }))], CHAIN, SAFE)).toEqual([call(PLAIN)])
+  })
+
+  it('refuses fields for another chain or Safe, or of another transaction', () => {
+    expect(fails(() => withoutExecFields([call(withFields(TRANSFER, TEAM, 1n))], CHAIN, SAFE))).toMatch(/is for chain 1, not 11155111: refused/)
+    expect(fails(() => withoutExecFields([call(withFields(TRANSFER, SAFE))], CHAIN, SAFE))).toMatch(/is for the Safe .*, not the one called/)
+    for (const other of [{ value: 1n }, { to: SAFE }, { data: '0x00' as Hex }, { operation: 1 as const }, { gasPrice: 1n }, { refundReceiver: SAFE }]) {
+      expect(fails(() => withoutExecFields([call(withFields({ ...TRANSFER, ...other }))], CHAIN, SAFE))).toMatch(/isn’t the one the call executes: refused/)
+    }
+  })
+
+  it('leaves everything else as the dapp sent it', () => {
+    const same = (calls: ReturnType<typeof call>[], safe: Address = SAFE) => expect(withoutExecFields(calls, CHAIN, safe)).toBe(calls)
+    same([call(PLAIN)])
+    same([call(`${PLAIN}00` as Hex)])
+    same([call(concat([PLAIN, NESTED_MAGIC, '0x1234']))])
+    same([call(withFields(TRANSFER), TEAM, 1n)])
+    same([call(withFields(TRANSFER)), call(withFields(TRANSFER))])
+    same([call(withFields(TRANSFER))], TEAM)
+    same([call(SAMPLE)])
+  })
+
+  it('shows what the other Safe’s transaction does, one level deep', () => {
+    const d = decode(safeTx({ to: TEAM, data: PLAIN, nonce: 4n }), SAFE)
+    expect(d.decoded).toEqual({ kind: 'exec', to: TEAM, inner: { decoded: { kind: 'eth', to: TRANSFER.to, value: 10n ** 14n }, warnings: [] }, signatures: 65 })
+    expect(d.warnings).toEqual(['This executes a transaction of another Safe: check that one too'])
+    // a token transfer inside, and its warnings passed on
+    const token = safeTx({ to: SAFE, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'transfer', args: [TEAM, 5n] }), gasPrice: 1n, nonce: 0n })
+    const t = decode(safeTx({ to: TEAM, data: execCalldata(token, SIGS), nonce: 4n }), SAFE)
+    expect(t.decoded).toMatchObject({ kind: 'exec', inner: { decoded: { kind: 'erc20', token: SAFE, to: TEAM, amount: 5n } } })
+    expect(t.warnings).toContain('The executed transaction: Refund fields are set: the Safe pays whoever executes it')
+    // with the fields still after it, with a value, on the Safe itself: not read
+    for (const tx of [safeTx({ to: TEAM, data: withFields(TRANSFER), nonce: 4n }), safeTx({ to: TEAM, data: PLAIN, value: 1n, nonce: 4n }), safeTx({ to: SAFE, data: PLAIN, nonce: 4n })]) {
+      expect(decode(tx, SAFE).decoded.kind).toBe('raw')
+    }
+    // the executed transaction's own approveHash or execTransaction isn't read
+    for (const inner of [approveCall(HASH), PLAIN]) {
+      const deep = decode(safeTx({ to: TEAM, data: execCalldata(safeTx({ to: SAFE, data: inner, nonce: 0n }), SIGS), nonce: 4n }), TRANSFER.to)
+      expect(deep.decoded).toMatchObject({ kind: 'exec', inner: { decoded: { kind: 'raw' } } })
+    }
   })
 })
 

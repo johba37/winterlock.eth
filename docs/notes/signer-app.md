@@ -112,6 +112,8 @@ TypeScript, Vite, Preact (small enough for phones), viem for RPC, ABI and EIP-71
 - **Confirm a Safe transaction:** the app sends the fields, never a hash. The board computes the SafeTx hash and shows the chain, the Safe, the nonce and what the transaction does:
   - a transfer of ETH, or of a token from a short list built into the firmware: recipient and amount
   - `approveHash` on a parent Safe: the app sends the parent's fields too, the board recomputes the parent's hash, checks it against the call, and shows the parent's transfer
+  - `execTransaction` on a parent Safe (firmware 0.1.1): the board reads the parent's transaction from the call and shows it
+  - on its screens the board calls that Safe the nested Safe (from 0.1.2), as Safe's app does
   - anything else: the target, the value and the function selector, marked as not decoded, with a second confirmation
   - a delegate call: refused (Safe's batches use one; not in the round)
 

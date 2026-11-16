@@ -140,7 +140,7 @@ export async function typeWord(b: DirectBoard, word: string) {
 /** Steps through a request's pages and holds both on the last (and again if it asks). Returns the
  * titles of the pages it saw. */
 export async function confirmOnBoard(b: DirectBoard): Promise<string[]> {
-  await b.until(/^(Send|Approve|NOT DECODED|Cancel|Enrol key tree)$/)
+  await b.until(/^(Send|Approve|Execute|NOT DECODED|Cancel|Enrol key tree)$/)
   const seen = [b.lines()[0]]
   for (let i = 0; i < 20 && !/hold both: (sign|enrol)$/.test(b.lines().at(-1)!); i++) {
     await b.press('R')

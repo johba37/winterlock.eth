@@ -110,6 +110,18 @@ export function Describe(props: { d: Decoded; tokens: Record<string, { symbol: s
         </ol>
       </div>
     )
+  if (d.kind === 'exec')
+    return (
+      <div data-testid="tx-summary">
+        <p>
+          <span class="tag amber">execution</span> Executes a transaction of the Safe at <code>{d.to}</code> (execTransaction, with {d.signatures} bytes of signatures), at that
+          Safe’s nonce when it runs:
+        </p>
+        <div data-testid="tx-executed">
+          <Describe d={d.inner.decoded} tokens={props.tokens} safe={d.to} />
+        </div>
+      </div>
+    )
   if (d.kind === 'self')
     return (
       <p data-testid="tx-summary">

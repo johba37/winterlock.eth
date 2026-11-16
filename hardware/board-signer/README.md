@@ -7,7 +7,7 @@ Winterlock's board: an ESP32-WROOM-32 with a 128×64 OLED and two buttons that h
 | `logic/` | `winterlock-board`: the signer without hardware, `no_std` with `alloc`, on `winterlock-core`. Button events and USB requests in, screens and answers out. Builds natively and for `xtensa-esp32-none-elf`. |
 | `firmware/` | The ESP32 firmware around it: OLED, buttons, flash partition, serial link, both cores, the random number generator. |
 | `wasm/` | The virtual board: `logic/` in WebAssembly for the app (`app/src/board/`), its flash in memory, its randomness from `crypto.getRandomValues`. Bindings only, as `core-wasm/` is for the core. |
-| `tools/` | `board_client.py` (the protocol in Python, stdlib and pyserial), `board_vectors.py` (the Python signer's known answers), `frame_vectors.py` (the link's known answers from `board_client.py`, for the app's client and `logic/tests/frames.rs`), `qemu_flows.py` (the firmware in QEMU), `anvil_e2e.py` (end to end on a local chain). |
+| `tools/` | `board_client.py` (the protocol in Python, stdlib and pyserial), `board_vectors.py` (the Python signer's known answers), `frame_vectors.py` (the link's known answers from `board_client.py`, for the app's client and `logic/tests/frames.rs`), `qemu_flows.py` (the firmware in QEMU), `qemu_update.py` (a firmware update in QEMU: the storage is kept), `anvil_e2e.py` (end to end on a local chain). |
 | `screens/` | `contact-sheet.png`: every screen of every flow; a few screens on their own. |
 | `PROTOCOL.md` | The USB link's frames and messages. |
 
@@ -18,7 +18,9 @@ Winterlock's board: an ESP32-WROOM-32 with a 128×64 OLED and two buttons that h
 - **Enrol** (ENROL: chain, Safe, start): the board shows the chain, the Safe and the first nonce. On confirmation it makes a height-10 tree (1,024 keys, 512 nonces) from a fresh 32-byte salt, writes the tree (salt, root, leaves) and the certificate's record, then the member key signs the certificate on both cores and the app gets it. A new tree must start after the board's last one for that Safe.
 - **Confirm a transaction** (SIGN: the fields, never a hash). Decoded on the board:
   - an ETH transfer; an ERC-20 `transfer` of a listed token (amount and symbol)
-  - `approveHash` on a parent Safe with the parent's fields: the board hashes them, checks the argument, and shows the parent's transfer
+  - `approveHash` on a parent Safe with the parent's fields: the board hashes them, checks the argument, and shows the parent's transfer ("Approve", then "Nested: ...")
+  - `execTransaction` on a parent Safe: the parent's transaction is in the call, and the board shows it ("Execute", then "Nested: ..."). It reads the call only in the encoding Solidity's encoder gives, with nothing after it; any other encoding is "NOT DECODED". The parent's nonce isn't in the call, so the board shows none
+  - names: the code and these notes call the Safe whose transaction is approved or executed the parent Safe. The screens call it the nested Safe ("Nested: Send", "Nested Safe"), as Safe's app does, where a Safe owned by another is nested in it and the owning Safe, here the member's, is the parent
   - a cancel (an empty call from the Safe to itself)
   - anything else: target, value, function selector, "NOT DECODED", and a second confirmation
   - refund fields set (gas price, base gas, safeTxGas, gas token, receiver): shown, and a second confirmation
@@ -76,6 +78,15 @@ Checked in QEMU only, which has no OLED and doesn't model the pins or DPORT's re
 - The bring-up image prints its report and echoes a typed line.
 - The signer's diagnostics build answers STATUS (blank, no test hooks).
 
+## Updating the firmware
+
+Write the newer image the way the first one was written, at 0x0: `espflash write-bin 0x0 <image>.bin`. The image holds the bootloader, the partition table and the app, and ends far below the `signer` partition (0x110000), so the seed, the PIN's check value, the key trees and the key log stay as they are. The board starts locked and asks for its PIN. The app's Board screen shows the firmware's version.
+
+- **Checked in QEMU** (`tools/qemu_update.py`, 2026-11-16, from 0.1.0 to 0.1.1 and to 0.1.2): a board set up, enrolled and used with the older image, then the newer one written below 0x110000. It started locked, took the same PIN, reported the new version, and held the same owner, tree and count of used keys; the transfer it had signed got the same key and signature again, and a new one the next key.
+- **Not checked on the chip.** A board that ever came up blank after an update is recovered with its 24 words and enrols new key trees, as after any recovery.
+- **0.1.1** (2026-11-16) reads `execTransaction` on a parent Safe ("What it does"). Nothing else changed.
+- **0.1.2** (2026-11-16) says "Nested" on its screens where 0.1.1 said "Parent", and "nested Safe" in its refusals.
+
 ## Storage
 
 The partition table (`firmware/partitions.csv`, checked by `build.rs` against the 4 MB flash):
@@ -126,6 +137,7 @@ cargo build --release --features test-hooks  # the QEMU build
 
 # QEMU and the Python client (the signer's virtualenv for the checks)
 python -I ../tools/qemu_flows.py target/images/winterlock-board-test-qemu.bin target/images/winterlock-board-qemu.bin
+python -I ../tools/qemu_update.py <an earlier test image> target/images/winterlock-board-test-qemu.bin   # an update keeps the storage
 python -I ../tools/anvil_e2e.py target/images/winterlock-board-test-qemu.bin   # needs anvil and Safe v1.4.1's build
 ```
 
@@ -154,7 +166,7 @@ QEMU needs the image padded to 4 MB (without `--skip-padding`): `qemu-system-xte
   - a write that doesn't stick (a bit left set, no power cut): the read-back catches it and nothing is signed
   - a full log refuses trees and key uses but still takes 300 unlocks, and erases
   - frames through bootloader text and damage, the debouncer, amounts, layouts
-- **QEMU** (`qemu_flows.py`, Espressif's QEMU 9.2.2, the test image): setup; a restart and unlock; enrolment; an ETH transfer, an approveHash with the parent's fields, a call that isn't decoded, a refused delegate call; QEMU killed after the key use record's header (the torn record is skipped, the key unused) and after the whole record (it survives, the same transaction gets the same key and another gets the other); three wrong PINs erase the board (the seed is no longer in the flash image); a recovery gives the same owner, refuses to sign until it enrols, then signs. Every output is checked with the Python signer. The release image boots, refuses a simulated button, and sends nothing but frames.
+- **QEMU** (`qemu_flows.py`, Espressif's QEMU 9.2.2, the test image): setup; a restart and unlock; enrolment; an ETH transfer, an approveHash with the parent's fields, an execTransaction on a parent Safe (and the same call with bytes after it, not decoded), a call that isn't decoded, a refused delegate call; QEMU killed after the key use record's header (the torn record is skipped, the key unused) and after the whole record (it survives, the same transaction gets the same key and another gets the other); three wrong PINs erase the board (the seed is no longer in the flash image); a recovery gives the same owner, refuses to sign until it enrols, then signs. Every output is checked with the Python signer. The release image boots, refuses a simulated button, and sends nothing but frames.
 - **On a local chain** (`anvil_e2e.py`): the board's owner deployed by the factory at the address the board computed; its certificate accepted by `enroll` from the board's gas account; a Safe whose only owner is the board executes an ETH transfer with the board's signature; a parent Safe executes a transfer on the board-confirmed approveHash.
 - **Memory in QEMU:** heap peak 109,624 of 180,224 bytes; first core's stack 18,864 of 72,868; second core's 2,204 of 32,768.
 
@@ -179,7 +191,8 @@ The app talks to the board over Web Serial, or, in development builds only, to t
 
 ## Not verified on the board yet
 
-- other transactions on the board: a token transfer, approveHash with the parent's fields, an undecoded call, a refused delegate call, and a third version at one nonce (the key log refuses it)
+- other transactions on the board: a token transfer, approveHash with the parent's fields, execTransaction on a parent Safe, an undecoded call, a refused delegate call, and a third version at one nonce (the key log refuses it)
+- a firmware update on the chip (in QEMU it keeps the storage: "Updating the firmware")
 - unlocking after a restart, three wrong PINs (the board erases itself), and recovery from the words
 - flash writes, erases and power cuts on the real chip (QEMU's flash model and the simulated NOR flash are what was tested)
 - the times on the chip: QEMU's say nothing about them. The core check measured 11.7 s for the member key and 42 s for a tree on both cores, and 15 s on average (32 s at most) for a stateless signature on one core; the board spreads a signature's grind and FORS trees over both cores, which should shorten it, unmeasured

@@ -36,6 +36,7 @@ import {
   sessionProperties,
   sessionSafe,
   txFor,
+  withoutExecFields,
 } from './dapp'
 import { type DappTxRecord, type Hex, all, get, putSetting, writeStrict } from './db'
 import { type Env, type Proposed, type Step, collect, nextNonce, safeTxHash, service, serviceHas } from './flows'
@@ -315,10 +316,12 @@ async function onRequest(r: WalletKitTypes.SessionRequest) {
         return
       }
       const expiry = request.expiryTimestamp ? request.expiryTimestamp * 1000 : undefined
-      // an approveHash from Safe's app carries the approved transaction's fields: checked here
+      // an approveHash or execTransaction from Safe's app carries the other Safe's transaction's
+      // fields: checked here, and taken off the execTransaction, which holds them itself
       const chain = s.chain
-      const approved = await approvedOf(p.calls, chain, s.safe, (safe, tx) => safeTxHash(env.core, chain, safe, tx))
-      const item: DappRequest = { id, topic, ...where, dapp: s.dapp, method: p.method, calls: p.calls, approved, expiry, received: Date.now(), expired: !!expiry && expiry < Date.now(), busy: false }
+      const calls = withoutExecFields(p.calls, chain, s.safe)
+      const approved = await approvedOf(calls, chain, s.safe, (safe, tx) => safeTxHash(env.core, chain, safe, tx))
+      const item: DappRequest = { id, topic, ...where, dapp: s.dapp, method: p.method, calls, approved, expiry, received: Date.now(), expired: !!expiry && expiry < Date.now(), busy: false }
       setWc((st) => ({ ...st, requests: [...st.requests, item] }))
       return
     }

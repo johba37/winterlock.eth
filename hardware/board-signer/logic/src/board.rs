@@ -1302,12 +1302,18 @@ fn address_screen(title: &str, a: &[u8; 20], last: &str) -> Screen {
     Screen::lines(title, &[&l[0], &l[1], &l[2], last], "< back", "next >")
 }
 
-/// The pages for one action: a transaction's, or its parent's (titled "Parent: ...").
-fn action_pages(chain: u64, d: &Decoded, parent: bool, out: &mut Vec<Screen>) {
-    let p = |t: &str| if parent { format!("Parent: {t}") } else { t.to_string() };
-    match &d.action {
+/// The pages for one action: a transaction's, or its parent's (titled "Nested: ...": the screens
+/// call the parent Safe the nested Safe, see decode.rs). `nonce` is
+/// the transaction's, when the board has it: a parent's that an execTransaction runs isn't in the
+/// call.
+fn action_pages(chain: u64, action: &Action, nonce: Option<&U256>, parent: bool, out: &mut Vec<Screen>) {
+    let p = |t: &str| if parent { format!("Nested: {t}") } else { t.to_string() };
+    match action {
         Action::Cancel => {
-            let l4 = format!("nonce {}.", d.nonce);
+            let l4 = match nonce {
+                Some(n) => format!("nonce {n}."),
+                None => "its next nonce.".to_string(),
+            };
             out.push(Screen::lines(&p("Cancel"), &["An empty call from", "the Safe to itself:", "it only uses up", &l4], "< back", "next >"));
         }
         Action::Eth { to, value } => {
@@ -1336,10 +1342,20 @@ fn action_pages(chain: u64, d: &Decoded, parent: bool, out: &mut Vec<Screen>) {
         Action::Approve { parent_safe, parent_hash, parent: pd } => {
             let l3 = format!("{} nonce {}", short_address(parent_safe), pd.nonce);
             let l4 = format!("tx {}", ui::short_hex(parent_hash, 6));
-            out.push(Screen::lines("Approve", &["Approves a parent", "Safe's transaction:", &l3, &l4], "< back", "next >"));
-            action_pages(chain, pd, true, out);
-            out.push(address_screen("Parent Safe", parent_safe, &format!("nonce {}", pd.nonce)));
+            out.push(Screen::lines("Approve", &["Approves a nested", "Safe's transaction:", &l3, &l4], "< back", "next >"));
+            action_pages(chain, &pd.action, Some(&pd.nonce), true, out);
+            out.push(address_screen("Nested Safe", parent_safe, &format!("nonce {}", pd.nonce)));
             if let Some(r) = &pd.refund {
+                out.push(refund_screen(r, true));
+            }
+        }
+        Action::Exec { parent_safe, action: pa, refund, signatures } => {
+            let l3 = format!("on {}, with", short_address(parent_safe));
+            let l4 = format!("{signatures} signature bytes");
+            out.push(Screen::lines("Execute", &["Executes a nested", "Safe's transaction", &l3, &l4], "< back", "next >"));
+            action_pages(chain, pa, None, true, out);
+            out.push(address_screen("Nested Safe", parent_safe, "at its next nonce"));
+            if let Some(r) = refund {
                 out.push(refund_screen(r, true));
             }
         }
@@ -1347,9 +1363,15 @@ fn action_pages(chain: u64, d: &Decoded, parent: bool, out: &mut Vec<Screen>) {
 }
 
 /// Two lines that say what an action does, each fitting a line.
-fn summary(chain: u64, d: &Decoded) -> [String; 2] {
-    match &d.action {
-        Action::Cancel => ["Cancel: empty call".into(), format!("using up nonce {}", d.nonce)],
+fn summary(chain: u64, action: &Action, nonce: Option<&U256>) -> [String; 2] {
+    match action {
+        Action::Cancel => [
+            "Cancel: empty call".into(),
+            match nonce {
+                Some(n) => format!("using up nonce {n}"),
+                None => "using up a nonce".into(),
+            },
+        ],
         Action::Eth { to, value } => [fits(format!("Send {}", value_text(chain, value)), "Send ETH (page 1)"), format!("to {}", short_address(to))],
         Action::Token { token, to, amount } => {
             let alt = format!("Send {} (page 1)", token.symbol);
@@ -1357,8 +1379,12 @@ fn summary(chain: u64, d: &Decoded) -> [String; 2] {
         }
         Action::Raw { to, .. } => ["Call, NOT DECODED".into(), format!("to {}", short_address(to))],
         Action::Approve { parent, .. } => {
-            let [a, _] = summary(chain, parent);
-            ["Approve parent's tx:".into(), fits(a, "(pages before)")]
+            let [a, _] = summary(chain, &parent.action, Some(&parent.nonce));
+            ["Approve nested tx:".into(), fits(a, "(pages before)")]
+        }
+        Action::Exec { action: pa, .. } => {
+            let [a, _] = summary(chain, pa, None);
+            ["Execute nested tx:".into(), fits(a, "(pages before)")]
         }
     }
 }
@@ -1368,17 +1394,17 @@ fn refund_screen(r: &decode::Refund, parent: bool) -> Screen {
     let l2 = fits(format!("base {} safeTx {}", r.base_gas, r.safe_tx_gas), "base, safeTx: huge");
     let l3 = if r.gas_token == [0; 20] { "paid in ETH".to_string() } else { format!("token {}", short_address(&r.gas_token)) };
     let l4 = if r.refund_receiver == [0; 20] { "to the executor".to_string() } else { format!("to {}", short_address(&r.refund_receiver)) };
-    Screen::lines(if parent { "Parent: refund" } else { "Gas refund" }, &[&l1, &l2, &l3, &l4], "< back", "next >")
+    Screen::lines(if parent { "Nested: refund" } else { "Gas refund" }, &[&l1, &l2, &l3, &l4], "< back", "next >")
 }
 
 fn sign_pages(chain: u64, safe: &[u8; 20], d: &Decoded) -> Vec<Screen> {
     let mut pages = Vec::new();
-    action_pages(chain, d, false, &mut pages);
+    action_pages(chain, &d.action, Some(&d.nonce), false, &mut pages);
     if let Some(r) = &d.refund {
         pages.push(refund_screen(r, false));
     }
     pages.push(address_screen("From Safe", safe, &fits(format!("nonce {}, {}", d.nonce, chain_name(chain)), &format!("nonce {}", d.nonce))));
-    let [a, b] = summary(chain, d);
+    let [a, b] = summary(chain, &d.action, Some(&d.nonce));
     let c = if d.needs_second() { "2 confirmations" } else { "" };
     let safe_line = fits(format!("Safe {} #{}", short_address(safe), d.nonce), &format!("Safe {}", short_address(safe)));
     pages.push(Screen::lines("Sign?", &[&a, &b, &safe_line, c], "< reject", "hold both: sign"));

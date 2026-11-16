@@ -6,8 +6,9 @@
 //   eth_sendTransaction       a SafeTx (a call) the member confirms and proposes; the dapp gets the
 //                             SafeTx hash after the proposal, as Safe's own app answers, or the
 //                             execution's hash when the app executes at once (threshold 1).
-//                             Safe's app sends an approveHash with the approved transaction's
-//                             fields after it (nested.ts): they are checked against the hash
+//                             Safe's app sends an approveHash or an execTransaction on another
+//                             Safe with that Safe's transaction's fields after it (nested.ts):
+//                             they are checked against the hash or the call
 //   wallet_sendCalls          EIP-5792: one call, or a batch as a delegatecall to MultiSendCallOnly
 //                             v1.4.1; the dapp gets {id: SafeTx hash}
 //   wallet_getCallsStatus     100 pending, 200 executed, 400 replaced at its nonce, 500 reverted
@@ -20,7 +21,7 @@
 import { type Address, getAddress, isAddress, isHex, toHex } from 'viem'
 import type { DappTxRecord, Hex } from './db'
 import { approveCall, envelopes, splitApprove } from './nested'
-import { type Call, type SafeTx, batchTx, controlsSafe, safeTx } from './safe'
+import { type Call, type SafeTx, batchTx, controlsSafe, safeTx, splitExec } from './safe'
 
 export const SIGN_METHODS = [
   'eth_sendTransaction',
@@ -311,6 +312,38 @@ export interface Approved {
   tx: SafeTx
   /** the call's data without the fields: approveHash(hash) */
   plain: Hex
+}
+
+/** A request's calls without the fields Safe's app sends after an execTransaction on another Safe
+ * (nested.ts): the transaction is in the call itself, so the fields add nothing, and the board
+ * reads the call only in Solidity's own encoding. Fields that don't say what the call runs, for the
+ * Safe called on this chain, refuse the request, as Safe's own wallet does. Anything else after the
+ * call isn't Safe's envelope: the call stays as sent and shows as not decoded. */
+export function withoutExecFields(calls: Call[], chain: number, safe: Address): Call[] {
+  if (calls.length !== 1) return calls
+  const c = calls[0]
+  if (c.value !== 0n || c.to.toLowerCase() === safe.toLowerCase()) return calls
+  const exec = splitExec(c.data)
+  if (!exec || exec.rest === '0x') return calls
+  const first = envelopes(exec.rest)?.[0]
+  if (!first) return calls
+  const refuse = (why: string) => new RpcFail(CODE.params, `the transaction sent along with execTransaction ${why}: refused`)
+  if (first.chainId !== BigInt(chain)) throw refuse(`is for chain ${first.chainId}, not ${chain}`)
+  if (first.safe.toLowerCase() !== c.to.toLowerCase()) throw refuse(`is for the Safe ${first.safe}, not the one called, ${c.to}`)
+  const a = first.tx
+  const b = exec.tx
+  const same =
+    a.to === b.to &&
+    a.value === b.value &&
+    a.data === b.data &&
+    a.operation === b.operation &&
+    a.safeTxGas === b.safeTxGas &&
+    a.baseGas === b.baseGas &&
+    a.gasPrice === b.gasPrice &&
+    a.gasToken === b.gasToken &&
+    a.refundReceiver === b.refundReceiver
+  if (!same) throw refuse('isn’t the one the call executes')
+  return [{ ...c, data: exec.plain }]
 }
 
 /** The transaction a request's one call approves, if the call is approveHash on another Safe

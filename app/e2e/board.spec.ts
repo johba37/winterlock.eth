@@ -159,7 +159,7 @@ test('the app with the virtual board, on a local chain', async ({ page, baseURL 
     await t(page, 'confirm').click()
     const pages = await vb.confirm()
     expect(pages[0]).toMatch(/^Approve/)
-    expect(pages.some((x) => x.startsWith('Parent: Send'))).toBe(true)
+    expect(pages.some((x) => x.startsWith('Nested: Send'))).toBe(true)
     await waitDone(page, t(page, 'done'))
     await vb.dismiss('Signed')
     await expect(t(page, 'execute')).toBeVisible({ timeout: 60_000 })

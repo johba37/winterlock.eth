@@ -404,3 +404,31 @@ pub fn confirm(b: &mut TestBoard) {
         b.button(Button::Both);
     }
 }
+
+/// execTransaction's call data for a parent Safe's transaction, as Solidity's encoder gives it.
+pub fn exec_data(p: &winterlock_core::safe::SafeTx, signatures: &[u8]) -> Vec<u8> {
+    let pad = |n: usize| n.div_ceil(32) * 32;
+    let word = |n: usize| winterlock_core::U256::from_u64(n as u64).0;
+    let address = |a: &[u8; 20]| {
+        let mut w = [0u8; 32];
+        w[12..].copy_from_slice(a);
+        w
+    };
+    let mut d = vec![0x6a, 0x76, 0x12, 0x02];
+    d.extend_from_slice(&address(&p.to));
+    d.extend_from_slice(&p.value.0);
+    d.extend_from_slice(&word(320));
+    d.extend_from_slice(&word(p.operation as usize));
+    d.extend_from_slice(&p.safe_tx_gas.0);
+    d.extend_from_slice(&p.base_gas.0);
+    d.extend_from_slice(&p.gas_price.0);
+    d.extend_from_slice(&address(&p.gas_token));
+    d.extend_from_slice(&address(&p.refund_receiver));
+    d.extend_from_slice(&word(320 + 32 + pad(p.data.len())));
+    for b in [&p.data[..], signatures] {
+        d.extend_from_slice(&word(b.len()));
+        d.extend_from_slice(b);
+        d.resize(d.len() + pad(b.len()) - b.len(), 0);
+    }
+    d
+}
