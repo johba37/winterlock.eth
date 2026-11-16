@@ -4,6 +4,10 @@
 //! (the parent's transaction is in the call), a cancel (an empty call from the Safe to itself), or
 //! anything else, shown as its target, value and selector and marked as not decoded. A delegate
 //! call is refused.
+//!
+//! Names: this code calls the Safe whose transaction is approved or executed the parent Safe. The
+//! screens and the refusals' texts call it the nested Safe, as Safe's own app does: there, a Safe
+//! owned by another Safe is nested in it, and the owning Safe (here the member's) is the parent.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
@@ -114,9 +118,9 @@ impl Refusal {
     pub fn text(self) -> &'static str {
         match self {
             Refusal::DelegateCall => "delegate calls are refused",
-            Refusal::ParentDelegateCall => "the parent Safe's transaction is a delegate call: refused",
-            Refusal::ParentMismatch => "the parent's fields don't hash to the approveHash argument",
-            Refusal::ParentUnused => "parent fields came with a call that isn't approveHash",
+            Refusal::ParentDelegateCall => "the nested Safe's transaction is a delegate call: refused",
+            Refusal::ParentMismatch => "the nested Safe's fields don't hash to the approveHash argument",
+            Refusal::ParentUnused => "a nested Safe's fields came with a call that isn't approveHash",
         }
     }
 }

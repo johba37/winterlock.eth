@@ -157,7 +157,7 @@ fn transactions_of_each_kind() {
     request(&mut b, ty::SIGN, 14, &sign_payload(CHAIN, &SAFE, &[0; 24], &approve, Some(&parent)));
     assert_eq!(title(&b), "Approve");
     b.button(Right);
-    assert_eq!(title(&b), "Parent: Send");
+    assert_eq!(title(&b), "Nested: Send");
     assert!(text(&b).iter().any(|x| x.contains("2 ETH")), "{:?}", text(&b));
     confirm(&mut b);
     let s3 = parse_signed(&answer(&b, 14).unwrap().payload);
@@ -177,12 +177,12 @@ fn transactions_of_each_kind() {
     assert_eq!(title(&b), "Execute");
     assert!(text(&b).iter().any(|x| x.contains("65 signature bytes")), "{:?}", text(&b));
     b.button(Right);
-    assert_eq!(title(&b), "Parent: Send");
+    assert_eq!(title(&b), "Nested: Send");
     assert!(text(&b).iter().any(|x| x.contains("3 ETH")), "{:?}", text(&b));
     while b.screen().right != "hold both: sign" {
         b.button(Right);
     }
-    assert!(text(&b).iter().any(|x| x.contains("Execute parent's tx:")), "{:?}", text(&b));
+    assert!(text(&b).iter().any(|x| x.contains("Execute nested tx:")), "{:?}", text(&b));
     b.button(Both);
     let s5 = parse_signed(&answer(&b, 40).expect("one confirmation is enough").payload);
     verify(&e, &id.owner, &exec, &s5);

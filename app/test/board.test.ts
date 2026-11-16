@@ -49,7 +49,7 @@ describe('the virtual board through the board client', () => {
     const { t, c, booted } = await connected(store)
     expect(booted).toEqual(['blank'])
     const s0 = await c.status()
-    expect([s0.state, s0.testHooks, s0.version, s0.storageSize]).toEqual(['blank', false, '0.1.1 virtual', 0x2f0000])
+    expect([s0.state, s0.testHooks, s0.version, s0.storageSize]).toEqual(['blank', false, '0.1.2 virtual', 0x2f0000])
 
     // --- setup: the words on the board, three asked back, a PIN twice ---
     const appRandom = crypto.getRandomValues(new Uint8Array(32))
@@ -124,7 +124,7 @@ describe('the virtual board through the board client', () => {
     const pages2 = await confirmOnBoard(t)
     const s2 = await p2
     expect(pages2[0]).toMatch(/^Approve/)
-    expect(pages2.some((p) => p.startsWith('Parent: Send'))).toBe(true)
+    expect(pages2.some((p) => p.startsWith('Nested: Send'))).toBe(true)
     checkSigned(s2, id.owner, tree, approve)
     await t.press('R')
     // a parent whose fields don't hash to the argument: refused

@@ -253,7 +253,7 @@ export async function parentOf(env: Env, chainId: number, tx: SafeTx, known?: Sa
     })
   if (getAddress(rec.safe) !== getAddress(tx.to)) throw new Refused('The approved transaction belongs to another Safe than the one called: refusing.')
   const parent = fromService(rec)
-  if ((await safeTxHash(env.core, chainId, tx.to, parent)).toLowerCase() !== h.toLowerCase()) throw new Refused('The parent transaction’s fields don’t hash to the approved hash: refusing.')
+  if ((await safeTxHash(env.core, chainId, tx.to, parent)).toLowerCase() !== h.toLowerCase()) throw new Refused('The approved transaction’s fields don’t hash to the approved hash: refusing.')
   return parent
 }
 
@@ -301,7 +301,7 @@ async function boardSign(env: Env, rec: BoardRecord, client: BoardClient, chainI
   if (parent) await refusePaymentToOwner(env, p.ctx, tx.to, parent, rec.owner)
   step(
     parent
-      ? 'Check the board: it shows the parent Safe’s transaction this approves. Confirm there (hold both buttons on the last page)'
+      ? 'Check the board: it shows the nested Safe’s transaction this approves. Confirm there (hold both buttons on the last page)'
       : 'Check the board: it shows what this transaction does. Confirm there (hold both buttons on the last page)',
   )
   const s = await client.sign({ chain: chainId, safe, root: p.root, tx: encodeForCore(tx), parent: parent ? encodeForCore(parent) : undefined }, w)

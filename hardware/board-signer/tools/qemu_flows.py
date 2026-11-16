@@ -262,7 +262,7 @@ def main():
     execute = safemod.SafeTx(to=checksum(PARENT), data=exec_data, nonce=6)
     rid = q.board.sign(CHAIN, SAFE, encode_tx(PARENT, data=exec_data, nonce=6))
     pages, s = confirm(q.board, rid)
-    assert pages[0][0].startswith("Execute") and pages[1][0].startswith("Parent: Send"), pages
+    assert pages[0][0].startswith("Execute") and pages[1][0].startswith("Nested: Send"), pages
     sg = q.board.parse_signed(q.board.wait(rid, 120))
     k = check_signature(ident, tree, execute, sg, ledger)
     key_line(f"execTransaction: pages {[p[0] for p in pages]}; parent page '{pages[1][0]}: {pages[1][2].strip()}'; "

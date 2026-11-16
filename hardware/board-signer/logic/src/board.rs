@@ -1302,11 +1302,12 @@ fn address_screen(title: &str, a: &[u8; 20], last: &str) -> Screen {
     Screen::lines(title, &[&l[0], &l[1], &l[2], last], "< back", "next >")
 }
 
-/// The pages for one action: a transaction's, or its parent's (titled "Parent: ..."). `nonce` is
+/// The pages for one action: a transaction's, or its parent's (titled "Nested: ...": the screens
+/// call the parent Safe the nested Safe, see decode.rs). `nonce` is
 /// the transaction's, when the board has it: a parent's that an execTransaction runs isn't in the
 /// call.
 fn action_pages(chain: u64, action: &Action, nonce: Option<&U256>, parent: bool, out: &mut Vec<Screen>) {
-    let p = |t: &str| if parent { format!("Parent: {t}") } else { t.to_string() };
+    let p = |t: &str| if parent { format!("Nested: {t}") } else { t.to_string() };
     match action {
         Action::Cancel => {
             let l4 = match nonce {
@@ -1341,9 +1342,9 @@ fn action_pages(chain: u64, action: &Action, nonce: Option<&U256>, parent: bool,
         Action::Approve { parent_safe, parent_hash, parent: pd } => {
             let l3 = format!("{} nonce {}", short_address(parent_safe), pd.nonce);
             let l4 = format!("tx {}", ui::short_hex(parent_hash, 6));
-            out.push(Screen::lines("Approve", &["Approves a parent", "Safe's transaction:", &l3, &l4], "< back", "next >"));
+            out.push(Screen::lines("Approve", &["Approves a nested", "Safe's transaction:", &l3, &l4], "< back", "next >"));
             action_pages(chain, &pd.action, Some(&pd.nonce), true, out);
-            out.push(address_screen("Parent Safe", parent_safe, &format!("nonce {}", pd.nonce)));
+            out.push(address_screen("Nested Safe", parent_safe, &format!("nonce {}", pd.nonce)));
             if let Some(r) = &pd.refund {
                 out.push(refund_screen(r, true));
             }
@@ -1351,9 +1352,9 @@ fn action_pages(chain: u64, action: &Action, nonce: Option<&U256>, parent: bool,
         Action::Exec { parent_safe, action: pa, refund, signatures } => {
             let l3 = format!("on {}, with", short_address(parent_safe));
             let l4 = format!("{signatures} signature bytes");
-            out.push(Screen::lines("Execute", &["Executes a parent", "Safe's transaction", &l3, &l4], "< back", "next >"));
+            out.push(Screen::lines("Execute", &["Executes a nested", "Safe's transaction", &l3, &l4], "< back", "next >"));
             action_pages(chain, pa, None, true, out);
-            out.push(address_screen("Parent Safe", parent_safe, "at its next nonce"));
+            out.push(address_screen("Nested Safe", parent_safe, "at its next nonce"));
             if let Some(r) = refund {
                 out.push(refund_screen(r, true));
             }
@@ -1379,11 +1380,11 @@ fn summary(chain: u64, action: &Action, nonce: Option<&U256>) -> [String; 2] {
         Action::Raw { to, .. } => ["Call, NOT DECODED".into(), format!("to {}", short_address(to))],
         Action::Approve { parent, .. } => {
             let [a, _] = summary(chain, &parent.action, Some(&parent.nonce));
-            ["Approve parent's tx:".into(), fits(a, "(pages before)")]
+            ["Approve nested tx:".into(), fits(a, "(pages before)")]
         }
         Action::Exec { action: pa, .. } => {
             let [a, _] = summary(chain, pa, None);
-            ["Execute parent's tx:".into(), fits(a, "(pages before)")]
+            ["Execute nested tx:".into(), fits(a, "(pages before)")]
         }
     }
 }
@@ -1393,7 +1394,7 @@ fn refund_screen(r: &decode::Refund, parent: bool) -> Screen {
     let l2 = fits(format!("base {} safeTx {}", r.base_gas, r.safe_tx_gas), "base, safeTx: huge");
     let l3 = if r.gas_token == [0; 20] { "paid in ETH".to_string() } else { format!("token {}", short_address(&r.gas_token)) };
     let l4 = if r.refund_receiver == [0; 20] { "to the executor".to_string() } else { format!("to {}", short_address(&r.refund_receiver)) };
-    Screen::lines(if parent { "Parent: refund" } else { "Gas refund" }, &[&l1, &l2, &l3, &l4], "< back", "next >")
+    Screen::lines(if parent { "Nested: refund" } else { "Gas refund" }, &[&l1, &l2, &l3, &l4], "< back", "next >")
 }
 
 fn sign_pages(chain: u64, safe: &[u8; 20], d: &Decoded) -> Vec<Screen> {

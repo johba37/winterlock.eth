@@ -18,8 +18,9 @@ Winterlock's board: an ESP32-WROOM-32 with a 128×64 OLED and two buttons that h
 - **Enrol** (ENROL: chain, Safe, start): the board shows the chain, the Safe and the first nonce. On confirmation it makes a height-10 tree (1,024 keys, 512 nonces) from a fresh 32-byte salt, writes the tree (salt, root, leaves) and the certificate's record, then the member key signs the certificate on both cores and the app gets it. A new tree must start after the board's last one for that Safe.
 - **Confirm a transaction** (SIGN: the fields, never a hash). Decoded on the board:
   - an ETH transfer; an ERC-20 `transfer` of a listed token (amount and symbol)
-  - `approveHash` on a parent Safe with the parent's fields: the board hashes them, checks the argument, and shows the parent's transfer
-  - `execTransaction` on a parent Safe: the parent's transaction is in the call, and the board shows it ("Execute", then "Parent: ..."). It reads the call only in the encoding Solidity's encoder gives, with nothing after it; any other encoding is "NOT DECODED". The parent's nonce isn't in the call, so the board shows none
+  - `approveHash` on a parent Safe with the parent's fields: the board hashes them, checks the argument, and shows the parent's transfer ("Approve", then "Nested: ...")
+  - `execTransaction` on a parent Safe: the parent's transaction is in the call, and the board shows it ("Execute", then "Nested: ..."). It reads the call only in the encoding Solidity's encoder gives, with nothing after it; any other encoding is "NOT DECODED". The parent's nonce isn't in the call, so the board shows none
+  - names: the code and these notes call the Safe whose transaction is approved or executed the parent Safe. The screens call it the nested Safe ("Nested: Send", "Nested Safe"), as Safe's app does, where a Safe owned by another is nested in it and the owning Safe, here the member's, is the parent
   - a cancel (an empty call from the Safe to itself)
   - anything else: target, value, function selector, "NOT DECODED", and a second confirmation
   - refund fields set (gas price, base gas, safeTxGas, gas token, receiver): shown, and a second confirmation
@@ -81,9 +82,10 @@ Checked in QEMU only, which has no OLED and doesn't model the pins or DPORT's re
 
 Write the newer image the way the first one was written, at 0x0: `espflash write-bin 0x0 <image>.bin`. The image holds the bootloader, the partition table and the app, and ends far below the `signer` partition (0x110000), so the seed, the PIN's check value, the key trees and the key log stay as they are. The board starts locked and asks for its PIN. The app's Board screen shows the firmware's version.
 
-- **Checked in QEMU** (`tools/qemu_update.py`, 2026-11-16, from 0.1.0 to 0.1.1): a board set up, enrolled and used with the older image, then the newer one written below 0x110000. It started locked, took the same PIN, reported 0.1.1, and held the same owner, tree and count of used keys; the transfer it had signed got the same key and signature again, and a new one the next key.
+- **Checked in QEMU** (`tools/qemu_update.py`, 2026-11-16, from 0.1.0 to 0.1.1 and to 0.1.2): a board set up, enrolled and used with the older image, then the newer one written below 0x110000. It started locked, took the same PIN, reported the new version, and held the same owner, tree and count of used keys; the transfer it had signed got the same key and signature again, and a new one the next key.
 - **Not checked on the chip.** A board that ever came up blank after an update is recovered with its 24 words and enrols new key trees, as after any recovery.
 - **0.1.1** (2026-11-16) reads `execTransaction` on a parent Safe ("What it does"). Nothing else changed.
+- **0.1.2** (2026-11-16) says "Nested" on its screens where 0.1.1 said "Parent", and "nested Safe" in its refusals.
 
 ## Storage
 
