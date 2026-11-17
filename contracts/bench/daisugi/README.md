@@ -6,8 +6,9 @@ This folder sends frame transactions from native accounts that Winterlock keys g
 - **v0** (`frame/WinterlockFrameAccount.yul`): the member key signs every transaction.
 - **v1** (`frame/WinterlockFrameAccountV1.yul`): the member key enrols a tree of one-time WOTS keys, bound to the nonce, and those sign the transactions.
 - **v2** (`frame/WinterlockFrameAccountV2.yul`): device keys, as in owner v2. The member key adds and revokes devices 1–3, and each device enrols and signs from its own tree (`devices.py`).
+- **v3** (`frame/WinterlockFrameAccountV3.yul`): v2, with each key's scope checked in VERIFY. A device that sends the account a call outside its scope gets no valid transaction, where v2 included it and reverted the call (`devices.py --account v3`).
 
-Results: decisions.md, the 2026-11-08 entries on Daisugi.
+Results: decisions.md, the 2026-11-08 entries on Daisugi and the 2026-11-17 entry on v3.
 
 Test network only. The contracts are not audited.
 
@@ -28,6 +29,9 @@ $PY bench/daisugi/daisugi.py replace          # slot 1 for a replacement; the ke
 $PY bench/daisugi/devices.py demo             # v2: add devices, enrol, sign, same nonce, revoke, re-add (checked)
 $PY bench/daisugi/devices.py status           # v2: devices, generations, trees
 $PY bench/daisugi/devices.py send --as 2      # v2: a transfer signed by device 2
+$PY bench/daisugi/devices.py deploy --account v3   # v3: the implementation
+$PY bench/daisugi/devices.py demo --account v3     # v3: scopes, the refused attempts, a gas table (checked)
+$PY bench/daisugi/devices.py frames --account v3 --as 2   # v3: VERIFY's cost with 1 to 62 SENDER frames
 ```
 
 - **`--account v0`** runs `member`, `fund` and `send` against the v0 account. `devices.py` works on the v2 account. Each device has a home in `$DAISUGI_DIR/device-N/` with its own seed (no phrase), trees and key log.

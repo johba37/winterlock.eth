@@ -1771,6 +1771,48 @@ Item 6 of [notes/signer-app.md](notes/signer-app.md), transactions first. The qu
   - Neither step has run on the chip, and the update hasn't been done on the chip.
   - Fields beyond the first (an approval of an approval) are ignored.
 
+**2026-11-17: each key's scope checked in VERIFY (frame account v3)** (`contracts/frame/WinterlockFrameAccountV3.yul`, `contracts/bench/daisugi/devices.py --account v3`)
+
+The question: can the account refuse a transaction whose frames go beyond what the signing key may do, before it is included? Yes. v2 checks who signed in its management code, after VERIFY, so a device that sent a call it may not make got a valid transaction: it was included, paid about 240k gas and spent the nonce, and only the management frame reverted. v3 reads the transaction's frames in VERIFY and doesn't approve. The draft of ERC-8403 makes the same move for its `SLOTS16` scheme with one bit, `NO_MANAGE` (ethereum/ERCs pull request 1979, commit `f6a76de9`); v3 is that bit plus one narrower scope.
+
+**What changed from v2:**
+- **A scope per key,** for SENDER frames whose resolved target is the account itself. Frames to other targets, such as transfers, are not limited.
+  - the member key: every frame
+  - a device key added with `OWN_TREE`: `enroll` for its own device, and nothing else
+  - a device key added without it: nothing, which is ERC-8403's `NO_MANAGE`
+  - every one-time key: nothing
+- **Where the scope is stored:** bit 17 of the device's state word (generation | ACTIVE | OWN_TREE), set by `addDevice(uint8 device, bytes32 key, uint8 scope)`. A revoke clears it.
+- **VERIFY walks the frames** (`TXPARAM_FRAME_COUNT`, `FRAMEPARAM` for mode, resolved target and data length, `FRAMEDATALOAD` for the selector and the first argument) and reverts on a SENDER frame to the account outside the key's scope. The member key skips the walk.
+- **A selector check is sound here** because the clone's code can't change. ERC-8403's bit checks only the target, since an account whose code can change could bring back an earlier state.
+- **The member key may enrol any device's tree,** which a device without `OWN_TREE` needs. The management code keeps v2's checks of who signed.
+- The implementation is 1,454 bytes at `0xf332e67f7c4785cfe3d73dd32202779330e3bf13` (salt `keccak256("Winterlock.frame-account.v3")`), deployed in `0x5ad9910a1b4b55d6e511d887eb226f3b9aa1d88b422f97aa00e53a4880218ae4`.
+
+**Live:** account `0x82de7be5ed9457132f6b8beebefd582992c83adc`, a throwaway member, device 1 with `OWN_TREE` and device 2 without. 30 checks, all as expected (`devices.py demo --account v3`):
+- **In scope, included:** device 1 enrolled its own tree with its key; the member key enrolled device 2's; both devices sent transfers with one-time keys and with their keys; device 1 enrolled a new tree and sent a transfer in one transaction.
+- **Out of scope, refused before inclusion,** each with "validation-prefix simulation failed, validation prefix frame reverted" and an unchanged nonce:
+  - device 2 enrols its own tree; device 2 revokes device 1
+  - device 1 revokes device 2; adds device 3; enrols a tree for device 2
+  - device 1 sends a transfer and a revoke in one transaction
+  - device 1 enrols its own tree with a one-time key
+  - device 1 sends the account 1 wei
+- **After the member key revoked device 1,** its one-time keys and its key were refused, and device 2 kept working.
+
+**Gas, VERIFY frame,** against v2 run again the same day on a fresh account (`0x105812dc389a9184727d61291ac572fe70733fe8`, 19 of 19 checks):
+
+| Transaction (VERIFY, then one SENDER frame) | v2 | v3 | Difference |
+| --- | --- | --- | --- |
+| the member key (4 and 8 samples) | 60,121–60,199 | 60,175–60,365 | about +90 |
+| a device's key enrols its own tree | 64,254–64,361 | 64,692 | about +390 |
+| a device's key sends a transfer | 64,399 (2026-11-08) | 64,679–64,708 | about +300 |
+| a device's one-time key sends a transfer | 66,072–66,082 | 66,387–66,407 | +305 to +325 |
+
+- **The walk costs about 114 gas for each further SENDER frame,** as solc compiles the Yul loop: two `FRAMEPARAM` at 2 gas each, the rest is the loop. Transfers with 1, 8, 32 and 62 SENDER frames (`devices.py frames --account v3`): 66,387, 67,195, 69,931 and 73,361 with a one-time key; 64,703, 65,476, 68,242 and 71,540 with a device key; flat at about 60,200 with the member key.
+- **So the check costs about 0.3k gas on an ordinary transaction and about 7k at the frame limit.** A one-time key with 62 SENDER frames still fits the 75,000 the VERIFY frame reserves.
+- **What it saves:** v2's out-of-scope attempts cost the account 240,070, 241,590 and 242,200 gas with a device key and 103,066 with a one-time key in the same day's run. In v3 they cost nothing and use no nonce or one-time key.
+- **Transactions as a whole** cost what they did: 104.6k with a one-time key, about 240k with a 5.7 KB stateless signature.
+
+**Not done:** a hand-written loop, which would cut the 114 gas per frame; scopes on transfers (targets, amounts); v3 in the findings page.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
