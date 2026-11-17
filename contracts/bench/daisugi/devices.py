@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Device keys on Daisugi: the v2 frame account (frame/WinterlockFrameAccountV2.yul).
+"""Device keys on Daisugi: the v2 frame account (frame/WinterlockFrameAccountV2.yul), and with `--account v3`
+the v3 account (frame/WinterlockFrameAccountV3.yul), which checks each key's scope in VERIFY.
 
   status                          the account's devices and trees
   add N [--fresh]                 the member key adds device N (1–3); --fresh retires the device's home and makes a
@@ -10,6 +11,13 @@
                                   a transfer signed by device N: a one-time key while its tree covers the nonce,
                                   else (or with --stateless) the device's key
   demo                            the scenario in decisions.md, with a check after each step
+  --account v3                    work on the v3 account. There `add N [--own-tree]` gives device N the scope
+                                  OWN_TREE (it may enrol its own tree) or none; `enroll --as 0 --for N` lets the
+                                  member key enrol device N's tree; and:
+  deploy                          v3: deploy the implementation, if it isn't there
+  demo                            v3: the scenario of decisions.md's v3 entry: what each scope may send, and that
+                                  VERIFY refuses the rest before inclusion; prints a gas table
+  frames [--as N] [--stateless]   v3: transfers with 1, 8, 32 and 62 SENDER frames, for the cost of the frame walk
 
 Each device has a home in $DAISUGI_DIR/device-N/: its own random seed (no phrase), its trees and its key log. Device
 0 is the member key, from $DAISUGI_DIR/member.json (made by daisugi.py). Run with the signer's Python:
@@ -28,12 +36,16 @@ d = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(d)
 wots, wmember, wleansphincs, keccak256 = d.wots, d.wmember, d.wleansphincs, d.keccak256
 
-VERSION = "v2"
-TREE_SEED_DOMAIN = keccak256(b"Winterlock.frame-account.tree-seed.v2")
+VERSION = sys.argv[sys.argv.index("--account") + 1] if "--account" in sys.argv else "v2"
+if VERSION not in ("v2", "v3"):
+    sys.exit("--account v2|v3")
+TREE_SEED_DOMAIN = keccak256(b"Winterlock.frame-account.tree-seed.v2")      # v3 keeps v2's domain
 SEL = {name: keccak256(sig.encode())[:4] for name, sig in (
-    ("enroll", "enroll(uint8,bytes32,uint8,uint64)"), ("addDevice", "addDevice(uint8,bytes32)"),
+    ("enroll", "enroll(uint8,bytes32,uint8,uint64)"),
+    ("addDevice", "addDevice(uint8,bytes32,uint8)" if VERSION == "v3" else "addDevice(uint8,bytes32)"),
     ("revokeDevice", "revokeDevice(uint8)"), ("read", "read(uint256)"))}
 ACTIVE = 1 << 16
+OWN_TREE = 1 << 17      # v3: the device's key may enrol its own tree; without it, it may send the account nothing
 STATELESS_LEN = 2 + 5684
 DEAD = b"\x00" * 18 + b"\xde\xad"
 
@@ -168,10 +180,10 @@ def sign(device, acct, tx, stateless=False, note="", tree_override=None):
     return f"device {device}'s key" if device else "the member key"
 
 
-def build(acct, init, frames_after_verify):
+def build(acct, init, frames_after_verify, verify_gas=75_000):
     frames, names = [], []
     d.deploy_frame(acct, init, frames, names)
-    frames.append(d.frame(d.VERIFY, acct, 75_000, flags=3))
+    frames.append(d.frame(d.VERIFY, acct, verify_gas, flags=3))
     names.append("VERIFY")
     for f, name in frames_after_verify:
         frames.append(f)
@@ -183,10 +195,13 @@ def manage_frame(acct, data, name):
     return d.frame(d.SENDER, acct, 100_000, 300_000, data=data), name
 
 
-def run(device, frames_after_verify, label, stateless=False, expect=True):
+GAS = []        # (label, gas used, VERIFY execution gas, transaction bytes), for the table at the end of a demo
+
+
+def run(device, frames_after_verify, label, stateless=False, expect=True, verify_gas=75_000):
     """Builds, signs as `device`, sends; returns the receipt, or None if the node refused (printed either way)"""
     _, acct, init = account()
-    tx, names = build(acct, init, frames_after_verify)
+    tx, names = build(acct, init, frames_after_verify, verify_gas)
     who = sign(device, acct, tx, stateless, label)
     try:
         _, r = d.submit(tx, f"{label} [{who}]")
@@ -194,7 +209,10 @@ def run(device, frames_after_verify, label, stateless=False, expect=True):
         print(f"{label} [{who}]: refused ({e})")
         check(not expect, f"{label}: refused" if not expect else f"{label}: expected inclusion")
         return None
-    d.show_receipt(r, names)
+    frames = d.show_receipt(r, names)
+    gu = frames[names.index("VERIFY")].get("gasUsed")
+    ex = gu.get("execution") if isinstance(gu, dict) else gu[0] if isinstance(gu, list) else gu
+    GAS.append((f"{label} [{who}]", int(r["gasUsed"], 16), int(ex, 16), len(d.encode(tx))))
     if not expect:
         check(False, f"{label}: expected a refusal, got included")
     return r
@@ -218,22 +236,39 @@ def frame_status(r, i):
 
 def cmd_status():
     key, acct, _ = account()
-    print(f"v2 account {d.b2h(acct)}: code {len(d.code_at(acct))} bytes, nonce {d.nonce_of(acct)}, "
+    print(f"{VERSION} account {d.b2h(acct)}: code {len(d.code_at(acct))} bytes, nonce {d.nonce_of(acct)}, "
           f"balance {d.balance(acct) / 1e18:.4f} ETH")
     for dev in range(4):
         active, gen, k = device_state(acct, dev)
         w = tree_word(acct, dev)
         label = "member key" if dev == 0 else (f"key {d.b2h(k)[:18]}…" if k and int.from_bytes(k, 'big') else "no key")
         tree = (f"tree g{w['generation']} from nonce {w['start']}, height {w['height']}" if w else "no tree")
-        print(f"  device {dev}: {label}, generation {gen}, {'active' if active else 'inactive'}; {tree}")
+        own = ", OWN_TREE" if dev and read(acct, 0x20 + dev) & OWN_TREE else ""
+        print(f"  device {dev}: {label}, generation {gen}, {'active' if active else 'inactive'}{own}; {tree}")
 
 
-def add_frames(acct, devices, fresh=False):
+def add_frames(acct, devices, fresh=False, own_tree=()):
+    """addDevice frames; v3 takes a scope: OWN_TREE for the devices in `own_tree`, nothing for the others"""
     out = []
     for n in devices:
         key = make_device(n, fresh)
-        out.append(manage_frame(acct, SEL["addDevice"] + d.word(n) + key, f"SENDER: addDevice({n})"))
+        scope = d.word(1 if n in own_tree else 0) if VERSION == "v3" else b""
+        out.append(manage_frame(acct, SEL["addDevice"] + d.word(n) + key + scope,
+                                f"SENDER: addDevice({n}" + (", OWN_TREE)" if n in own_tree else ")")))
     return out
+
+
+def small_transfers(n, to=DEAD):
+    """n SENDER frames of 1 wei each to an account that exists, with small limits"""
+    return [(d.frame(d.SENDER, to, 30_000, 0, value=1), f"SENDER: transfer {k + 1}/{n}") for k in range(n)]
+
+
+def gas_table():
+    if not GAS:
+        return
+    print(f"\n{'transaction':<78} {'gas used':>9} {'VERIFY':>7} {'bytes':>6}")
+    for label, used, verify, size in GAS:
+        print(f"{label[:78]:<78} {used:>9,} {verify:>7,} {size:>6,}")
 
 
 def enroll_frames(device, acct, height):
@@ -250,6 +285,103 @@ def enroll_frames(device, acct, height):
 
 def transfer(value=10**15, to=DEAD):
     return [(d.frame(d.SENDER, to, 100_000, 300_000, value=value), "SENDER: transfer")]
+
+
+def cmd_deploy():
+    """The implementation of this account version, from the deployer key (CREATE2; skips what exists)"""
+    acct = d.deployer()
+    salt, init = d.account_salt(VERSION), d.account_init(VERSION)
+    addr = d.create2(salt, init)
+    print(f"deployer {acct.address}, {d.balance(d.h2b(acct.address)) / 1e18:.4f} ETH")
+    if d.code_at(addr):
+        print(f"frame account {VERSION}: at {d.b2h(addr)} already ({len(d.code_at(addr))} bytes)")
+        return
+    _, r = d.eoa_tx(acct, [d.frame(d.SENDER, d.CREATE2_DEPLOYER, 1_500_000, 1_500_000, data=salt + init)],
+                    f"deploy frame account {VERSION}")
+    d.show_receipt(r, ["VERIFY (default code)", "SENDER: CREATE2"])
+    print(f"  frame account {VERSION} at {d.b2h(addr)}: {len(d.code_at(addr))} bytes")
+
+
+def cmd_demo3():
+    """v3: device 1 has OWN_TREE, device 2 has no scope; what VERIFY lets each send to the account"""
+    key, acct, init = account()
+    print(f"v3 account {d.b2h(acct)}")
+    if d.balance(acct) < 10**17:
+        d.cmd_fund(VERSION)
+        time.sleep(8)
+
+    def refused(device, frames, label, stateless=True):
+        n = d.nonce_of(acct)
+        run(device, frames, label, stateless=stateless, expect=False)
+        check(d.nonce_of(acct) == n, f"{label}: the nonce didn't move")
+
+    print("\n1. The member key adds device 1 with OWN_TREE and device 2 without (the transaction deploys the account)")
+    r = run(0, add_frames(acct, [1, 2], own_tree=(1,)), "add devices 1 (OWN_TREE) and 2")
+    s1, s2 = read(acct, 0x21), read(acct, 0x22)
+    check(r and s1 == (1 | ACTIVE | OWN_TREE) and s2 == (1 | ACTIVE), "device 1 active with OWN_TREE, device 2 active without")
+
+    print("\n2. Device 1 enrols its own tree with its own key; the member key enrols device 2's")
+    r = run(1, enroll_frames(1, acct, 10), "device 1 enrols its own tree")
+    check(r and frame_status(r, 1) == 1 and tree_word(acct, 1), "device 1's tree stored")
+    refused(2, enroll_frames(2, acct, 4), "device 2 (no scope) enrols its own tree")
+    r = run(0, enroll_frames(2, acct, 10), "the member key enrols device 2's tree")
+    check(r and frame_status(r, 1) == 1 and tree_word(acct, 2), "device 2's tree stored")
+
+    print("\n3. Transfers: each device's one-time key, each device's key, the member key")
+    for dev in (1, 2):
+        r = run(dev, transfer(), f"device {dev} sends, one-time key")
+        check(r and frame_status(r, 1) == 1, f"device {dev}'s one-time key accepted")
+    for dev in (1, 2):
+        r = run(dev, transfer(), f"device {dev} sends, its key", stateless=True)
+        check(r and frame_status(r, 1) == 1, f"device {dev}'s key accepted")
+    r = run(0, transfer(), "the member key sends", stateless=True)
+    check(r and frame_status(r, 1) == 1, "member key accepted")
+
+    print("\n4. What v2 included and reverted, VERIFY now refuses: nothing is included, the nonce stays")
+    revoke = lambda n: [manage_frame(acct, SEL["revokeDevice"] + d.word(n), f"SENDER: revokeDevice({n})")]
+    refused(2, revoke(1), "device 2 revokes device 1")
+    refused(1, revoke(2), "device 1 (OWN_TREE) revokes device 2")
+    refused(1, [manage_frame(acct, SEL["addDevice"] + d.word(3) + keccak256(b"x") + d.word(1), "SENDER: addDevice(3)")],
+            "device 1 adds device 3")
+    evil = keccak256(b"not device 2's tree")[:24] + bytes(8)
+    refused(1, [manage_frame(acct, SEL["enroll"] + d.word(2) + evil + d.word(10) + d.word(10**6), "SENDER: enroll(2)")],
+            "device 1 enrols a tree for device 2")
+    refused(1, transfer() + revoke(2), "device 1: a transfer, then revoke device 2, in one transaction")
+    refused(1, enroll_frames(1, acct, 4), "device 1 enrols its own tree with a one-time key", stateless=False)
+    refused(1, [(d.frame(d.SENDER, acct, 30_000, 0, value=1), "SENDER: 1 wei to the account itself")],
+            "device 1 sends the account 1 wei")
+    check(tree_word(acct, 2)["root"] != evil[:24] and read(acct, 0x22) & ACTIVE and not read(acct, 0x23),
+          "nothing changed: device 2's tree and state, no device 3")
+
+    print("\n5. In scope: device 1 enrols a new tree and sends a transfer in one transaction, with its key")
+    before = tree_word(acct, 1)
+    r = run(1, enroll_frames(1, acct, 4) + transfer(), "device 1: enroll its own tree, then a transfer", stateless=True)
+    check(r and frame_status(r, 1) == 1 and frame_status(r, 2) == 1 and tree_word(acct, 1) != before,
+          "both frames ran; device 1 has a new tree")
+
+    print("\n6. The member key revokes device 1; its keys stop; device 2 and the member key go on")
+    r = run(0, revoke(1), "revoke device 1")
+    check(r and frame_status(r, 1) == 1 and read(acct, 0x21) == 1, "device 1 inactive, scope cleared, generation kept")
+    run(1, transfer(), "device 1's one-time key after the revocation", stateless=False, expect=False)
+    run(1, transfer(), "device 1's key after the revocation", stateless=True, expect=False)
+    r = run(2, transfer(), "device 2 sends after device 1's revocation")
+    check(r and frame_status(r, 1) == 1, "device 2 unaffected")
+
+    print()
+    cmd_status()
+    gas_table()
+    bad = [w for ok, w in RESULTS if not ok]
+    print(f"\n{len(RESULTS) - len(bad)} of {len(RESULTS)} checks passed" + (f"; FAILED: {bad}" if bad else ""))
+    sys.exit(1 if bad else 0)
+
+
+def cmd_frames(device, stateless):
+    """v3: the cost of VERIFY's walk over the frames, from transfers with more and more SENDER frames"""
+    _, acct, _ = account()
+    for n in (1, 8, 32, 62):
+        r = run(device, small_transfers(n), f"{n} SENDER frame(s)", stateless=stateless, verify_gas=95_000)
+        check(r and all(frame_status(r, k) == 1 for k in range(1, n + 1)), f"{n} transfer frame(s) ran")
+    gas_table()
 
 
 def cmd_demo(first=1):
@@ -365,6 +497,7 @@ def cmd_demo(first=1):
 
     print()
     cmd_status()
+    gas_table()
     bad = [w for ok, w in RESULTS if not ok]
     print(f"\n{len(RESULTS) - len(bad)} of {len(RESULTS)} checks passed" + (f"; FAILED: {bad}" if bad else ""))
     sys.exit(1 if bad else 0)
@@ -382,20 +515,26 @@ def main(argv):
     try:
         if c == "status":
             cmd_status()
+        elif c == "deploy" and VERSION == "v3":
+            cmd_deploy()
+        elif c == "frames" and VERSION == "v3":
+            cmd_frames(opt("--as", 1, int), "--stateless" in rest)
         elif c == "add":
-            run(0, add_frames(acct, [int(rest[0])], fresh="--fresh" in rest), f"add device {rest[0]}")
+            run(0, add_frames(acct, [int(rest[0])], fresh="--fresh" in rest,
+                              own_tree=(int(rest[0]),) if "--own-tree" in rest else ()), f"add device {rest[0]}")
         elif c == "revoke":
             n = int(rest[0])
             run(0, [manage_frame(acct, SEL["revokeDevice"] + d.word(n), f"SENDER: revokeDevice({n})")],
                 f"revoke device {n}")
         elif c == "enroll":
             n = opt("--as", 0, int)
-            run(n, enroll_frames(n, acct, opt("--height", 10, int)), f"device {n} enrols")
+            target = opt("--for", n, int)
+            run(n, enroll_frames(target, acct, opt("--height", 10, int)), f"device {n} enrols device {target}'s tree")
         elif c == "send":
             run(opt("--as", 0, int), transfer(opt("--value", 10**15, int), opt("--to", DEAD, d.h2b)),
                 "transfer", stateless="--stateless" in rest)
         elif c == "demo":
-            cmd_demo(opt("--from", 1, int))
+            cmd_demo3() if VERSION == "v3" else cmd_demo(opt("--from", 1, int))
         else:
             sys.exit(__doc__)
     except d.Refused as e:
