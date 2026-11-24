@@ -14,10 +14,12 @@ members  = [
 # Not members, each with its own Cargo.lock and target/: the ESP32 crates (Espressif's toolchain
 # and their own .cargo/config.toml; their path dependencies on core/ and logic/ still work) and
 # the SLH-DSA benchmark tool (no path dependencies; its timings are with its own release profile).
+# esp32-leansphincs-bench: its firmware, its host tool and leanVM's crates in its vendor/.
 exclude = [
   "hardware/board-signer/firmware",
   "hardware/esp32-core-check",
   "hardware/esp32-bench",
+  "hardware/esp32-leansphincs-bench",
   "contracts/bench/slh-dsa/tools/rust",
 ]
 

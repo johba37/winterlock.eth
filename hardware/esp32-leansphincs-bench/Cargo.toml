@@ -1,0 +1,36 @@
+[package]
+name         = "winterlock-esp32-leansphincs-bench"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.95"
+description  = "Times leanVM's leanSPHINCS signer on a classic ESP32, for the 2^24 and the 2^30 parameter sets"
+publish      = false
+
+[[bin]]
+name  = "winterlock-esp32-leansphincs-bench"
+path  = "src/main.rs"
+test  = false
+bench = false
+
+[dependencies]
+esp-hal                = { version = "~1.2.2", features = ["esp32", "unstable"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32"] }
+esp-backtrace          = { version = "0.20.0", features = ["esp32", "panic-handler", "println"] }
+esp-println            = { version = "0.18.0", features = ["esp32"] }
+esp-alloc              = { version = "0.11.0", features = ["esp32", "internal-heap-stats"] }
+
+# leanVM's signer, prepared by prepare.py (vendor/ is not in the repository).
+keccak256 = { path = "vendor/keccak256", features = ["tiny"] }
+ls30      = { path = "vendor/ls30" }
+ls24      = { path = "vendor/ls24" }
+
+critical-section = "1.2"
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+debug         = 2
+lto           = "fat"
+opt-level     = 3

@@ -1,0 +1,14 @@
+[package]
+name        = "leansphincs-count"
+version     = "0.1.0"
+edition     = "2024"
+description = "Counts the Keccak-f permutations of leanVM's leanSPHINCS signer for the 2^24 and 2^30 sets, and writes what the board must reproduce"
+publish     = false
+
+[dependencies]
+keccak256 = { path = "../vendor/keccak256" }
+ls30      = { path = "../vendor/ls30" }
+ls24      = { path = "../vendor/ls24" }
+
+[profile.release]
+opt-level = 3
