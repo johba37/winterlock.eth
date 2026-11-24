@@ -1815,6 +1815,33 @@ The question: can the account refuse a transaction whose frames go beyond what t
 
 **Not done:** a hand-written loop, which would cut the 114 gas per frame; scopes on transfers (targets, amounts); v3 in the findings page.
 
+**2026-11-24: leanVM's leanSPHINCS on the ESP32, for two signature budgets** (`hardware/esp32-leansphincs-bench/`; details in its README)
+
+The question: what does a larger signature budget cost a hardware signer? leanVM's parameter set allows 2^30 signatures; [sphincs.art](https://sphincs.art/) also shows a set for 2^24. Both ran on the chip of the core check (ESP32-D0WDQ6, v1.0, 240 MHz, one core) with leanVM's own signer at commit `a0fa68a`, signing from the top tree's 1,024 kept leaves (16 KiB). Our own stateless key is neither set: it has one layer of height 26, of which a device keeps 2^10 leaves.
+
+| | 2^24 | 2^30 |
+|---|---|---|
+| Hypertree; FORS | heights 7 + 7 + 10; k = 19, a = 9 | heights 8 + 8 + 10; k = 24, a = 10 |
+| Signature | 6,524 B | 7,740 B |
+| Permutations per signature, mean of 1,000 messages (on a PC) | 142,041 | 256,024 |
+| Eight signatures on the chip, mean / slowest | 15.2 s / 18.1 s | 28.5 s / 32.2 s |
+| The mean of the 1,000, at the chip's rate while signing | 16.9 s | 29.7 s |
+| Key generation, 271,363 permutations | 28.0 s | 32.6 s |
+| Verification, 437 and 515 permutations | 47 ms | 57 ms |
+
+- **The chip computes the PC's bytes:** both keys, all sixteen signatures and every permutation count match, and for the 2^30 set the key and the first signature are leanVM's known answer.
+- **The larger budget costs 1.75 times the signing time,** about 13 s more per signature.
+- **Signing runs at 8,400 to 8,630 permutations per second,** 13 to 16% below the bare hash rate of 9,949: the signer also builds addresses, copies and allocates. Counting permutations and dividing by the hash rate had given 14 s and 26 s.
+- **leanVM's `sign` rebuilds the top tree for every signature,** 271K permutations more, about 30 s on this chip. A signer keeps the leaves; the signature is the same.
+- **About 43K permutations of each signature are the three searches for a WOTS+C counter** (target sum 128), at either budget: about 5 s here, and the reason signing times vary.
+- **Our own stateless key costs what the 2^24 set costs:** 142K permutations on average, and 15.3 s as the mean of four signatures (2026-11-10). Its spread is much wider, since its search for a kept leaf takes 65,536 tries on average.
+- **tiny-keccak's Keccak-f is 1.23 times as fast as leanVM's** on the chip (9,949 against 8,099 per second).
+- **The same key generation took 28.0 s in one copy of the code and 32.6 s in the other.** The cause isn't established; where each copy lies in the flash cache is the likely one (as with SHA-512 on 2026-11-15).
+- **Memory, as leanVM's code is written:** heap peak 103,312 bytes, stack peak 45,996. It keeps whole trees in memory; a device with less would build them in a stream.
+- **Both sets give the same public key from one seed,** because their top trees are the same. One seed must not serve both; under ERC-8499 each parameter set is its own key type, with its own seed.
+
+**Not done:** both cores (tree building would split, as it does for our keys); a secure element; the pruned and WOTS-forest variants that sphincs.art also shows.
+
 ## Integration notes: Kernel v3.3
 
 These come from `contracts/test/integration/KernelWinterlock.t.sol`, which has 13 tests.
