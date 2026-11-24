@@ -1,0 +1,49 @@
+winterlock-esp32-leansphincs-bench 0.1.0
+leanVM a0fa68a6cad4ca9da886809f5fff624a250d2f62 (crates/lean_sphincs, crates/keccak256), prepared by prepare.py
+chip: ESP32 (Esp32D0wdq6), Xtensa LX6, 2 cores, silicon revision v1.0
+cpu clock: 240 MHz set, 240 MHz measured against the APB timer; one core used
+heap: 180224 bytes
+starts in 10 s; the run takes about 7 minutes
+
+keccak256: one permutation per hash of 64 bytes
+  leanVM's Keccak-f              8099 perm/s  PASS
+  tiny-keccak's Keccak-f         9949 perm/s  PASS
+  the rest of the run uses the faster one: tiny-keccak
+
+2^24: heights 7 + 7 + 10, k = 19, a = 9; signature 6524 bytes
+  key generation                  27990.6 ms   271363 perm    9694 perm/s  PASS
+  signature 0                     13962.8 ms   116611 perm    8351 perm/s  PASS
+  verification                       47.0 ms      437 perm                 PASS
+  signature 1                     14233.8 ms   119039 perm    8363 perm/s  PASS
+  signature 2                     16915.5 ms   143045 perm    8456 perm/s  PASS
+  signature 3                     13632.5 ms   113664 perm    8337 perm/s  PASS
+  signature 4                     12909.2 ms   107191 perm    8303 perm/s  PASS
+  signature 5                     18145.6 ms   154054 perm    8489 perm/s  PASS
+  signature 6                     16374.0 ms   138199 perm    8440 perm/s  PASS
+  signature 7                     15588.9 ms   131173 perm    8414 perm/s  PASS
+  signatures: mean 15220.3 ms, max 18145.6 ms, mean 127872 perm, 8401 perm/s
+  at this rate, the mean over 1000 messages (142041 perm): 16906.8 ms
+
+2^30: heights 8 + 8 + 10, k = 24, a = 10; signature 7740 bytes
+  key generation                  32613.1 ms   271363 perm    8320 perm/s  PASS
+  signature 0                     26219.1 ms   225663 perm    8606 perm/s  PASS
+  verification                       56.6 ms      515 perm                 PASS
+  signature 1                     26617.7 ms   229232 perm    8611 perm/s  PASS
+  signature 2                     32181.2 ms   279021 perm    8670 perm/s  PASS
+  signature 3                     27249.6 ms   234890 perm    8619 perm/s  PASS
+  signature 4                     26145.8 ms   225013 perm    8606 perm/s  PASS
+  signature 5                     30515.4 ms   264114 perm    8655 perm/s  PASS
+  signature 6                     29419.9 ms   254311 perm    8644 perm/s  PASS
+  signature 7                     29532.1 ms   255315 perm    8645 perm/s  PASS
+  signatures: mean 28485.1 ms, max 32181.2 ms, mean 245944 perm, 8634 perm/s
+  at this rate, the mean over 1000 messages (256024 perm): 29652.5 ms
+
+memory
+  heap: peak 103312 of 180224 bytes, 0 in use now
+  stack: peak 45996 of 112508 bytes
+
+run took 415 s
+RESULT winterlock-esp32-leansphincs-bench 0.1.0 leanvm=a0fa68a6c rev=v1.0 mhz=240 checks=PASS keccak=tiny-keccak leanvm_perm_s=8099 tiny_perm_s=9949 heap_peak=103312 stack_peak=45996
+RESULT 2^24 key_ms=27991 key_perm=271363 sign_mean_ms=15220 sign_max_ms=18146 sign_mean_perm=127872 sign_perm_s=8401 verify_ms=47 signatures=8 mean_of_1000_ms=16907
+RESULT 2^30 key_ms=32613 key_perm=271363 sign_mean_ms=28485 sign_max_ms=32181 sign_mean_perm=245944 sign_perm_s=8634 verify_ms=57 signatures=8 mean_of_1000_ms=29653
+done. Press EN to run again.

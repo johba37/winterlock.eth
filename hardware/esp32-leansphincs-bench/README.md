@@ -1,6 +1,6 @@
 # leanSPHINCS on an ESP32: the 2^24 and the 2^30 parameter sets
 
-A firmware for a classic ESP32 that times a stateless leanSPHINCS signature for two parameter sets, with the signer from [leanVM](https://github.com/leanEthereum/leanVM). It answers one question: what does the larger signature budget cost a hardware signer? It holds no secret: the key is a public test vector.
+A firmware for a classic ESP32 that times a stateless leanSPHINCS signature for two parameter sets, with the signer from [leanVM](https://github.com/leanEthereum/leanVM). It answers one question: what does the larger signature budget cost a hardware signer? It holds no secret: the key is a public test vector. On the chip: about 17 s per signature for 2^24 signatures and about 30 s for 2^30 ([Runs](#runs)).
 
 | Set | Hypertree | FORS | Signature | Verification |
 |---|---|---|---|---|
@@ -68,4 +68,25 @@ Toolchain as for esp32-core-check (Xtensa Rust 1.97.0.0, esp-hal 1.2.2, espflash
 
 ## Runs
 
-- **QEMU, 2026-11-24** ([log](runs/2026-11-24-qemu.log)): every check passes. Heap peak 103,312 of 180,224 bytes, stack peak 45,996 of 112,508.
+**On the chip, 2026-11-24** ([log](runs/2026-11-24-esp32-v1.0.log)): an ESP32-D0WDQ6, silicon revision v1.0, 240 MHz measured, one core. Every check passes: the chip gives the PC's keys, signatures and permutation counts, leanVM's known answer among them. The run took 415 s.
+
+| | 2^24 | 2^30 |
+|---|---|---|
+| Key generation (271,363 permutations) | 28.0 s | 32.6 s |
+| Eight signatures: mean | 15.2 s | 28.5 s |
+| slowest | 18.1 s | 32.2 s |
+| their mean count | 127,872 | 245,944 |
+| Rate while signing, permutations per second | 8,401 | 8,634 |
+| At that rate, the mean count of 1,000 messages | 16.9 s | 29.7 s |
+| Verification | 47 ms | 57 ms |
+
+- **The larger budget costs 1.75 times the signing time,** about 13 s more per signature on this chip.
+- **Signing runs below the bare hash rate.** The hash chain alone does 9,949 permutations per second with tiny-keccak's Keccak-f; the signer does 8,400 to 8,630, since it also builds addresses, copies and allocates. Counts divided by the bare rate had given 14 s and 26 s.
+- **tiny-keccak's Keccak-f is 1.23 times as fast as leanVM's** on this chip (9,949 against 8,099 per second).
+- **Key generation took 28.0 s in one copy of the code and 32.6 s in the other,** for the same work and the same key. The cause isn't established; where each copy lies in the chip's flash cache is the likely one.
+- **Memory, as leanVM's code is written:** heap peak 103,312 of 180,224 bytes, stack peak 45,996 of 112,508. It keeps whole trees in memory.
+- **Not measured:** both cores, a secure element, other hashes.
+
+The log is the serial output as pasted from a terminal, with its indentation removed and three wrapped lines joined.
+
+**QEMU, 2026-11-24** ([log](runs/2026-11-24-qemu.log)): every check passes, with the same counts and the same memory peaks.

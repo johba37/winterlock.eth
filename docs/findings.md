@@ -198,6 +198,7 @@ The same keys guard a [frame-transaction account][frame-account] on Daisugi, a p
 - **The laptop is a Ryzen 5 2600 under load,** one thread ([benchmark][speed-native]); the browser is headless Chromium on the same machine ([benchmark][speed-browser]).
 - **The ESP32 hashes in software:** 9,464 keccak hashes per second. It computes the same bytes as the other two: all 54 checks pass ([what it checks][esp32-check], [the run's log][esp32-log]).
 - **These are our stateless key's parameters,** not those of leanVM's leanSPHINCS, which has three tree layers.
+- **leanVM's own signer on the same board** takes about 17 s per signature with its 2^24 parameter set and about 30 s with its 2^30 set, on one core with the top tree's leaves kept; a key takes about 30 s ([benchmark](../hardware/esp32-leansphincs-bench/README.md), 2026-11-24).
 - **Not measured:** phones, and secure elements. From a published figure of 1.5 ms per keccak hash on a Ledger Nano S+, a stateless signature would take 1.5–2.5 minutes there (an estimate).
 
 ## SLH-DSA on the EVM
