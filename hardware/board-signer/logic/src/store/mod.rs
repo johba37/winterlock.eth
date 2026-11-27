@@ -420,6 +420,14 @@ impl<F: NorFlash> Store<F> {
         self.phase
     }
 
+    /// A set-up board whose keys turn out wrong at unlock (keys made by an earlier firmware): it
+    /// signs nothing until it is erased. Not written to flash; the next unlock finds it again.
+    pub fn mark_damaged(&mut self, why: &'static str) {
+        if self.phase == Phase::Ready {
+            self.phase = Phase::Damaged(why);
+        }
+    }
+
     pub fn identity(&self) -> Option<&Identity> {
         self.identity.as_ref()
     }

@@ -13,7 +13,7 @@
 import { type Browser, type BrowserContext, type Page, expect, test } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 import { type Address, getAddress } from 'viem'
-import { EARLIER_BUILD } from '../src/lib/db'
+import { EARLIER_BUILD, KEYS } from '../src/lib/db'
 import { LocalChain, boardRecord, haveChainTools, shot, tid as t, useLocalRpc, waitDone } from './local'
 
 const BASE = `http://localhost:${process.env.E2E_PORT ?? 5190}`
@@ -60,7 +60,8 @@ test.describe.serial('ERC-8499 keys on a local chain', () => {
     await waitDone(page, t(page, 'pair-done'))
     await expect(t(page, 'pair-report')).toContainText('owner created')
     const rec = await boardRecord(page)
-    expect(rec.keys).toBe('erc-8499')
+    expect(rec.keys).toBe(KEYS)
+    expect(KEYS).toBe('erc-8499/winterlock.eth')
     expect(getAddress(rec.owner)).toBe(ZERO.owner)
     expect(rec.memberKey).toBe(ZERO.member_key)
     expect(getAddress(rec.gasAddress)).toBe(ZERO.gas_address)
@@ -98,29 +99,33 @@ test.describe.serial('ERC-8499 keys on a local chain', () => {
 
   test('a device from an earlier build is shown, linked to that build, and only forgotten', async () => {
     const rec = await boardRecord(page)
-    // what an earlier build stored: the same fields, no `keys`
-    const { keys: _, ...earlier } = rec
-    await page.evaluate(
-      (r) =>
-        new Promise<void>((res, rej) => {
-          const o = indexedDB.open('winterlock')
-          o.onsuccess = () => {
-            const tx = o.result.transaction('device', 'readwrite')
-            tx.objectStore('device').put(r)
-            tx.oncomplete = () => {
-              o.result.close()
-              res()
+    // what earlier builds stored: the same fields, with the key types before winterlock.eth/ ('erc-8499', the build of
+    // 4cd616f) or before ERC-8499 (no `keys`)
+    const { keys: _, ...beforeErc } = rec
+    expect(EARLIER_BUILD.commit).toBe('4cd616f')
+    for (const earlier of [{ ...rec, keys: 'erc-8499' }, beforeErc]) {
+      await page.evaluate(
+        (r) =>
+          new Promise<void>((res, rej) => {
+            const o = indexedDB.open('winterlock')
+            o.onsuccess = () => {
+              const tx = o.result.transaction('device', 'readwrite')
+              tx.objectStore('device').put(r)
+              tx.oncomplete = () => {
+                o.result.close()
+                res()
+              }
+              tx.onerror = () => rej(tx.error)
             }
-            tx.onerror = () => rej(tx.error)
-          }
-        }),
-      earlier,
-    )
-    await page.goto('/#/')
-    await page.reload()
-    await expect(t(page, 'earlier-keys')).toBeVisible()
-    await expect(t(page, 'earlier-owner')).toHaveAttribute('data-value', rec.owner)
-    await expect(t(page, 'earlier-link')).toHaveAttribute('href', EARLIER_BUILD.url)
+          }),
+        earlier,
+      )
+      await page.goto('/#/')
+      await page.reload()
+      await expect(t(page, 'earlier-keys')).toBeVisible()
+      await expect(t(page, 'earlier-owner')).toHaveAttribute('data-value', rec.owner)
+      await expect(t(page, 'earlier-link')).toHaveAttribute('href', EARLIER_BUILD.url)
+    }
     // every route leads here, and no dapp bar
     await page.goto('/#/settings')
     await expect(t(page, 'earlier-keys')).toBeVisible()

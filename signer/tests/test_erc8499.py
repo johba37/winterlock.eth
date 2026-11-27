@@ -8,7 +8,12 @@ from winterlock_signer.abi import checksum
 from winterlock_signer.ethtx import Account
 from winterlock_signer.keccak import keccak256
 
-from .test_hbkd import ABANDON, ERC, KEY_TYPE, h
+from .test_hbkd import ABANDON, ERC, KEY_TYPE as ERC_KEY_TYPE, h
+
+KEY_TYPE = "winterlock.eth/leanSPHINCS-keccak/b10"
+# the zero seed's member key seed: the ERC's first phrase, account 0, under KEY_TYPE (the ERC's reference code gives the
+# same)
+ZERO_MEMBER_SEED = "eec0996b811c40a48fea0a279d0cec8f539040b3f9dce283bcb6bd950bb73d36"
 
 SEED = keccak256(b"winterlock erc8499 test seed")
 PLACE = {"chain": 11155111, "owner": checksum(keccak256(b"owner")[12:]), "safe": checksum(keccak256(b"safe")[12:]),
@@ -16,16 +21,26 @@ PLACE = {"chain": 11155111, "owner": checksum(keccak256(b"owner")[12:]), "safe":
 
 
 class TheErcsValues(unittest.TestCase):
-    def test_the_member_key_type_is_the_ercs_example(self):
+    def test_key_types_name_their_definer(self):
+        """A key type the ERC doesn't define starts with its definer's name and `/`: Winterlock's start with
+        winterlock.eth/"""
         self.assertEqual(erc8499.KEY_TYPE, KEY_TYPE)
+        self.assertEqual(erc8499.TREE_KEY_TYPE, "winterlock.eth/wots-d6-keccak/tree-h")
+        for kt in (erc8499.KEY_TYPE, erc8499.TREE_KEY_TYPE + "1"):
+            self.assertTrue(kt.startswith("winterlock.eth/"), kt)
+            self.assertTrue(hbkd.is_key_type(kt), kt)
+        # the gas key's label is an application label, not a key type, and is namespaced too
+        self.assertEqual(erc8499.GAS_LABEL, "winterlock.eth/gas")
 
     def test_zero_seed(self):
-        """The all-zero seed is the ERC's first phrase ("abandon" 23 times, "art"), so its member key's seed is the
-        ERC's stateless seed of account 0"""
+        """The all-zero seed is the ERC's first phrase ("abandon" 23 times, "art"), so its root is the ERC's; its member
+        key's seed is that root's stateless seed of account 0 under Winterlock's key type, not the ERC's example"""
         self.assertEqual(" ".join(phrase.to_phrase(bytes(32))), ABANDON)
         root = erc8499.phrase_root(bytes(32))
         self.assertEqual(root, h(ERC[0][3]))
-        self.assertEqual(erc8499.stateless_key_seed(root), h(ERC[0][4]))
+        self.assertEqual(erc8499.stateless_key_seed(root), h(ZERO_MEMBER_SEED))
+        self.assertEqual(hbkd.stateless_seed(root, ERC_KEY_TYPE, 32), h(ERC[0][4]))
+        self.assertNotEqual(h(ZERO_MEMBER_SEED), h(ERC[0][4]))
 
 
 class ByHand(unittest.TestCase):
@@ -62,7 +77,7 @@ class ByHand(unittest.TestCase):
         # the tree's public seed is the context's first 16 bytes
         self.assertEqual(owner.tree_seed(p["chain"], p["owner"], p["safe"], p["device"], p["gen"], p["start"]),
                          int.from_bytes(context[:16], "big"))
-        kt = b"winterlock-wots-d6-keccak/tree-h10"
+        kt = b"winterlock.eth/wots-d6-keccak/tree-h10"
         info = bytes([2]) + bytes(4) + (32).to_bytes(2, "big") + bytes([len(kt)]) + kt + context + h(p["salt"][2:])
         self.assertEqual(erc8499.tree_secret_seed(root, p, 10), hbkd.hkdf_expand(root, info, 32))
         # the height, the salt and every part of the place change it
@@ -73,8 +88,8 @@ class ByHand(unittest.TestCase):
             self.assertNotEqual(erc8499.tree_secret_seed(root, {**p, k: v}, 10), base, k)
 
     def test_tree_key_types(self):
-        self.assertEqual(erc8499.tree_key_type(1), "winterlock-wots-d6-keccak/tree-h1")
-        self.assertEqual(erc8499.tree_key_type(40), "winterlock-wots-d6-keccak/tree-h40")
+        self.assertEqual(erc8499.tree_key_type(1), "winterlock.eth/wots-d6-keccak/tree-h1")
+        self.assertEqual(erc8499.tree_key_type(40), "winterlock.eth/wots-d6-keccak/tree-h40")
         for bad in (0, 41, -1, 10.0, "10", None):
             with self.assertRaises(ValueError):
                 erc8499.tree_key_type(bad)

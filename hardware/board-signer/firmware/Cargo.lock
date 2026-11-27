@@ -1644,7 +1644,7 @@ dependencies = [
 
 [[package]]
 name = "winterlock-board"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "embedded-graphics",
  "embedded-storage",
@@ -1653,7 +1653,7 @@ dependencies = [
 
 [[package]]
 name = "winterlock-board-firmware"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "critical-section",
  "embedded-storage",

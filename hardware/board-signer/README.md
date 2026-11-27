@@ -86,6 +86,7 @@ Write the newer image the way the first one was written, at 0x0: `espflash write
 - **Not checked on the chip.** A board that ever came up blank after an update is recovered with its 24 words and enrols new key trees, as after any recovery.
 - **0.1.1** (2026-11-16) reads `execTransaction` on a parent Safe ("What it does"). Nothing else changed.
 - **0.1.2** (2026-11-16) says "Nested" on its screens where 0.1.1 said "Parent", and "nested Safe" in its refusals.
+- **0.1.3** (2026-11-27) makes its keys under key types that start with `winterlock.eth/`, as ERC-8499 now requires (decisions.md, D15), so the same seed gives another member key, owner and key trees; the gas key stays. **An update from 0.1.2 or older keeps the storage but not the keys:** once the PIN is in, the board shows "Older firmware" ("Made by firmware before 0.1.3, with other keys. It signs nothing."), and the app sees damaged storage. Hold both buttons to erase it; in the app, forget the board, then add it again and recover it from its 24 words, which gives it the new owner, or set it up anew. Safes that the earlier owner joined need the new one added. Left on 0.1.2, a board keeps signing with its earlier keys.
 
 ## Storage
 

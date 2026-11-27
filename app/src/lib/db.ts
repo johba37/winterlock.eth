@@ -3,7 +3,7 @@
 //
 // Stores:
 //   device     "this": the member's owner, this device's number, seed and key, the gas key, and which
-//              derivation made them (KEYS; a record without it is from a build before ERC-8499); or,
+//              derivation made them (KEYS; another value, or none, is from an earlier build); or,
 //              with a board, the board's member key and owner and the gas key it gave
 //   certs      device certificates this device holds, per chain (signed by the member key)
 //   trees      key trees: where they belong, the salt (secret), the root, the public cache
@@ -24,21 +24,23 @@ export type Hex = `0x${string}`
 export const DB_NAME = 'winterlock'
 export const DB_VERSION = 2
 
-/** The derivation this build's keys follow: ERC-8499 (core: derive::erc8499), since 2026-11-14. */
-export const KEYS = 'erc-8499'
+/** The derivation this build's keys follow: ERC-8499 (core: derive::erc8499) with key types that start with
+ * winterlock.eth/, since 2026-11-27. Earlier builds wrote 'erc-8499' (ERC-8499 under key types without that prefix,
+ * 2026-11-14 to the build of 4cd616f) or nothing (keys from the phrase's entropy, before ERC-8499). */
+export const KEYS = 'erc-8499/winterlock.eth'
 
-/** The last build before ERC-8499, which still opens the Safes of devices it set up. */
+/** The last build before these key types, which still opens the Safes of devices it set up (and itself links to the
+ * build before ERC-8499 for older ones). */
 export const EARLIER_BUILD = {
-  commit: '494703c',
-  cid: 'bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja',
-  url: 'https://bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja.ipfs.inbrowser.link/',
+  commit: '4cd616f',
+  cid: 'bafybeidtidafeilfclkwq2lihow7aip57hk267e3umyktwei66sccc6vpq',
+  url: 'https://bafybeidtidafeilfclkwq2lihow7aip57hk267e3umyktwei66sccc6vpq.ipfs.inbrowser.link/',
 } as const
 
 export interface DeviceRecord {
   id: 'this'
-  /** KEYS. Absent in a record of an earlier build, whose keys came from the phrase's entropy under Keccak labels: this
-   * build neither makes nor uses those. */
-  keys?: typeof KEYS
+  /** KEYS. Another value, or none, in a record of an earlier build, whose keys this build neither makes nor uses. */
+  keys?: string
   owner: Hex
   memberKey: Hex
   gasKey: Hex

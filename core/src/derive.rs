@@ -122,19 +122,27 @@ pub fn gas_key(seed: &[u8; 32]) -> Result<[u8; 32], Error> {
 ///   gas key       application secret, phrase root, label GAS_LABEL, L = 32, account 0
 /// ```
 ///
-/// [`KEY_TYPE`] names leanSPHINCS over Keccak-256 at this core's parameters with the top tree
-/// pruned to a kept subtree of height 10 ([`STATELESS_B`]); the ERC's test cases use the same
-/// string. A tree's key type names WOTS parameter set D6 and the tree's height, which both change
-/// its root; the place goes into the context. One phrase is one member: account 0 throughout.
+/// The key types are Winterlock's, so they start with its name and `/`, as the ERC requires of a
+/// key type it doesn't define itself (since 2026-11-27; before, they had no such prefix and gave
+/// other keys). [`KEY_TYPE`] names leanSPHINCS over Keccak-256 at this core's parameters
+/// (leanSphincs-keccak, [`leansphincs`]) with the top tree pruned to a kept subtree of height 10
+/// ([`STATELESS_B`]). Its signature limit is about 210,000 signatures, leanSphincs' proved budget
+/// for the Light tier (decisions.md, D12); the member key only certifies, so it stays far below.
+/// A tree's key type names WOTS parameter set D6 and the tree's height, which both change its
+/// root; the place goes into the context. Its signature limit is one signature per one-time key,
+/// which the key log keeps. One phrase is one member: account 0 throughout.
 #[cfg(feature = "hbkd")]
 pub mod erc8499 {
     use super::{STATELESS_B, TreePlace, check_secp256k1_key};
     use crate::{Error, hbkd, leansphincs, owner};
 
     /// The key type of member and device keys.
-    pub const KEY_TYPE: &str = "leanSphincs-keccak/wambsgans-keccak/b10";
+    pub const KEY_TYPE: &str = "winterlock.eth/leanSPHINCS-keccak/b10";
     /// A tree's key type: this, then its height in decimal.
-    pub const TREE_KEY_TYPE: &str = "winterlock-wots-d6-keccak/tree-h";
+    pub const TREE_KEY_TYPE: &str = "winterlock.eth/wots-d6-keccak/tree-h";
+    /// The length of the longest tree key type, a height of two digits: [`tree_key_type`]'s
+    /// buffer.
+    pub const TREE_KEY_TYPE_MAX: usize = TREE_KEY_TYPE.len() + 2;
     /// The gas key's application label.
     pub const GAS_LABEL: &str = "winterlock.eth/gas";
     /// The one account a phrase's member uses.
@@ -172,7 +180,7 @@ pub mod erc8499 {
 
     /// The key type of a tree of `height`, 1 to the owner's [`owner::MAX_HEIGHT`]: written into
     /// `buf`, which it borrows.
-    pub fn tree_key_type(height: u32, buf: &mut [u8; 34]) -> Result<&str, Error> {
+    pub fn tree_key_type(height: u32, buf: &mut [u8; TREE_KEY_TYPE_MAX]) -> Result<&str, Error> {
         if height == 0 || height > owner::MAX_HEIGHT {
             return Err(Error::Invalid("a tree is 1 to 40 high"));
         }
@@ -197,7 +205,7 @@ pub mod erc8499 {
     /// The secret seed (wots::Prf's skSeed) of the tree of `height` at `at` with its `salt`, from
     /// the root of the device that holds it.
     pub fn tree_secret_seed(root: &Root, at: &TreePlace, height: u32, salt: &[u8; 32]) -> Result<[u8; 32], Error> {
-        let mut kt = [0u8; 34];
+        let mut kt = [0u8; TREE_KEY_TYPE_MAX];
         let key_type = tree_key_type(height, &mut kt)?;
         let mut out = [0u8; 32];
         hbkd::stateful_seed_into(root, key_type, &tree_context(at), salt, ACCOUNT, &mut out)?;
@@ -222,19 +230,21 @@ pub mod erc8499 {
 
         #[test]
         fn zero_seed_is_the_ercs_first_phrase() {
-            // "abandon" 23 times and "art": the ERC's first test phrase, so its stateless seed
+            // "abandon" 23 times and "art": the ERC's first test phrase, so its root; the member key's
+            // seed is that root's under KEY_TYPE (erc8499.py and the ERC's reference code agree)
             let root = phrase_root(&[0; 32]).unwrap();
             assert_eq!(root[..], decode("31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed").unwrap()[..]);
-            assert_eq!(stateless_key_seed(&root).unwrap(), h32("fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879"));
+            assert_eq!(stateless_key_seed(&root).unwrap(), h32("eec0996b811c40a48fea0a279d0cec8f539040b3f9dce283bcb6bd950bb73d36"));
         }
 
         #[test]
         fn tree_key_types() {
-            let mut b = [0u8; 34];
-            assert_eq!(tree_key_type(1, &mut b).unwrap(), "winterlock-wots-d6-keccak/tree-h1");
-            assert_eq!(tree_key_type(9, &mut b).unwrap(), "winterlock-wots-d6-keccak/tree-h9");
-            assert_eq!(tree_key_type(10, &mut b).unwrap(), "winterlock-wots-d6-keccak/tree-h10");
-            assert_eq!(tree_key_type(40, &mut b).unwrap(), "winterlock-wots-d6-keccak/tree-h40");
+            let mut b = [0u8; TREE_KEY_TYPE_MAX];
+            assert_eq!(tree_key_type(1, &mut b).unwrap(), "winterlock.eth/wots-d6-keccak/tree-h1");
+            assert_eq!(tree_key_type(9, &mut b).unwrap(), "winterlock.eth/wots-d6-keccak/tree-h9");
+            assert_eq!(tree_key_type(10, &mut b).unwrap(), "winterlock.eth/wots-d6-keccak/tree-h10");
+            assert_eq!(tree_key_type(40, &mut b).unwrap(), "winterlock.eth/wots-d6-keccak/tree-h40");
+            assert_eq!(TREE_KEY_TYPE_MAX, "winterlock.eth/wots-d6-keccak/tree-h40".len());
             assert!(tree_key_type(0, &mut b).is_err());
             assert!(tree_key_type(41, &mut b).is_err());
             for h in 1..=40 {

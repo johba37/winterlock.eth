@@ -1,5 +1,5 @@
 // Before this browser holds a device: welcome, create a member, pair this device, install on iOS;
-// and a device that an earlier build set up, with keys from before ERC-8499.
+// and a device that an earlier build set up, with keys this build doesn't make.
 
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { useApp } from '../app'
@@ -417,7 +417,7 @@ function NoAccount(props: { answer: (goOn: boolean) => void }) {
         <li>If you made it in this app on another device, and that device hasn’t sent its first transaction yet, pair this one too.</li>
         <li>If the words belong to another wallet, stop: keep that phrase out of this app, and create a new one here instead.</li>
         <li>
-          If you made it before 14 November 2026, the app now makes other keys from it. Its Safes are in the{' '}
+          If you made it in an earlier version of this app, this one may make other keys from it. Its Safes are in the{' '}
           <a href={EARLIER_BUILD.url} target="_blank" rel="noopener noreferrer">
             earlier version
           </a>
@@ -436,8 +436,9 @@ function NoAccount(props: { answer: (goOn: boolean) => void }) {
   )
 }
 
-/** A device that a build before ERC-8499 set up. Its keys came from the phrase's entropy under
- * Keccak labels; this build neither makes nor uses them, so the device can only be forgotten here. */
+/** A device that an earlier build set up: under key types without winterlock.eth/ (4cd616f and the
+ * builds from 2026-11-14), or before ERC-8499. This build neither makes nor uses its keys, so the
+ * device can only be forgotten here. */
 export function EarlierKeys(props: { device: DeviceRecord }) {
   const app = useApp()
   const [confirm, setConfirm] = useState(false)
@@ -446,8 +447,9 @@ export function EarlierKeys(props: { device: DeviceRecord }) {
     <Screen title="Keys of an earlier version" testid="earlier-keys">
       <Panel tone="warn">
         <p>
-          Since 14 November 2026 the app makes its keys by ERC-8499, the proposed standard for hash-based keys from a recovery phrase. This device was set up
-          before. Its keys don’t work in this version, and your phrase now gives a new member key and a new owner.
+          The app makes its keys by ERC-8499, the proposed standard for hash-based keys from a recovery phrase, and since 27 November 2026 under key
+          types named winterlock.eth, as the standard now asks. This device was set up by an earlier version. Its keys don’t work in this version, and
+          your phrase now gives a new member key and a new owner.
         </p>
         <p>
           Your Safes from before stay with the{' '}
