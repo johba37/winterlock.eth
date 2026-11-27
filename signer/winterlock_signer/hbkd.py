@@ -16,7 +16,9 @@ a failed checksum, as the ERC requires; what a member types is made canonical fi
 Winterlock's 24-word phrases). `bip39_seed_unchecked` is the PBKDF2 step alone, for tests and vectors.
 
 A key type is 1 to 255 bytes of printable ASCII other than the space (0x21 to 0x7e) naming the scheme, its parameters,
-its seed length L and its key generation; an account is 0 to 2^32 - 1. A label is 1 to 255 bytes of UTF-8 as given,
+its seed length L, its key generation and its signature limit. One without `/` is the ERC's own, so only an SLH-DSA
+name; any other starts with its definer and `/` (`eip-N/`, `erc-N/` or a domain name), so a `/` that isn't the first
+character. An account is 0 to 2^32 - 1. A label is 1 to 255 bytes of UTF-8 as given,
 without Unicode normalisation (the ERC says labels SHOULD be ASCII). A stateful instance's `instance` is 32 random bytes
 that the caller generates and stores with the instance's state; nothing here is random.
 
@@ -133,13 +135,17 @@ def root(ikm: bytes) -> bytes:
 
 
 def is_key_type(key_type) -> bool:
-    """Whether `key_type` is a key type: 1 to 255 characters of printable ASCII other than the space, 0x21 to 0x7e"""
-    return isinstance(key_type, str) and 1 <= len(key_type) <= 255 and all("!" <= c <= "~" for c in key_type)
+    """Whether `key_type` is a key type: 1 to 255 characters of printable ASCII other than the space, 0x21 to 0x7e, that
+    is an SLH-DSA name or has a `/` after its first character (its definer's name and `/`). Whether the part before `/`
+    is a real definer isn't checked."""
+    return (isinstance(key_type, str) and 1 <= len(key_type) <= 255 and all("!" <= c <= "~" for c in key_type)
+            and (key_type in SLH_DSA_N or key_type.find("/") > 0))
 
 
 def _key_type(key_type) -> bytes:
     if not is_key_type(key_type):
-        raise ValueError("a key type is 1 to 255 characters of printable ASCII other than the space (0x21 to 0x7e)")
+        raise ValueError("a key type is 1 to 255 characters of printable ASCII other than the space (0x21 to 0x7e): an "
+                         "SLH-DSA name, or its definer's name, `/` and the rest")
     return key_type.encode("ascii")
 
 
