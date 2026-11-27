@@ -58,7 +58,10 @@ export class LocalChain {
   async start() {
     const port = await freePort()
     this.url = `http://127.0.0.1:${port}`
-    this.proc = spawn(ANVIL, ['--port', String(port), '--chain-id', '11155111', '--silent', '--disable-code-size-limit', '--disable-block-gas-limit'], { stdio: 'ignore' })
+    // Osaka, mainnet's rules: since 1.9.0, anvil gives Sepolia's chain id Sepolia's next fork (Amsterdam), where
+    // deploying Safe's SafeL2 doesn't fit the 2^24 gas cap of a transaction
+    const args = ['--port', String(port), '--chain-id', '11155111', '--hardfork', 'osaka', '--silent', '--disable-code-size-limit', '--disable-block-gas-limit']
+    this.proc = spawn(ANVIL, args, { stdio: 'ignore' })
     for (let i = 0; ; i++) {
       try {
         await this.client().getChainId()
