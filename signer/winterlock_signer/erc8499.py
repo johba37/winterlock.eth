@@ -11,18 +11,22 @@ since 2026-11-14. The Rust core does the same (core/src/derive.rs, module erc849
                   instance = the tree's salt (32 random bytes made with the tree and kept with it)
     gas key       application secret, phrase root, label GAS_LABEL, L = 32, account 0; refused unless 1 <= key < n
 
-KEY_TYPE names leanSPHINCS over Keccak-256 at the parameters of leansphincs.py, with the top tree pruned to keep a
-subtree of height 10 (STATELESS_B); its 32-byte seed is leansphincs.Key's seed. The ERC uses the same string in its
-test cases. A tree's key type names Winterlock's WOTS parameter set D6 (wots.py) and the tree's height, both of which
-change its root; the place goes into the context. One phrase is one member, so every value uses account 0.
+The key types are Winterlock's, so they start with its name and `/`, as the ERC requires of a key type it doesn't define
+itself (since 2026-11-27; before, they had no such prefix and gave other keys). KEY_TYPE names leanSPHINCS over
+Keccak-256 at the parameters of leansphincs.py, with the top tree pruned to keep a subtree of height 10 (STATELESS_B);
+its 32-byte seed is leansphincs.Key's seed. Its signature limit is about 210,000 signatures, leanSphincs' proved budget
+for the Light tier (decisions.md, D12); the member key only certifies, so it stays far below. A tree's key type names
+Winterlock's WOTS parameter set D6 (wots.py) and the tree's height, both of which change its root; the place goes into
+the context. Its signature limit is one signature per one-time key, which the key log keeps. One phrase is one member,
+so every value uses account 0.
 
 The command-line signer (member.py) keeps the earlier derivation, from the phrase's entropy under Keccak labels, for the
 homes it already has. Keys of the two derivations are unrelated: the same words give another member key and owner.
 """
 from . import hbkd, leansphincs, owner
 
-KEY_TYPE = "leanSphincs-keccak/wambsgans-keccak/b10"
-TREE_KEY_TYPE = "winterlock-wots-d6-keccak/tree-h"  # + the height in decimal
+KEY_TYPE = "winterlock.eth/leanSPHINCS-keccak/b10"
+TREE_KEY_TYPE = "winterlock.eth/wots-d6-keccak/tree-h"  # + the height in decimal
 GAS_LABEL = "winterlock.eth/gas"
 ACCOUNT = 0
 STATELESS_B = 10

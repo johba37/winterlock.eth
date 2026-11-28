@@ -1,6 +1,6 @@
 [package]
 name         = "winterlock-board-firmware"
-version      = "0.1.2"
+version      = "0.1.3"
 edition      = "2024"
 rust-version = "1.95"
 description  = "Winterlock's board signer on an ESP32-WROOM-32: the logic crate with the OLED, two buttons, the flash partition and the USB serial link"

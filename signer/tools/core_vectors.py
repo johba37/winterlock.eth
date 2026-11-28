@@ -486,9 +486,9 @@ HBKD_RANDOM_IKM = [  # random input key material of 32, 64 and 100 bytes; the fi
     k("winterlock core vectors hbkd ikm a") + k("winterlock core vectors hbkd ikm b"),
     b"".join(k(f"winterlock core vectors hbkd ikm {i}") for i in range(4))[:100],
 ]
-HBKD_KEY_TYPES = ["leanSphincs-keccak/wambsgans-keccak/b10",
+HBKD_KEY_TYPES = ["example.org/stateless/v1",  # the ERC's made-up stateless key type
                   "a-key-type,with_punctuation:!\"#$%&'()*+,-./;<=>?@[\\]^_`{|}~",
-                  "!",  # 1 byte
+                  "a/",  # 2 bytes, the shortest with a definer
                   "".join(chr(0x21 + i % 94) for i in range(255))]  # 255 bytes: every printable character but space
 HBKD_ACCOUNTS = [0, 1, 1 << 31, (1 << 32) - 1]
 HBKD_SHORT = [32, 48, 64, 65]  # L across the cross products below
@@ -502,8 +502,10 @@ HBKD_STATEFUL = [  # (context, instance)
     (k("winterlock core vectors hbkd context"), k("winterlock core vectors hbkd instance")),
     (bytes([0xFF] * 32), bytes(range(32, 64))),
 ]
-HBKD_BAD_KEY_TYPES = ["", " ", "leanSphincs keccak", "leanSphincs-keccak/wambsgans-keccak/b10 ", "\t", "line\nbreak",
-                      "\x00", "\x1f", "\x7f", "caf\xe9", "no\xa0break", "\u3000", "k" * 256]
+HBKD_BAD_KEY_TYPES = ["", " ", "example.org/a b", "example.org/stateless/v1 ", "\t", "line/\nbreak", "a/\x00",
+                      "a/\x1f", "a/\x7f", "a/caf\xe9", "no/\xa0break", "a/\u3000", "k/" * 128,
+                      # no definer: no `/`, or `/` first
+                      "xmss", "!", "leanSphincs-keccak", "slh-dsa-sha2-128s", "/", "/x", "/example.org/x"]
 HBKD_BAD_LABELS = ["", "l" * 256, "\u4f8b" * 85 + "a", "\xe9" * 128]  # 0 and 256 bytes
 HBKD_BAD_LENGTHS = [0, 1, 31, 16321, 65535, 65536, 100000]
 HBKD_BAD_IKM = [0, 1, 31]  # lengths of input key material
@@ -590,13 +592,13 @@ def hbkd_vectors():
         _hbkd_refused(lambda: hbkd.stateful_seed(roots[0], t, 3 * n, bytes(32), bytes(32)), f"stateful {t}")
     infos = []
     for purpose, a, n, name, tail in (
-            (hbkd.STATELESS, 0, 32, HBKD_KEY_TYPES[0].encode(), b""),  # the ERC's 47 bytes
+            (hbkd.STATELESS, 0, 32, HBKD_KEY_TYPES[0].encode(), b""),  # the ERC's 32 bytes
             (hbkd.STATEFUL, 1, 48, HBKD_KEY_TYPES[1].encode(), b"".join(HBKD_STATEFUL[2])),
             (hbkd.APPLICATION, 1 << 31, 1000, HBKD_LABELS[4].encode(), b""),
             (hbkd.STATELESS, (1 << 32) - 1, 16320, HBKD_KEY_TYPES[3].encode(), b"")):
         infos.append({"purpose": purpose, "account": a, "length": n, "name": b2h(name), "tail": b2h(tail),
                       "info": b2h(hbkd.info(purpose, a, n, name, tail))})
-    assert len(h2b(infos[0]["info"])) == 47
+    assert len(h2b(infos[0]["info"])) == 32
     for t in HBKD_BAD_KEY_TYPES:
         _hbkd_refused(lambda: hbkd.stateless_seed(roots[0], t, 32), f"key type {t!r}")
         _hbkd_refused(lambda: hbkd.stateful_seed(roots[0], t, 32, bytes(32), bytes(32)), f"key type {t!r}")

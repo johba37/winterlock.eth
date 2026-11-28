@@ -877,17 +877,24 @@
  "bad_key_types": [
   "",
   " ",
-  "leanSphincs keccak",
-  "leanSphincs-keccak/wambsgans-keccak/b10 ",
+  "example.org/a b",
+  "example.org/stateless/v1 ",
   "\t",
-  "line\nbreak",
-  "\u0000",
-  "\u001f",
-  "\u007f",
-  "caf\u00e9",
-  "no\u00a0break",
-  "\u3000",
-  "kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk"
+  "line/\nbreak",
+  "a/\u0000",
+  "a/\u001f",
+  "a/\u007f",
+  "a/caf\u00e9",
+  "no/\u00a0break",
+  "a/\u3000",
+  "k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/k/",
+  "xmss",
+  "!",
+  "leanSphincs-keccak",
+  "slh-dsa-sha2-128s",
+  "/",
+  "/x",
+  "/example.org/x"
  ],
  "bad_labels": [
   "",
@@ -1224,9 +1231,9 @@
  "infos": [
   {
    "account": 0,
-   "info": "0x01000000000020276c65616e537068696e63732d6b656363616b2f77616d627367616e732d6b656363616b2f623130",
+   "info": "0x01000000000020186578616d706c652e6f72672f73746174656c6573732f7631",
    "length": 32,
-   "name": "0x6c65616e537068696e63732d6b656363616b2f77616d627367616e732d6b656363616b2f623130",
+   "name": "0x6578616d706c652e6f72672f73746174656c6573732f7631",
    "purpose": 1,
    "tail": "0x"
   },
@@ -1869,10 +1876,10 @@
    "account": 1,
    "context": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
    "instance": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0x81746aa374f5101f3bb9dc7e749956cc6a45ceeae9f842b649bef7400fd9eecb"
+   "value": "0xbce99c83174f8b282018ed7b4018ae0e5108156dfcffafa35de318dfed15f592"
   },
   {
    "account": 2147483648,
@@ -1887,10 +1894,10 @@
    "account": 4294967295,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0x9cd9dbf02ecfc4cc2d347bcea1e44bd221f86915410cff50012683241eb5eee790d1df31163c9453bd7934dd50fc651de4002ad2877ba47514d85a9ea1a28b3f"
+   "value": "0xddf55b118df42135435e3f91983de8b6abf2a81870930180474d532f4d30f73ff9c4f0dcbe89362aca590a3328612e37b4e553c42abad3f444833973472ce2e6"
   },
   {
    "account": 0,
@@ -1914,10 +1921,10 @@
    "account": 4294967295,
    "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
    "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0x217018fa284b1e60b22eed1f7c7aea6f703be3b629f1a1bb32e17ccce813212af0a040d00a8b95fb2957d66d008a61548f4aa79c53e9522282d3bc84a8d0271e"
+   "value": "0xd5fcd5f7ac9cbb5a7a5a791e542632052ec9a55b0326e933a5e1035327ce00baae23569b1e780c367b92119656dd9970c3614287890b7403b57bb49a19b3a083"
   },
   {
    "account": 0,
@@ -1932,19 +1939,19 @@
    "account": 1,
    "context": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
    "instance": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0xe72a4d9de48b00ac16d7c25925711e2bd2752add8889607606733a9c5205993d"
+   "value": "0xaa5d04c5cfa21545f95dfe3cbf1cd1a51fb626b17ec54026cd2bc8b5069f2cdb"
   },
   {
    "account": 4294967295,
    "context": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
    "instance": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0x8e360e3878b8932de7d6a90026b58b356bf928bc8a53f56473717daa22cfc2f8cd89a50cd28cdd3e20c61c4770085b0fde20d623f76d0f2bd5276c0088dee92c"
+   "value": "0xbad069d2fd4fb5f03d1c49bc0d794e747679cd9db9ae821da7189cafb0642e9383c0d62f99030fa5d516d9e62392df59d83dc5d737f4d868b6664f01c99976b1"
   },
   {
    "account": 0,
@@ -1959,10 +1966,10 @@
    "account": 1,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0xb88a4872b94ce780755f34f8233b3fb4d67fca52f964cb1ee41fc203bacfc032"
+   "value": "0x51b975806544900a7ccad1a570ea1d5822fab59527a16fdbe22aadaa8aed20ec"
   },
   {
    "account": 2147483648,
@@ -1986,10 +1993,10 @@
    "account": 1,
    "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
    "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0x918525c973a8ba20eb6777a773a068759bc851054f0d440004c58b6d84939215"
+   "value": "0x569b08a641fc50f1c4b682d0759fe77d824970d32d347a640faf157071283960"
   },
   {
    "account": 2147483648,
@@ -2004,19 +2011,19 @@
    "account": 4294967295,
    "context": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
    "instance": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0x73f93a2fbf98682a5bc822a0ca7804431ef98118dee55e9089904479e04b6aeb1604f5e55329cf88ad5ea9bf0cfdc7513aafdfd00e321e2f2fa2759c859b497c"
+   "value": "0x5fb47446b492c7c07f5653c1b2f36e56e1dd8ba6d55da47cc319dfc85ffe9981ddb057b792ae3d87c6811b93e083a3d94aff2f3a98662785bb83aa899b62d84c"
   },
   {
    "account": 1,
    "context": "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
    "instance": "0xa5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5",
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0xb500b73ccbfdaf4229d59a3da38d1bd29445dfb3ba1a0ce8dd9f224387c02c54"
+   "value": "0x585aeae9b1ee9f19c490c009ab6b453c55662bebe35f5aca708ef0e64c8bd99b"
   },
   {
    "account": 2147483648,
@@ -2031,10 +2038,10 @@
    "account": 4294967295,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0xc169b855f51aaf8d19dc169f0713d0264ee630bd548a975f40f8146ded8eee40114672dcaab4a555285e07f08159b58aa1ca5d681fe3dd9818095b5ebc754f3f"
+   "value": "0x954c276ad60468f8406596ecad88390ef8419e5c468a171d1585e7f73a1a1bd94aafd69cff1c59d379f657d50451de19f3e6682b6b57814431249f2b7b59cf84"
   },
   {
    "account": 0,
@@ -2058,10 +2065,10 @@
    "account": 4294967295,
    "context": "0x0000000000000000000000000000000000000000000000000000000000000000",
    "instance": "0x0000000000000000000000000000000000000000000000000000000000000000",
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0x2c9b5bfb77f1d6c3e5bc44bff8e1c3f1881189079889597e533c4b79f5e935e4e7a10a01fec0c3c7ec7e0ecb139928661f674625b725b466d1be5d7ecf9058ac"
+   "value": "0xfd5595ccef496c0edb1b0ae591eb3b434bf1e3f02f4b67e06a2bf8b295a14a42c3cdfb5fb29a553143e648cfd16df6c824f067e8bee5ebcd1131dc3b281cb687"
   },
   {
    "account": 0,
@@ -2076,28 +2083,28 @@
    "account": 1,
    "context": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
    "instance": "0x202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0xb985733a6842ea3cff66c98368c9c5e25ddeddd5078553e92410f0daff57aed2"
+   "value": "0xf56f2211d6017b93dbb31d07b326df201c35511f5830ebacbd3862340b0d5c3a"
   },
   {
    "account": 0,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 1000,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0xc241a892a6133d7f1e726c9974150d232a4f3f268bd0f51b423a9b18d5db0bfa6644e7e2e4a3c0973ff1c6c0159f73dfa269080a3722e1a3503d308d01fe753fcc8a7c322d3c6e8455c4676f20649aa48b8cea57d10acc08a26be577a7087a8a52eacc64f9f3c33c2851d10611abd5b352ffef52090f45fb1ffc71fa5b45433bf0f016403c5331eb2cb7f5274d8d334e3ba0897e0dfdff5e358b4f127e2bc99750a5395614ef1d8b164c9e6e8fab657ce62380a4e887e2ba8566629c98a8ff23afb0127a48615a6b7deb3d8db273cb644a0c12086203812a37be8cbe0c9954a9c89bb0b017b1cbc930d86dcc22fa135094fce0c35845b8c4ee85e64dbcf02df144c049f3e7ca44af2876f13e74a4725137223df64fe146bf81ba49834802ec59a9ccc4fcfd65d99bd882dbe9b1c1bc9c4df656f3281f75fc3354368c17aa11dedc8b12919638e73457adfe2d4d19b23169722e6c7c14b547369fdb3ae881a7ff61b491c8e89ddecfa46e15877650f3bc27dd56c12c733cb10afed62f2094d4bc5056f50c96c97b9c2631782b4443fdade72066983d5c3de6cf374a8ae9e1ddc21223276e811369ea99be98ee4def292b1871a93652ae70d29697ac26d65bb967f274ae338de27d331c834115d67b99b029b11ee67174c63e6540a22f0b8d58e3976d0985c18d0cfe6d76bd4e117e56cf9665d937f0b3bf04f1cb54c112d1528886cd19556694980c2bab5080ebe3c7ec6e89c9481b616ecc60c090af399d2796f8ce6e9ebb96a22390f597e9ad149eba672cb9dedf1cb30c30b2bca73dfa01d4c75e28c36bfcc2555e0e6f5a6086050f13df057531d1490cb286eb92913a5474bdbd23720dc9c8b002af494ee1508afcba5d2eb1a4c0a15257c51a4577f2a5d220909d8f7d9cbd903ffb689e0f4f8303af1131d35900903ecd5acd2354efc022ab50b1bbeab3de996dd3b72e9bdbe51cc0077f8c4797fa7473ed8c98dd3e5015dc2e091a23b73a05f6b8d710656e38668bc8c9fa80790531ac3804e6f44527b9872de2d8d9ef018b7e36df3811c5149a64c9c3decbaf524d131ac0c3ffa3d24dacdbffff110590b9eb368a565ea9b0df2a2e1d930a02e27970d2cb13f67858eb5c2226dfd6d1f7472f0ab39ae918d1136508969143f15410b7afc848cdedf95a8e38f695a46d332c1a45748f86dd22e9e9696914ca3be1645f56610c99e60e220310d120af6325108601e693eed65fa75a85739a50b9d4d5ad9f383f704cd5b931fe6594ab79e0b550bf734067ff862c8f472d45c4ac681e380c99174a207bcc915827c8e447ffd9bc9e291e671f6466a9208bbd4b415a122db110fb059de3054547023707ea203828d128540ac9a5b31dd8bc960a89bb89fbae82e8b7624041c0488832f4dbac54"
+   "value": "0x0a83c0e5272d24179e15142853407aeb96ed7a9741bdbe0163d91811ecee6aab01782217ad2bb1bbe0fbc9f9bbffbc0caba78fd74a1763fc45aedc69d4eca607b50758c0f4db5b4cde69b2b664c4288a230f658f99c96d9ff8efa3fe446ed39c0d6957371c01a8c8c239ca5d0a6da091cd3ed8e8d2aba06796243f43aae42efd84755770ebc4b68c2f2d371b14b5a737218d9e4fb76046150108904186e6f7881395eb581a4d747755d03318dfa995e319655eda2f1d2ad5e3f88e10b69ce40de7f17e8c441eb812f8a724509ae88f7d995170c82867b36986ae6b1c5456673789e6d2b29e8fd80904002e137166a61a4be2f49b90cd45434b0b773b22b13072595559dd649873b5021e0712c854e9c71fa29d304c8cfd65fe3a2e969bdadd910aaadbd6e8e544926582031319dd2d76a091d8522c8787a5064f74231c522256ac82731586eb1a49d8d0f6fd74e8e9f8de1ce176613043dc771b86cddc014a386c3c1d68583f4af3cc8c1604a5778ab95fc7de84390cfc4fa814c6cd76a4f899b94bb065a82993f7f0757c152f43d344f944061e27be528454f42b5fa2973ef8486042912e080241240491703ef7e8ebd79ad1fedc6c3a5e3b1ace964e2fc41e5020ada3274f1aa4ac43842bdc83ddb39ba568908dc7c6614696017a3282702acacb44882d96bd6b01941d7b1b84e62c4f021594185c2caf67906588cd115b90cbe88fb683d7cd3918df488b4ba509839a06d2ac9590c505b7b67781f6fc9aa17b616e9d3794e3e607d146a6bbfd389cdb70e7baad274c7987251b08096a4badfe54b526feb6faaa3e5a313925585387b320a2f1f8e1dd9db29956f0dab60633d3256b2bdaa6b2ddf9ae8a3cfb85af26fb621d84f1dc1c4d9c79a47f89b00d7addd9e87dc1d9b65ce51ee560a9283873ce6d018c675fbacded69caeb3b26c522ba3ccccb240f214067edc0461dc65fd44ec45a6439b9fef14b334f8c23daab43ac2cab1ff467861c704b68dc6748933d65e81510a49a5e7de3cc43b21490441915b3f12ebe6d243c64af0a6bb8ae58ae8b9cb742fdcfe2e0b36b4efe5127857bace351723d6f63263a79c54d3dc175eeba8cec6da7c8e212638932a44af5a2e85128121d675f2ae8287f407e31ac6f7f60be682104291c5d7aef21f1dce5c8c655445cdb8a0a5db81293bcb608169c388e36941efde1cf35c9198c0b671cb58fe0360179f7e20bf23f7793f7546ff98f386c4a5d5315c304cb53e73ec412148e1cd122c0cc90f065f9920d1c4feb2813f90b99af1077c0f766c33f1063d41d84d2e60936e2c2f62374f62817daf8a118465b42f1a481101c6e3f0de5bc3146fcab87bce26973797a4952f11b4999510c9077367519fe3b3553f68d7f99f677c80d4ac14cbc2c14f5"
   },
   {
    "account": 4294967295,
    "context": "0xd1289b69dcac463c163bc64d86db07f55fab54a331c4a5b7671ce35a34154361",
    "instance": "0x4831bc729845a953afa5ff0c337670cb70152ca45044f846d62f88912a66f2f3",
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 16320,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value_sha256": "0x3f4e23630b4cb2292ec70cdcb9e97c0e595a375a58b94a2ad8005a8ac5b3cf20"
+   "value_sha256": "0xd7055e61071b9e82b0136467307a8e30f659072bbd5bd5a206c26bc2832ebe4b"
   },
   {
    "account": 4294967295,
@@ -2121,31 +2128,31 @@
  "stateless": [
   {
    "account": 0,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0xfe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879"
+   "value": "0xd724df7121d82fbc67c21468830ca1863081352c1391e18b7e1ffa888a95f246"
   },
   {
    "account": 1,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 48,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0xf73bf048c38862c1d5df1bf54a96267a0335ad12933388a2158594527425c00d99f0ad71d8b2f69120c24abca45c871d"
+   "value": "0xca33cbc8ec21702a3532d4017fe4a99ce7bbb4dace5fcff280226855ef6f2f49cc7e85fb3582a72c26b0999b1f0a5995"
   },
   {
    "account": 2147483648,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 64,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0xe8ad2acde6bba673d444f8415aac473dad54ac38852214040056581f245587d7f2115bda7072835ddc5064631b8dcd7dcf05f54708f1f7349d198817385a95e1"
+   "value": "0xf01638d13d6f5662681e10e1f25fd9252a34499a8dcac9139747cd93beca78d9de8ce83a089e60047ef411337d1888f5d244bb60ab3f616c187c29a0e46453f5"
   },
   {
    "account": 4294967295,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 65,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0x27428763a442e76c78d1b403a250006a3a4bbd6ce078bc559408a6633c56cdd77e3c852b4f1a9dd398c040fc34e37766994328e3f47917f0b362ded501d2b54f87"
+   "value": "0x393922b9b623dc465875eb6a4dac53e2047684315bb678cef8145768f341fdfdac639955be59b1737e9b0878211bf58262dc3bbdf56c80d93ca9cf4104a2cc95f1"
   },
   {
    "account": 0,
@@ -2177,31 +2184,31 @@
   },
   {
    "account": 0,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0x225576ea987ff18cb550d7f98c0d008d8b2553fbd3ff176314bcc04814905ee2c883c19a675f57893aa66fe378aeb26240c905c2c3b9623c2ca7776ba3200133"
+   "value": "0x7925a8467c0f90f584d93c17479c5e5b19ad317ceeb22df6da80baaf7cdbe758ed03c82a8b3cb09140759f1c1910b24e14ec61ac5fd091afb7bbfd8ab7386cb3"
   },
   {
    "account": 1,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 65,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0x05e8916f6c077965ddefaacc0108a131011707a69f1ebd54645ead8a8c6dfdecdcc70aa323057413cd4add9ea3f8bd51f9ed16489272299f27763fd2dfc0d4c8dc"
+   "value": "0x35f282e943d9d3788972b7594105e56ffb2cdb51683908bcd4023afd6355ebc1fb3826849fe5506735bda8971a0645b8196a1cd42e6da230477d9cb77ae1b2b9dd"
   },
   {
    "account": 2147483648,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 32,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0x25344c821d3b41dfebd2bbb0b51af6ade9ed37a52ee0648d67d265c1216d65da"
+   "value": "0x3a93e2f2b1a50bbee2902a2c9390fbf6a0e2ccbf3a2abec60be467752548a73c"
   },
   {
    "account": 4294967295,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 48,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0x31a80322bce7b22ad74d8a5b4fcae50d2bc43a435ac71d44aa465844a842257c8c4b6c74cb5802e755044ddac4ed66a1"
+   "value": "0xd7adb562ced585d7b812e61d03637b1f82e896124082a94708f8588799ee85dffdbe3a9e14ae8fb1b9b4174c198a52ad"
   },
   {
    "account": 0,
@@ -2233,31 +2240,31 @@
   },
   {
    "account": 0,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 48,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0xa6c61b11abd12000e69e975032068ba9a4157f3d3a12ca16e497140c33d1f9543981df56da2ba1b401c0212a175fc0c3"
+   "value": "0x21dd995fc2525663872c85e1eee182e370053699819ce7e6b628c1723546195bc098ad3b7dfd996544f5ad5cbcbdf33f"
   },
   {
    "account": 1,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 64,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0x40ccd06b2802dd68212fbdca55abd04b51d3b1ff4216bd1f1e9ced7309bece5a92cab0877d195aafe5114611a0241fcfb83c0faae133f9f2d80959454df5512a"
+   "value": "0x77983523b1aec66f656ea78c083cf63e0543a48054042db52a6f3f2d4ce323ffec9d12001df9c89309f5f9713ad12bea2b47908d23e7142c96c496c70371ab19"
   },
   {
    "account": 2147483648,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 65,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0x75a8bb7cb53fd06560b20bf3263b52a1bee416a1483ad2b740d0a7a3910a84f2e01a0dafaaa31701f13902d91ae762a6a38dc4fdf567f738255529a7f2a4f3cef9"
+   "value": "0x9618e2dde6aca4d168eccf9b53964f9cf1acba4b7a743903137751c7bd526188ed2e33571f0c5f6bd6d2eb0255f90da38bd690651c7c5da44091fcee406b8242c5"
   },
   {
    "account": 4294967295,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0xb3118e3305786e529f1cdb0a9afdc61f0c6ad05270dd9da8bd824113bc62a4a0"
+   "value": "0x7443640635ee68988f5da57e4356bfc62f2f81aa45e92b3119b606fa5427b9b2"
   },
   {
    "account": 0,
@@ -2289,31 +2296,31 @@
   },
   {
    "account": 0,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 65,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0x33f95e8bdb60fc51d19ce12712d1173e3a40759488e9b250c9e498cd398b709dd19aa293a662b8c8e6226ef6de7189af73004c16eb1c38015ed41568c24be795a6"
+   "value": "0x80c6965ec7ac7d0fe85ea742ccee36ec6e243bf0a6f935be655ebea906b6e27861e9897a7b836f09c46e4b09be5eb5822fbec8488aaceb01ef6d1a924663f50e9a"
   },
   {
    "account": 1,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 32,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0x7426656c94fe195cde83653ebf9e5bb5f874443d84c24bedb734af81cce4d5ec"
+   "value": "0xdcd0873d302ff47721ec2a60a384f7fe3bd51f80a3f1c3cda1c77e88d2a0a956"
   },
   {
    "account": 2147483648,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 48,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0x74fcbb173da916f2b506f97f3b18a466a33959eab8f1e1450df58545d0848955122ec30bd76708119a1ef104c82cdd76"
+   "value": "0x9ccaa5fddf8ba056236eede25be4b3aa282d0d9724a44efd24433d1cb575b6e70ffdf2ad7986bcc537318754111ef519"
   },
   {
    "account": 4294967295,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0xc9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad230dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-   "value": "0x0787e4c4c3168f09e15bccc0e11aa01f28eb3841440a8696f61f66d83c1598125a7bbe79c939436b4069369c4c4439e6cb45ed6e32f9d26d1a62645da5369ff6"
+   "value": "0x3e6e3047bbb22aad2dd78ffdbb12cafc770d6606f3e6986b6932a8359c4b8c2238e14d6fae93678796b3715877a071a524b940535f440f5aef935807a1693af0"
   },
   {
    "account": 0,
@@ -2345,31 +2352,31 @@
   },
   {
    "account": 0,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 64,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0x3c042d050fc2cfc5d4677388041936583ca786b1e755ab0df82fbfc55ef3b4ba27c0885a336747e077fc776cb4ed878a9998bab29d7549469bd9131d94be037b"
+   "value": "0xb258cf860e2f301ef2a006f3d57fea582368904fb04b7b980921e8d43b6eb888a3216e9e0517ecbd3f0d4cb8346b4bb36a9eb6548822c6b3fe203594ac1ec0ee"
   },
   {
    "account": 1,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 65,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0x10b6f76a5e4b0152af0ba37a2c61f56a361d2feb9f37e4120eafbc0b691e443fe52e8c068bf7c763484534d331def17061035c779c4218ab7c3895d08a9d7c4747"
+   "value": "0xf30594e8c6908d602a3bc2a0f948393e50372817ad5135e360d749b6093ff4be030765e77bbd0beb2a89affcea20b256015bbbb3be05db2aeca3794325f1b03c12"
   },
   {
    "account": 2147483648,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0x7f5bd05e6ee202850fabafb436d7f0058b75d0beadab021f2a2b8e9814bac9da"
+   "value": "0xacf177c57d789091e39bae479d2e3d505d33f9c3b93d762dca2a2ee96a79dbbd"
   },
   {
    "account": 4294967295,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 48,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0xa3bbd266c1a1e377d8ac8cd2486265eb5c644fc1f131a5584e2577880e420190beac14d5fa1887996bf9a8a202ee152d"
+   "value": "0xaf4661ec4abb667f7eb065553fc8c18250de76f0d289ade70960a77c338f241a110e143e2740d052eec5b9bb18ba654b"
   },
   {
    "account": 0,
@@ -2401,31 +2408,31 @@
   },
   {
    "account": 0,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 32,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0x251474f1d42dc1cdd1743f6dc557e58d333b595064748c33288e95af277f5778"
+   "value": "0xe0c4d5227207a1086c9167aa195bf5fe763faa2b9e875e8bc4eb5a46b6805765"
   },
   {
    "account": 1,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 48,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0xc303cb13632ebed3e2b1d89f0929a44adb54a3b27b235de741f947ebce8a0b1eb3adaa71aa2aeeea576ae4e1cfcf571b"
+   "value": "0xe0da598001a4c15955ab51cd9ec546cbafbfeea5111a5fb8071aa323208e4bc23effacfcd0bb609570e320f6c3a40b7f"
   },
   {
    "account": 2147483648,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0x69ddff8456aad5d69a4c559e36419420a5a2c7ea353bf3f4401f8397a0199945c5dc78701cffdde765ccceb913f17f3b8dc72328e0d337c1be689cf04c38fc95"
+   "value": "0x504810832c205439bcaa8b06137c614ae44d19d6bb4de8fa50280aba2eb5360af1d9f2b654f5e317862e19bb31e4e231b6d9110573c357f84edb783a789bf95f"
   },
   {
    "account": 4294967295,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 65,
    "root": "0xe701bfb6b6c90850312e8e01cd8f5b7cf98f2bdb0da1b35590c5b1cea698fe4826ec44f22f2a2eee73cb394eb192d0c0b8c28eda8984e62f02a4c0e3824d740f",
-   "value": "0x60f2c1a4b01613e3fefb74403c3c733372d9abed7a9e8a303da3be4f9ae8fcb529bc733923321a22fa78642aca0d7a332b88ef8cf2ce2a932fb6063227ebf470f2"
+   "value": "0x33d4121e0989d92676f0fbf2a1e4d7b180b23ca945ffbf1237e0aeba871079a15e28bc5f1384451471e8c3f2ad2eb0299e3c7a0b15d27250c985c4550bd74c4de1"
   },
   {
    "account": 0,
@@ -2457,31 +2464,31 @@
   },
   {
    "account": 0,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 65,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0x250d106226ef83edeedb3bf1ff1f588297480d8fc8e711c1861c5a73a26afb2eac89b72681816a2cb4bc1b1c4a851513dd726aff8e972651d745e2f8daece564f5"
+   "value": "0x17307d060c68e375e89c675c7e61c07c852dd43df74919ef1394f9a48b999c9202e794356a266d99bdf437f23910a255c82ea3b8542cf207cbb3f5930911d85220"
   },
   {
    "account": 1,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0xb4dd4790588ef7ca9c97559a1b0b92d748e41d786b447b2839c4f8bb3fe4b438"
+   "value": "0x38a6ff3edb886705f675528eca730557fdfdd95e682c1d66d56a270aace71b52"
   },
   {
    "account": 2147483648,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 48,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0x5030773973d4f4d749d30c5e7858893a8a27526e318fe4e0b645e35b250b6a660e2bc43e82db66914f13f6ae4d94638b"
+   "value": "0x26582475109720438c7815838fd94735d901106b98b1ad46ab594d306cfea5b6d4d6940a5cf58423db05132f22de29f9"
   },
   {
    "account": 4294967295,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 64,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0xa1d5412bf04ac1027522c24448634522c19312deecdeba0d8c84cadd7bf3a917ffe64091eed58a006ed5082192de3ebc3677fbdb748684dc8d39c0d9fc1365eb"
+   "value": "0x21f30809127bbfa58f9757fe004064b0678a767580666ce8467a0fc98da8ca6a61eeafbdbbba2eb514201ea421ee0a89a027a775c8d7a9920d244356cca79f60"
   },
   {
    "account": 0,
@@ -2513,31 +2520,31 @@
   },
   {
    "account": 0,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 48,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0xe510042ffc884935de48148a07944dd27610bbeb6c3031d55bc55ef00b9195fd586d6e13397d3ac606635ddd076e5882"
+   "value": "0x71a2f942c62f7692eb6b68fa50747df76ca13b8e27c13360507570013bbd9705742316e1ffbfa3d159f22bb69ed5a036"
   },
   {
    "account": 1,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0xa16e31f4715b9a2e8f53d4f51e00a0c54fa3ba9bc4dff045042105e76f3dcdc9061e37d5cbc5558a5d381cf066d8a2c86814fd74bba41880a68f5067cfb86896"
+   "value": "0x1bce6991c5ccd51d36e2ad668711dd34b5b0f3ab93aeabc05b57b033fc4628bdcc03c563dc64e2b2f3a9df25bf82fc1a0fe2970d603127a3ccfb85db0ee984fa"
   },
   {
    "account": 2147483648,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 65,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0x7c4abcf5cafdefa47b1398f78a00b022735e51428620b98f8676e71525b31bec204e6481964879192e0953a01b4a85aea8ad5f76e7b7e499bdb80905be674a5ae7"
+   "value": "0x21d3e4282c125a714a719211d9bfa040a336ef40594ac9eebb1f94ce4b16b3f918b1537021175291434708c8adc34cb99bea484c7473caf47b096b0731ca092f06"
   },
   {
    "account": 4294967295,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 32,
    "root": "0x719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-   "value": "0x81f0216e947a64e4433ee418dbe7345eea4fda1dff4b29a94263f53bb092e7fa"
+   "value": "0x8b5f3976a0cbd7178dec7f46c6d7cc10b2ef63d58e4abbc92721a93d359ea3fa"
   },
   {
    "account": 0,
@@ -2569,31 +2576,31 @@
   },
   {
    "account": 0,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0x1ef084832d92e6b9269c35a109ba98dae3284595bacdfe3140313924ec3c704b"
+   "value": "0x69a8c5aa0424974489d88c38c978c6963189ccfb2232c5d7091f1d3ab210829c"
   },
   {
    "account": 1,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 48,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0xe080f4faf9578c2db6fe47bd88a098e3984749df12c44051c9a190442fd12ef13a5321aea9c6a17212b3a916c32ba994"
+   "value": "0x12420b6fb59c649cb763cf051157b95541fbda6dc3c7dcfbc0d5976c1f0da13663ad4ba390c8cd2102f56957f534bc0d"
   },
   {
    "account": 2147483648,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 64,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0xf9519566114dd7a7d06068ad8509930356e00001441fa3a55d8586d43761e3521b40e7168c4494398f1b1b477f027fcba55d93d07fc45d847b537fbc9b363c0d"
+   "value": "0xe02f99cc662680e76a10d0c29cdd85b0f0497e398ed8978309473de07f47b9cfc290049bcb8a24efc0b6b49e30a8c3d099b0ff32e0533eeeb06b9ecad0ccec9d"
   },
   {
    "account": 4294967295,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 65,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0x44c51610199613bf5ba8ca9664a005ef66b7930e971be2e1499e74b52edd01a6051ec7eb114e47cd9e33aa487bf41bc5ff08df2a2235b6af0e23c955117d9d7080"
+   "value": "0xe45c1dc582d3624c1bd36fb7d356e543673356819de068ab4efb26a7eb7140528f73fca765b969c566973e29b34f3df964c726cff44580a0a01a2ccdbe6f5be71e"
   },
   {
    "account": 0,
@@ -2625,31 +2632,31 @@
   },
   {
    "account": 0,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0xf75926e43fa0a6dc88aab481d0a03d1693ca54a96834043551b843a9001b9db20ed478da60e2594544d849900f91e6a877952a7dd180fc00c631b0cb1437d6c1"
+   "value": "0xe4e240df3b3fba9a6d73457cebc2170112a31f0b440eaba012e1131e007a41e90e0662565d5340b729fc7d0997b76fee8ad23cac404cdcfcd1fff190582de108"
   },
   {
    "account": 1,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 65,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0x630d7d33c6b0bb86c87a01742b8f949fcc75d5d479e9ce7aa9718f99904eebbbc3bfa2652f65bbaa96ff9d58473022e25d24f1759fd17a02171718ee144d31a00d"
+   "value": "0xe9480adea3161858c02f322f34fe25552768724b0d4d6c8804aa648adea756117e63e86f99876def8a426424ac0aa4ec6b285f34b945a08cdb0f1963b307366955"
   },
   {
    "account": 2147483648,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 32,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0xace848e5073e376d26d7c7eb24851742802bfd3b27789d6b49eadbf4603ec4e5"
+   "value": "0xfebd13619c3eca32c1f4985e4f7d6cf12c75642ab2b6f94cbb85ff42edab16b0"
   },
   {
    "account": 4294967295,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 48,
    "root": "0xf950777c3977e1ea461306c41f5263a568377fd2151c6e6aa18c73b0cbe03897769be0caa3ec9da17e0e4a8be46a0bd7e40f79e1235ba6c900dfb18f606005f9",
-   "value": "0x36ed6be70f0e8bc6e96e0cb777291de3e563162d6d9e7f3dd7196d33c3e403a5c2a72fdd585a192eac7860e4341e3575"
+   "value": "0x0d520ed714f0848cfc0e124fdeb12220ca45cea043283513156f91acaacf99096585d63290afe397ec56cac522576184"
   },
   {
    "account": 0,
@@ -2681,31 +2688,31 @@
   },
   {
    "account": 0,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 48,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0xff4d0d9b7cdd73ea2b246606af94d7334924a4cb13913defd1dc922f0451817aee9f61740ac97abe7def97f12033832f"
+   "value": "0x9b0f03d41cc189e0596bdebd4aa88a413ff57a0bf7716537df190b442c3affaa65991c9b0271230dea838a598d410312"
   },
   {
    "account": 1,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 64,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0x0a25a3ff8c53a0a93e8304b57362f3dc86c19d127c208d9af55a8f38728bc0fca8d0471989ba247eb914396cbf269fc671725b139d2ebe712fe514319998afee"
+   "value": "0xe17f66af7c1bee3a78222f0ca3db958386097322ab580e5f431db5b48a9b50d7d4c442ce8123e24586c1d35cc62e683142503097c67856b58013874bfd091ae0"
   },
   {
    "account": 2147483648,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 65,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0x08d026a1ad71bc9f664f66b6394c24636043a8e79acb69c97c69a5e083b0821412df4c8554b6cf7f80efa962b4edc185a6e5166225a765f2c0039268443dcac010"
+   "value": "0x2e6c138d564895c5bc684f403ee7f83709d25a9ad285d417ff27e336633bc7d7af539b4228092b4afc5a4af32408bd6225b509b8de7ea9890dd0ff64b8386dde33"
   },
   {
    "account": 4294967295,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 32,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0x1cd7426a75c1a05b50e0652489221cc0cb8df321deb5903726445bc7e7f43561"
+   "value": "0x876c639f54459699bd11be4767d61379c99fda4ef8fd7e6b152157d4c08aae77"
   },
   {
    "account": 0,
@@ -2737,31 +2744,31 @@
   },
   {
    "account": 0,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 65,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0x3e8f454ce683b922e893a345a87de42fc2ae157c4233a642d93874253c5df5a95ae3a5a52deff67fa80c70a526c0e0d203ba24ab435c5636390e00cc07e29d400a"
+   "value": "0xd0b00b1fad5ff7575b214c42212a9b1f5f3ff0042c95da7e9cac2b48e5b736672f9d088a284e2a839226f1c6cd6d6406ce1d4e998df313da5dd9a259f6ffe0891d"
   },
   {
    "account": 1,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 32,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0x0613f2f05105da30507d48d65d63c2602c2ee448501cbc344f409f4ff97ab91c"
+   "value": "0x298a829f800b28c0458d5d94346949a159ff229bb1401538a984471130342b99"
   },
   {
    "account": 2147483648,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 48,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0xff23d2f1191f27385f2ecd69077b423469bef175135e2f1f2c818a69b5a4bea642d8537414299e55041ef76cc58238af"
+   "value": "0x5e39e576ccc8935984e750f25dc1af2c18d955cba8a71d00b9428c9e6e51821f78b7ff06618cb9cab04212d118d74a96"
   },
   {
    "account": 4294967295,
-   "key_type": "!",
+   "key_type": "a/",
    "length": 64,
    "root": "0x14c3425064419a325957c031169004a6335b8d2e1fae34344e3b7c1a66b9f5a681db7620e40095bec1ba022699cefcb5971f4e03eb682df2289b24f54a64fd5c",
-   "value": "0x0da36506035dbeb1685eea1aa30baa6ccc3ea44671134e53c6dbb26f403d668a687ce231e139287b34bdef92fe0fead38644484b20a28f62973a2efb3f0b8d4e"
+   "value": "0x12069270c5023eb49c099eb287cc24eaca91d757e7d1b21adf0ea3960d5bf0445dfc95430873c1bfddd8b12b864c2dc66eb255680089d3cce91c15a6aae52bea"
   },
   {
    "account": 0,
@@ -2793,17 +2800,17 @@
   },
   {
    "account": 0,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 1000,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value": "0x85a5bc00dcc871da54701fba3a53cdcd34312acf9c51d1fe40b778ea4a3e75e4eff73f53106370994d9f155b3308d24d18fe0baeb025b4b89bb543c502ef17019ab101a994394da5b24c4a48fde7a7296c8ff4ef2d6431e107da5620ba969a43f095da00b51893a8c211d12f4c0fbb6c3712d81c220fa8d960fdee49e30396dcc398a679c8a9297039e49f44245d2d0ea8909d5c5e993595b144c12968497156bc234f1e48465e9b2e2b2c9b440b6594b5b5d41c58fbc59a245b9fb9bc28718963c1e14e185f6fa55767616b1e43f16a5a2ff60e7b97a1932d9690c67acd964c536b15968026528d0109229bddd87332fabddd71f2e065d12c12fec988f2dbf1007bc55563e4ead3020cdcc349849cd2b8a523e269322b4eca8aea243779c697841ece314ea49471234883f9f1d8971039dcf83d811b4d8a968da78aa4ff22aed08b660546ea174fb9cd4ce258c3c418b9078427ce047a65946bfd225f008eac66c1c6d2eccf9347caca05b16be175624b13e5c812e7dedc3b46b9a07e346966e8fadf7294bc1e36a76fe54fdb2c9dc94bcad0ff653ed835525046a14e26403105d89150933480d9b037690691550524dd29f43361b9267a59a5c089fee4ec9bdd56c1e63519a9f0d1d83f0a1eb954adcd8c6b524e67c94449936af24d88e9231dbdc92fa3f513377067e20bee27e9d1dd7897b725fc1713961dfe6c27135541adc94918bdf14592ed15850f55e6523dacafc279295e92b5114df37cbc6598e5a4b1be5b32ae10e73ed6b5f401d959b178fc7cd635e6ed267d3048d628fa62eea9bda474c92059626e2f4a9bb057dd0c3f383b658bc4815271f9119176945432bb9dde584a220ff1d6b59b0a2752742ad33badc09ab2ec3e89a4abcfe390c3514b2640eed0ba334842345f0393174f90ba2750891243f8941976e2f151bb8ef2077d22ac6306c0afb3799e568085225843d67476f6ea76c45b6643eaaa27ea03d917d136b98ab009df496f59647bfaa0f464316aaade0aa088a7ff92ba3dd1b45063849748bcf48e2344c8d22e107e352c4bdfde7dd9c3783451b50ba82a987ea3f5d1d21dfc2a9adfc041c7c6b64adad7052b609f56868cf853e0378ec10615396339477b0fdc5599e77c112b0b16fefd0e3d25719da41d749695a6a8271d19c94c99e1c17ec6cb4b8c8bb988c360da8623e459a48e10daa5de7b29fb6bac0945815427f225f0fe86e6a0e35d54d52e75b72d1f3918c15d1952b1e63a098aaa3817e5103e6e2312fb3fe6e1a526057faddb57de1f64587761259152f90f30d9e6027ef17555ef5c7437a9ac24e95aa826303dfd6566b10d4b39cf76739a62b5df3cb04535455d8ed9cfc6c27e671dca7b0c6bfa672c8bd0fd4b4570608869a9d91db57db8eeadd1"
+   "value": "0x2b27e121b6f9fc75669735455dcb21bc0676d9f6b85f242fd2d53e2a0f72953b6749b8c84003066c07954091d3bb8e4950f4c3f3b5e8d79f147509cb246f57f40030f29ef65e57b7145364d6b388ffd32fb9eef18b5484f7ab6cc95049189058ce463291a5dd8b0fc1f3882984591674b4d1bf881a085f1d390132bfbd955f66a307d68acf25175ce63b08bdadc8148e377ca943f0c0c3bbd4993b5385cac2f2ad6048bcf8ebdd3727834c510582fe144fa4f368a70c4e0f37d10bbde089e9f2b453a052c8b4d12bc48dc8c6f3de5b1ffcec43f6b425e7685ac9cc87ec9879e457cba2e4ba6c86a3ca661bac3ab2d1276a79bac6df224c863a02a85fab09da7b8349b953ebf6fc810e59b2e17e5cd76ca42676bbdbe29a43cfe1e0235dec67f3e15404806f9ec6477cf11a891c48a49401cf76d1f295b3fb4f3c44074ac674c69601324721c5389c2c0ac1bb2ac5cb233c56560eca814736b3ad0c3a100423c895bacafb274a1a329ff277c73d27ea8b1c2d0a864c396558719dac9ef580209c9dfddda5d7f08c94eafa79afe61a3e23e309fda95b110129aea00ea149de9eaaca417accbe10662062397b79d9f2b6375876d8c00166a37154265d95ab877bc84eb08bd36a0a05c7160859b5ea83fd52f664a42e6ffe07ec14b9e004a21d8ad909b1c1453c9f479e934d07f18f2b2339a41231f7ecb1880fc315fea6ca200e866d1cea846be9ac8d7b318495e9ab7e8f023994436f83ea3fe733ccf92f1d4bd17564eb4c84dcd7586196ad9aa8f2156084ef04794753c96414db8135a49d5f213bad94fcb41b365bf6b3541bf5f60e3da6fc98a7af6e11a3572afe142145d7b32f5162e859dcfc719205c7dae37d5cd00102a9fe474fe20ac49ae5f0dc35934eb8935befbe35722b2258623dfe9df29efc1a903bd78f450fa8715ba57d1460a410a9fdf4fccf0bbd1a4783f2f719445c527b99583d4aa238cd4b63abbdc31ff59237669089c4bf265ba0eb5bffba80b38659fa512492330dfc20fbe4dcd2da78aae64c0ab5eaff0fccec2360afc67ff7cb7dd38fdd34e8a51ecb2b489b7acefb22afcdb2a94963f8aae0e77acce623ad884321780340450b7942b05fb493d90f4fd03c80244a12a1aa35c12e5eef544f9ddb64078e547a8e0d50874f96e577285c369a494abd79a0a5594debe097d1559e3a311a6cb7258fddb3c066358d393f8b0b7fea4301871ed1a2d4713307eafa3f24f76e4ba69321a4900b193b7b4c505727203432bddc23439285b06264429b20cc14c5e65f5439273e7ae75cf70653a12d6c18781f1a48a915b9147d4db15ea73edfe64226660d4d38eade5cfb2ff0de956d17bf3d7186958fcf83fac7d498c0dacf33e5d9b41c4be470d44e963622d9edfda2fe28910d"
   },
   {
    "account": 4294967295,
-   "key_type": "leanSphincs-keccak/wambsgans-keccak/b10",
+   "key_type": "example.org/stateless/v1",
    "length": 16320,
    "root": "0x31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-   "value_sha256": "0x35b2a05d42f10b384501b3fdaefddbd0469f99c4426571a2bfa9c8170be30409"
+   "value_sha256": "0xfa80d4592227c31835b4c6e411f9dbe8c19417610ff00ccbfe69a40a47ff0740"
   },
   {
    "account": 4294967295,

@@ -417,8 +417,9 @@ fn keylog_scenario() -> bool {
 // --- ERC-8499 ---
 
 /// The ERC's own stateless seed for its first test phrase ("abandon" 23 times, then "art"), account
-/// 0, this key type: from the ERC's text, not from the vectors.
-const ERC_FIRST_SEED: [u8; 32] = hex::h32("fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879");
+/// 0, under its example key type: from the ERC's text, not from the vectors.
+const ERC_KEY_TYPE: &str = "example.org/stateless/v1";
+const ERC_FIRST_SEED: [u8; 32] = hex::h32("d724df7121d82fbc67c21468830ca1863081352c1391e18b7e1ffa888a95f246");
 
 /// ERC-8499's derivations as the app and the board make them, each timed and checked against the
 /// Python reference's vectors. Runs before the long passes, so its numbers come within seconds.
@@ -449,7 +450,8 @@ fn erc8499_keys(r: &mut Report, screen: &mut Screen) -> Erc8499Times {
         e.key_seed += us;
         r.timed(&format!("phrase {}: member key seed (HKDF-Expand)", i + 1), "ERC-8499 member key seed", us, seed == Ok(k.member_key_seed), false);
         if i == 0 {
-            r.check("the ERC's printed seed for its first test phrase", k.seed == [0; 32] && seed == Ok(ERC_FIRST_SEED));
+            let erc = hbkd::stateless_seed(&k.phrase_root, ERC_KEY_TYPE, 32, 0);
+            r.check("the ERC's printed seed for its first test phrase", k.seed == [0; 32] && erc.as_deref() == Ok(&ERC_FIRST_SEED[..]));
         }
         r.check("owner address of the reference's member key", owner::owner_address(&k.member_key) == Ok(k.owner));
 
@@ -484,7 +486,7 @@ fn erc8499_keys(r: &mut Report, screen: &mut Screen) -> Erc8499Times {
     let m = erc8499::TREE_SECRETS.len() as u64;
     for (i, t) in erc8499::TREE_SECRETS.iter().enumerate() {
         step(screen, text!("tree seed {}/{}", i + 1, m).as_str());
-        let mut kt = [0u8; 34];
+        let mut kt = [0u8; derive8499::TREE_KEY_TYPE_MAX];
         r.check(
             "tree key type, context and device root",
             derive8499::tree_key_type(t.height, &mut kt) == Ok(t.key_type)

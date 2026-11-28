@@ -21,7 +21,9 @@
 //! [`bip39_seed_unchecked`] is the PBKDF2 step alone, for tests and vectors.
 //!
 //! A key type is 1 to 255 bytes of printable ASCII other than the space (0x21 to 0x7e) naming the
-//! scheme, its parameters, its seed length L and its key generation. An account is a `u32`, so
+//! scheme, its parameters, its seed length L, its key generation and its signature limit. One
+//! without `/` is the ERC's own, so only an SLH-DSA name; any other starts with its definer and
+//! `/` (`eip-N/`, `erc-N/` or a domain name), so a `/` that isn't the first byte. An account is a `u32`, so
 //! 2^32 can't be given. L is a `usize`, checked at run time: 32 to 16320. A label is 1 to 255
 //! bytes of UTF-8 as given, without Unicode normalisation (the ERC says labels SHOULD be ASCII). A
 //! stateful instance's `instance` is 32 random bytes that the caller makes when it creates the
@@ -261,15 +263,19 @@ pub fn root(ikm: &[u8]) -> Result<[u8; HASH_LEN], Error> {
 }
 
 /// Whether `key_type` is a key type: 1 to 255 bytes of printable ASCII other than the space,
-/// 0x21 to 0x7e.
+/// 0x21 to 0x7e, that is an SLH-DSA name ([`SLH_DSA`]) or has a `/` after its first byte (its
+/// definer's name and `/`). Whether the part before `/` is a real definer isn't checked.
 pub fn is_key_type(key_type: &str) -> bool {
-    (1..=255).contains(&key_type.len()) && key_type.bytes().all(|c| (0x21..=0x7e).contains(&c))
+    (1..=255).contains(&key_type.len())
+        && key_type.bytes().all(|c| (0x21..=0x7e).contains(&c))
+        && (slh_dsa_n(key_type).is_some() || key_type.find('/').is_some_and(|i| i > 0))
 }
 
 fn key_type_bytes(key_type: &str) -> Result<&[u8], Error> {
     if !is_key_type(key_type) {
         return Err(Error::Invalid(
-            "a key type is 1 to 255 bytes of printable ASCII other than the space (0x21 to 0x7e)",
+            "a key type is 1 to 255 bytes of printable ASCII other than the space (0x21 to 0x7e): \
+             an SLH-DSA name, or its definer's name, `/` and the rest",
         ));
     }
     Ok(key_type.as_bytes())
@@ -458,9 +464,10 @@ mod tests {
     #[cfg(target_arch = "wasm32")]
     use wasm_bindgen_test::wasm_bindgen_test as test;
 
-    const KEY_TYPE: &str = "leanSphincs-keccak/wambsgans-keccak/b10";
-    /// The ERC's made-up stateful key type (a one-time key with a 32-byte seed).
-    const ONE_TIME: &str = "example/one-time/v1";
+    /// The ERC's made-up key types, both with a 32-byte seed: stateless, and stateful (a one-time
+    /// key).
+    const KEY_TYPE: &str = "example.org/stateless/v1";
+    const ONE_TIME: &str = "example.org/one-time/v1";
     const LABEL: &str = "example.app.gas";
     const ABANDON: &str = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
                            abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon \
@@ -486,9 +493,9 @@ mod tests {
                 5489c6fc77dbd4e3dc1dd8cc6bc9f043db8ada1e243c4a0eafb290d399480840",
             r: "31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292\
                 e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-            stateless0: "fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879",
-            stateless1: "dae839ce92eb35bdd99718114d73d0b1ef6a2c66ad0bdd41b1fc7e99ee36ff82",
-            stateful0: "e09f687949d34fe3700c4cc043fe4bbb9cc1747df356030f1660628bd17e3c35",
+            stateless0: "d724df7121d82fbc67c21468830ca1863081352c1391e18b7e1ffa888a95f246",
+            stateless1: "702abeccf825b2a720f7164ba6a907047ae27f95fe397e859ce04c80abd7c63b",
+            stateful0: "edf35f12717e0c612004aa0bebf257422a75591dc5d75394ff44f2bff3982fe2",
             app: "4a50286a3a17be26017002484f0e99f10b6a19bc6202fbc3f079760fd9b1c000",
         },
         Case {
@@ -498,9 +505,9 @@ mod tests {
                 70af7a4d73245cafa9c3cca8d561a7c3de6f5d4a10be8ed2a5e608d68f92fcc8",
             r: "36115dbd5c9909f705901905fdfcd5b59af8a03773b107a4cbc01de190810425\
                 edabf87db6ceaebf3684dbfaf5ea46ec34d2b91a0d7661310b03b4ec1b5202bf",
-            stateless0: "3d5ad9f82a782c1578db5b40443cfba75c151167312a133d4c90457f6a98179d",
-            stateless1: "e5fa8baf57d6a7fecf5cdd9b7e1d1714cfbbdd4c86e7de882d4494d02fe65433",
-            stateful0: "876af17dd4ee96eb01a062b1416ad826079c788902bab2a8f9a1dad694f70bf7",
+            stateless0: "9291d8cc2bf5b773de7a0e457238b9ccb52787e77c4b2574edd98cdff151f4ed",
+            stateless1: "b9dd04f479458611e3bbf614dd578dde7a25704a493ff9d17bfe13319fa2f01b",
+            stateful0: "d75fda6a87e808f67d32356ff43ed45f4e292b46723e08df840765010cbd4b24",
             app: "63cf757802534428b39551535e5560831be70a5996f1eab6240d399a0798c151",
         },
         Case {
@@ -510,9 +517,9 @@ mod tests {
                 a457fe1296106559a3c80937a1c1069be3a3a5bd381ee6260e8d9739fce1f607",
             r: "c9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad2\
                 30dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-            stateless0: "601ae30e33d5058eed33e0cc0ec25cb5bf8659481104a7bd0f10c0ebdd30b967",
-            stateless1: "7d3b358bf3d671dc6eb66dcfc58f7d91e6bb06bfe4cf92da9c19051a44516943",
-            stateful0: "d3f9ac5b6a707b567dd6d3e4ceb54671e463f3a0b9a1419b6cfcb7ce715a0025",
+            stateless0: "90852588b7c847b8ee95d8d9a09f2ee854c1e6ebb47a7ff57f7d47bbc377c7cd",
+            stateless1: "639eb64ad4b058fa9ff9c07672b7a981e3ccc778433bb1c322fd1f7cf8575eb3",
+            stateful0: "99284dd8df289a4dea3aea6ebfc1b038c7c8204a2cbd764c54d2a6afbb99514b",
             app: "27ed4acb2aed9f052692619b763f96da377a3f96f2b242d8d636d19e1d06a3be",
         },
     ];
@@ -523,11 +530,12 @@ mod tests {
     /// at account 2^32 - 1.
     const RANDOM_R: &str = "719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5\
                             c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a";
-    const RANDOM_STATELESS: &str = "6a0989ffde23947e80f0dfe22f5c9f7df46b79403db776b90fdd127b84f76ceb";
-    const RANDOM_STATEFUL: &str = "428e830b9fe051934bdcb8d5f10d16e4bf48bc1b2d7bdfcf56094e97d1a5a374";
+    const RANDOM_STATELESS: &str = "378b8c43ad96699148d8ea3c076901654ac7152fde1652f66b7649f8300d6c76";
+    const RANDOM_STATEFUL: &str = "5a1d886007b055ec29075ff19bc752d36c49d89243fb4d9d4cd5f5561389133c";
     const RANDOM_APP: &str = "dadb75da4b8194cfac6575b65705b93e5343172e4c2ed271e2e3627ffadfa950";
-    /// The `info` of the first stateless seed (account 0, L = 32), 47 bytes.
-    const INFO: &str = "01000000000020276c65616e537068696e63732d6b656363616b2f77616d627367616e732d6b656363616b2f623130";
+    /// The `info` of the first stateless seed (account 0, L = 32), 32 bytes.
+    const INFO: &str = "0100000000002018\
+                        6578616d706c652e6f72672f73746174656c6573732f7631";
     /// SLH-DSA key types for the first case (account 0): key type, seed, public key.
     const SLH: [(&str, &str, &str); 3] = [
         (
@@ -554,8 +562,10 @@ mod tests {
         ),
     ];
     /// A Winterlock regression value, not the ERC's: root ‖ public parameter of Winterlock's
-    /// leanSphincs key at b = 10 from the first case's account-0 stateless seed (L = 32), as the
-    /// Python signer computes it (leansphincs.Key).
+    /// leanSphincs key at b = 10 from this seed, as the Python signer computes it
+    /// (leansphincs.Key). The seed is the first case's account-0 stateless seed under the ERC's
+    /// earlier example key type, now only a fixed input.
+    const WINTERLOCK_B10_SEED: &str = "fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879";
     const WINTERLOCK_B10_PUBLIC_KEY: &str = "3262892101810781d0692ec03d73ae03d1c6b5a62c97cd145ec18f9979111bb2";
 
     fn words(sentence: &str) -> Vec<&str> {
@@ -633,8 +643,8 @@ mod tests {
     #[test]
     fn erc_info_bytes() {
         let want = h(INFO);
-        assert_eq!(want.len(), 47);
-        assert_eq!(want[..8], [0x01, 0, 0, 0, 0, 0x00, 0x20, 0x27]);
+        assert_eq!(want.len(), 32);
+        assert_eq!(want[..8], [0x01, 0, 0, 0, 0, 0x00, 0x20, 0x18]);
         assert_eq!(info(STATELESS, 0, 32, KEY_TYPE.as_bytes(), &[]).unwrap(), want);
         let r = h64(CASES[0].r);
         assert_eq!(hkdf_expand(&r, &want, 32).unwrap(), h(CASES[0].stateless0));
@@ -696,11 +706,11 @@ mod tests {
             }
             assert!(stateful_seed(&r, kt, 3 * n, &context(), &INSTANCE, 0).is_err(), "{kt}");
         }
-        // other key types aren't SLH-DSA's, however close
+        // other strings aren't SLH-DSA's, however close; without `/` they aren't key types at all
         for other in [KEY_TYPE, "slh-dsa-sha2-128s", "SLH-DSA-SHA2-128S", "SLH-DSA-SHA2-128", "SLH-DSA-SHA2-128s/x"] {
             assert_eq!(slh_dsa_n(other), None);
             assert!(slh_dsa_seeds(&r, other, 0).is_err());
-            assert!(stateless_seed(&r, other, 32, 0).is_ok());
+            assert_eq!(stateless_seed(&r, other, 32, 0).is_ok(), other.contains('/'), "{other}");
         }
     }
 
@@ -712,9 +722,10 @@ mod tests {
         // the mnemonic abandon x 24, whose checksum fails
         assert!(bip39_seed(&["abandon"; 24], "").is_err());
         assert!(check_mnemonic(&["abandon"; 24]).is_err());
-        // the key types "" and "leanSphincs keccak", and one of 256 bytes
-        let long = "k".repeat(256);
-        for bad in ["", "leanSphincs keccak", long.as_str()] {
+        // the key types "" and "example.org/a b", one of 256 bytes, and "xmss", which has no `/`
+        // and isn't the ERC's
+        let long = "k/".repeat(128);
+        for bad in ["", "example.org/a b", long.as_str(), "xmss"] {
             assert!(!is_key_type(bad));
             assert!(stateless_seed(&r, bad, 32, 0).is_err(), "{bad:?}");
             assert!(stateful_seed(&r, bad, 32, &ctx, &INSTANCE, 0).is_err(), "{bad:?}");
@@ -837,7 +848,7 @@ mod tests {
 
     #[test]
     fn winterlock_b10_regression() {
-        let key = leansphincs::Key::new(&h32(CASES[0].stateless0), 10).unwrap();
+        let key = leansphincs::Key::new(&h32(WINTERLOCK_B10_SEED), 10).unwrap();
         assert_eq!(key.public_key(), h32(WINTERLOCK_B10_PUBLIC_KEY));
         assert_eq!(key.public_key()[..16], key.root());
         assert_eq!(key.public_key()[16..], key.p());
@@ -905,9 +916,19 @@ mod tests {
     #[test]
     fn key_types() {
         let r = h64(CASES[0].r);
+        // every printable character but the space, from 0x21: `/` is the 15th
         let longest: String = (0..255).map(|i| (0x21 + i % 94) as u8 as char).collect();
-        assert_eq!(longest.len(), 255);
-        for good in ["!", "~", "x", "a-key-type,with_punctuation:!\"#$%&'()*+-./;<=>?@[\\]^_`{|}~", longest.as_str()] {
+        assert_eq!((longest.len(), longest.find('/')), (255, Some(14)));
+        for good in [
+            "a/",
+            "~/",
+            "x//",
+            "a/b/c",
+            "example.org/stateless/v1",
+            "erc-8499/x",
+            "a-key-type,with_punctuation:!\"#$%&'()*+-./;<=>?@[\\]^_`{|}~",
+            longest.as_str(),
+        ] {
             assert!(is_key_type(good), "{good:?}");
             assert!(stateless_seed(&r, good, 32, 0).is_ok());
             assert!(stateful_seed(&r, good, 32, &context(), &INSTANCE, 0).is_ok());
@@ -916,25 +937,34 @@ mod tests {
         for bad in [
             "",
             " ",
-            "leanSphincs keccak",
-            "x ",
-            " x",
-            "\n",
-            "a\tb",
-            "\0",
-            "\x1f",
-            "\x7f",
-            "caf\u{e9}",
-            "\u{a0}",
+            "a/b c",
+            "a/ ",
+            " a/",
+            "a/\n",
+            "a/\tb",
+            "a/\0",
+            "a/\x1f",
+            "a/\x7f",
+            "a/caf\u{e9}",
+            "a/\u{a0}",
             too_long.as_str(),
+            // no definer: no `/`, or `/` first
+            "!",
+            "x",
+            "xmss",
+            "leanSphincs-keccak",
+            "/",
+            "/x",
+            "//",
+            "/example.org/x",
         ] {
             assert!(!is_key_type(bad), "{bad:?}");
             assert!(stateless_seed(&r, bad, 32, 0).is_err());
             assert!(stateful_seed(&r, bad, 32, &context(), &INSTANCE, 0).is_err());
         }
-        // every byte: printable ASCII other than the space is 0x21 to 0x7e
+        // every byte after a definer: printable ASCII other than the space is 0x21 to 0x7e
         for c in 0u8..=0x7f {
-            let s = [c];
+            let s = [b'a', b'/', c];
             let t = core::str::from_utf8(&s).unwrap();
             assert_eq!(is_key_type(t), (0x21..0x7f).contains(&c), "{c:#x}");
         }
@@ -945,8 +975,8 @@ mod tests {
         let r = h64(CASES[0].r);
         let top = stateless_seed(&r, KEY_TYPE, 65, u32::MAX).unwrap();
         assert_ne!(top, stateless_seed(&r, KEY_TYPE, 65, 0).unwrap());
-        // by hand: 01 ffffffff 0041 27 key type
-        let mut i = vec![0x01, 0xff, 0xff, 0xff, 0xff, 0x00, 0x41, 0x27];
+        // by hand: 01 ffffffff 0041 18 key type
+        let mut i = vec![0x01, 0xff, 0xff, 0xff, 0xff, 0x00, 0x41, 0x18];
         i.extend_from_slice(KEY_TYPE.as_bytes());
         assert_eq!(top, hkdf_expand(&r, &i, 65).unwrap());
         assert_eq!(info(STATELESS, u32::MAX, 65, KEY_TYPE.as_bytes(), &[]).unwrap(), i);

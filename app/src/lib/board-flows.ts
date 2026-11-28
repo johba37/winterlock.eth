@@ -26,7 +26,8 @@ const APPROVE_ABI = parseAbi(['function approveHash(bytes32 hashToApprove)'])
 /** Why this board can't be this member's, or null. */
 export function boardMismatch(rec: BoardRecord, s: BoardStatus): string | null {
   if (s.state === 'blank') return 'This board is blank (erased, or new): recover it on the board with your 24 words.'
-  if (s.state === 'damaged') return 'The board’s storage is damaged: it signs nothing. Erase it from its menu, then recover it with your 24 words.'
+  if (s.state === 'damaged')
+    return 'The board’s storage is damaged: it signs nothing. Erase it from its menu, then recover it with your 24 words. If the board says “Older firmware”, it was set up before 0.1.3, whose keys this version doesn’t use: forget it here first, then recover it as a new board, which gives it a new owner.'
   if (s.memberKey?.toLowerCase() !== rec.memberKey.toLowerCase()) return `This board holds another member key (owner ${s.owner}), not yours (owner ${rec.owner}).`
   return null
 }

@@ -42,7 +42,9 @@ def free_port():
 class Anvil:
     def __init__(self, chain_id=None):
         self.port = free_port()
-        args = [tool("anvil"), "--port", str(self.port), "--silent", "--disable-code-size-limit",
+        # Osaka, mainnet's rules: since 1.9.0, anvil gives Sepolia's chain id Sepolia's next fork (Amsterdam), where
+        # deploying Safe's SafeL2 doesn't fit the 2^24 gas cap of a transaction
+        args = [tool("anvil"), "--port", str(self.port), "--hardfork", "osaka", "--silent", "--disable-code-size-limit",
                 "--disable-block-gas-limit"]
         if chain_id:
             args += ["--chain-id", str(chain_id)]

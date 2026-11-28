@@ -37,6 +37,11 @@ use crate::ui::{self, Body, Screen, address_lines, chain_name, short_address, wr
 
 /// Wrong PINs in a row that erase the board.
 pub const PIN_TRIES: u8 = 3;
+/// What a board set up by a firmware before 0.1.3 shows once its PIN is entered: that firmware's
+/// key types had no definer's name (keys.rs), so this one makes other keys from the same seed
+/// and signs nothing with the old ones. Erasing it and recovering from the 24 words gives the
+/// seed this firmware's keys.
+pub const EARLIER_KEYS: &str = "Made by firmware before 0.1.3, with other keys.";
 pub const PIN_MIN: usize = 4;
 pub const PIN_MAX: usize = 8;
 /// The height of the board's key trees: 1,024 one-time keys, 512 nonces.
@@ -389,7 +394,8 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
                 let mut l = wrap(why, ui::COLS);
                 l.truncate(3);
                 l.push("It signs nothing.".into());
-                Screen { body: Body::Lines(l), ..s("Storage damaged", &[], "", "hold both: erase") }
+                let title = if *why == EARLIER_KEYS { "Older firmware" } else { "Storage damaged" };
+                Screen { body: Body::Lines(l), ..s(title, &[], "", "hold both: erase") }
             }
             Mode::Erased(why) => match *why {
                 "pins" => s("Erased", &["3 wrong PINs: the", "seed and key log are", "gone. Recover with", "your 24 words."], "", "next >"),
@@ -834,15 +840,21 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             drop(seed);
             let leaves = self.store.member_leaves()?;
             let key = keys::member_key(&root.0, leaves).map_err(|_| StoreError::Damaged)?;
+            // the records read back whole, so another member key means another derivation: an
+            // earlier firmware's (keys.rs), whose trees this one would sign wrongly as well
             if Some(key.public_key()) != self.store.identity().map(|i| i.member_key) {
-                return Err(StoreError::Damaged);
+                return Ok(None);
             }
-            Ok(Session { root, key })
+            Ok(Some(Session { root, key }))
         })();
         match r {
-            Ok(s) => {
+            Ok(Some(s)) => {
                 self.session = Some(s);
                 self.go(Mode::Home);
+            }
+            Ok(None) => {
+                self.store.mark_damaged(EARLIER_KEYS);
+                self.go(Mode::Damaged(EARLIER_KEYS));
             }
             Err(e) => self.storage_failed(None, e),
         }
@@ -1138,6 +1150,9 @@ impl<F: NorFlash, P: Platform> Board<F, P> {
             _ => {
                 match phase {
                     Phase::Blank => return self.fail(id, Fail::new(Code::NotSetUp, "the board isn't set up")),
+                    Phase::Damaged(EARLIER_KEYS) => {
+                        return self.fail(id, Fail::new(Code::Damaged, "the board was set up by a firmware before 0.1.3, with other keys: erase it"));
+                    }
                     Phase::Damaged(_) => return self.fail(id, Fail::new(Code::Damaged, "the board's storage is damaged: erase it")),
                     Phase::Ready => {}
                 }

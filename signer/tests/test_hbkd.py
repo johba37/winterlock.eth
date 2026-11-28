@@ -12,12 +12,12 @@ from mnemonic import Mnemonic
 
 from winterlock_signer import hbkd, leansphincs, phrase
 
-# The ERC's Test Cases (draft, commit aac2acae): shared inputs, then per phrase and passphrase S, R, the stateless
+# The ERC's Test Cases (ethereum/ERCs master e4f5340e, 2026-11-27): shared inputs, then per phrase and passphrase S, R, the stateless
 # seeds of accounts 0 and 1, the stateful seed of account 0 (key type ONE_TIME) and the application secret, all of
 # L = 32; the first phrase's application secret of L = 48; a random input's R and its values at account 2^32 - 1; the
 # info bytes of the first stateless seed; three SLH-DSA key types; and the inputs an implementation must reject.
-KEY_TYPE = "leanSphincs-keccak/wambsgans-keccak/b10"
-ONE_TIME = "example/one-time/v1"  # the ERC's made-up stateful key type, 32-byte seed
+KEY_TYPE = "example.org/stateless/v1"  # the ERC's made-up key types, both with a 32-byte seed
+ONE_TIME = "example.org/one-time/v1"  # stateful: a one-time key
 CONTEXT = bytes(range(32))
 INSTANCE = bytes([0xA5] * 32)
 LABEL = "example.app.gas"
@@ -30,27 +30,27 @@ ERC = [
      "5489c6fc77dbd4e3dc1dd8cc6bc9f043db8ada1e243c4a0eafb290d399480840",
      "31a48aa502c800ed2e98d6ea19e8121861876ac755601b53f3772c4c910cc292"
      "e8f1650268f6df3f7b7f030536b6b4e55a13b0d673b24e7e6a8fdecb9c5854ed",
-     "fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879",
-     "dae839ce92eb35bdd99718114d73d0b1ef6a2c66ad0bdd41b1fc7e99ee36ff82",
-     "e09f687949d34fe3700c4cc043fe4bbb9cc1747df356030f1660628bd17e3c35",
+     "d724df7121d82fbc67c21468830ca1863081352c1391e18b7e1ffa888a95f246",
+     "702abeccf825b2a720f7164ba6a907047ae27f95fe397e859ce04c80abd7c63b",
+     "edf35f12717e0c612004aa0bebf257422a75591dc5d75394ff44f2bff3982fe2",
      "4a50286a3a17be26017002484f0e99f10b6a19bc6202fbc3f079760fd9b1c000"),
     (ABANDON, "TREZOR",
      "bda85446c68413707090a52022edd26a1c9462295029f2e60cd7c4f2bbd30971"
      "70af7a4d73245cafa9c3cca8d561a7c3de6f5d4a10be8ed2a5e608d68f92fcc8",
      "36115dbd5c9909f705901905fdfcd5b59af8a03773b107a4cbc01de190810425"
      "edabf87db6ceaebf3684dbfaf5ea46ec34d2b91a0d7661310b03b4ec1b5202bf",
-     "3d5ad9f82a782c1578db5b40443cfba75c151167312a133d4c90457f6a98179d",
-     "e5fa8baf57d6a7fecf5cdd9b7e1d1714cfbbdd4c86e7de882d4494d02fe65433",
-     "876af17dd4ee96eb01a062b1416ad826079c788902bab2a8f9a1dad694f70bf7",
+     "9291d8cc2bf5b773de7a0e457238b9ccb52787e77c4b2574edd98cdff151f4ed",
+     "b9dd04f479458611e3bbf614dd578dde7a25704a493ff9d17bfe13319fa2f01b",
+     "d75fda6a87e808f67d32356ff43ed45f4e292b46723e08df840765010cbd4b24",
      "63cf757802534428b39551535e5560831be70a5996f1eab6240d399a0798c151"),
     (LEGAL, "TREZOR",
      "2e8905819b8723fe2c1d161860e5ee1830318dbf49a83bd451cfb8440c28bd6f"
      "a457fe1296106559a3c80937a1c1069be3a3a5bd381ee6260e8d9739fce1f607",
      "c9f92a198541dcb5caf89f801827ef3baa8aafadcd3cee67d973ddbced8edad2"
      "30dd8e77b5d30e60650c5d6ac22328a701b0e87ef959ea6a78c7e170354c3fbf",
-     "601ae30e33d5058eed33e0cc0ec25cb5bf8659481104a7bd0f10c0ebdd30b967",
-     "7d3b358bf3d671dc6eb66dcfc58f7d91e6bb06bfe4cf92da9c19051a44516943",
-     "d3f9ac5b6a707b567dd6d3e4ceb54671e463f3a0b9a1419b6cfcb7ce715a0025",
+     "90852588b7c847b8ee95d8d9a09f2ee854c1e6ebb47a7ff57f7d47bbc377c7cd",
+     "639eb64ad4b058fa9ff9c07672b7a981e3ccc778433bb1c322fd1f7cf8575eb3",
+     "99284dd8df289a4dea3aea6ebfc1b038c7c8204a2cbd764c54d2a6afbb99514b",
      "27ed4acb2aed9f052692619b763f96da377a3f96f2b242d8d636d19e1d06a3be"),
 ]
 ERC_APP_48 = ("12e34297e10e77196669049b009d5979ea993bd5f5bbc94fcf3f1fc9ed5b82ee"
@@ -58,10 +58,10 @@ ERC_APP_48 = ("12e34297e10e77196669049b009d5979ea993bd5f5bbc94fcf3f1fc9ed5b82ee"
 ERC_RANDOM_IKM = bytes(range(0x20, 0x40))  # R, then the stateless and stateful seeds and app secret at account TOP
 ERC_RANDOM = ("719bbea6f6e3bec595afff3dccc8558972a4aa4893a654ce6b793616eab6f3d5"
               "c18887c81e3a4009c5488c1070b86a65e6bb32279473b8d8a21548e8d02fc07a",
-              "6a0989ffde23947e80f0dfe22f5c9f7df46b79403db776b90fdd127b84f76ceb",
-              "428e830b9fe051934bdcb8d5f10d16e4bf48bc1b2d7bdfcf56094e97d1a5a374",
+              "378b8c43ad96699148d8ea3c076901654ac7152fde1652f66b7649f8300d6c76",
+              "5a1d886007b055ec29075ff19bc752d36c49d89243fb4d9d4cd5f5561389133c",
               "dadb75da4b8194cfac6575b65705b93e5343172e4c2ed271e2e3627ffadfa950")
-ERC_INFO = "01 00000000 0020 27 6c65616e537068696e63732d6b656363616b2f77616d627367616e732d6b656363616b2f623130"
+ERC_INFO = "01 00000000 0020 18 6578616d706c652e6f72672f73746174656c6573732f7631"
 ERC_SLH_DSA = [  # (key type, seed, public key) for the first phrase, account 0
     ("SLH-DSA-SHA2-128s",
      "9a4f5ec07d81f8f9b5ad67afe96d81793158212491f532a49a3139ac24e97105"
@@ -81,7 +81,9 @@ ERC_SLH_DSA = [  # (key type, seed, public key) for the first phrase, account 0
      "7a7fd9278d47cc69476b93a1b22fe671b4c1c102e5dddaf05870138189dc068e"),
 ]
 # A Winterlock regression value, not the ERC's: root || public parameter of Winterlock's leanSphincs key at b = 10
-# from the first phrase's account-0 stateless seed (L = 32). The Rust core checks the same value (hbkd.rs).
+# from this seed, the first phrase's account-0 stateless seed under the ERC's earlier example key type, now only a fixed
+# input. The Rust core checks the same value (hbkd.rs).
+WINTERLOCK_B10_SEED = "fe1de5038bcc56fc434f8cba07eb53ab972de18ec0779c7465fd0d789a966879"
 WINTERLOCK_B10_PUBLIC_KEY = "3262892101810781d0692ec03d73ae03d1c6b5a62c97cd145ec18f9979111bb2"
 
 # BIP-39's published seeds for these two phrases with passphrase "TREZOR" (trezor/python-mnemonic, vectors.json), which
@@ -160,7 +162,7 @@ class ErcVectors(unittest.TestCase):
 
     def test_info_bytes(self):
         want = h(ERC_INFO.replace(" ", ""))
-        self.assertEqual(len(want), 47)
+        self.assertEqual(len(want), 32)
         self.assertEqual(hbkd.info(hbkd.STATELESS, 0, 32, KEY_TYPE.encode()), want)
         r = h(ERC[0][3])
         self.assertEqual(hbkd.hkdf_expand(r, want, 32), h(ERC[0][4]))
@@ -186,13 +188,13 @@ class ErcVectors(unittest.TestCase):
                 self.assertEqual(pk[:n], pk_seed)  # the public key is PK.seed || PK.root
 
     def test_rejections(self):
-        """"An implementation rejects each of these inputs": 24 x abandon, the key types "" and "leanSphincs keccak",
-        a key type of 256 bytes, account 2^32, the lengths 31 and 16321, and SLH-DSA-SHA2-128s at a length other than
+        """"An implementation rejects each of these inputs": 24 x abandon, the key types "" and "example.org/a b", a
+        key type of 256 bytes, the key type "xmss" (no `/`, not the ERC's), account 2^32, the lengths 31 and 16321, and SLH-DSA-SHA2-128s at a length other than
         48 or as a stateful key"""
         r = hbkd.root(ERC_RANDOM_IKM)
         with self.assertRaises(ValueError):
             hbkd.bip39_seed(["abandon"] * 24)
-        for bad in ("", "leanSphincs keccak", "k" * 256):
+        for bad in ("", "example.org/a b", "k/" * 128, "xmss"):
             with self.subTest(key_type=bad[:20]):
                 with self.assertRaises(ValueError):
                     hbkd.stateless_seed(r, bad, 32)
@@ -226,7 +228,7 @@ class ErcVectors(unittest.TestCase):
         self.assertEqual(INSTANCE.hex(), "a5" * 32)
         self.assertEqual(len(ABANDON.split()), 24)
         self.assertEqual(len(LEGAL.split()), 12)
-        self.assertEqual(len(KEY_TYPE), 0x27)
+        self.assertEqual(len(KEY_TYPE), 0x18)
 
 
 class SlhDsa(unittest.TestCase):
@@ -253,13 +255,18 @@ class SlhDsa(unittest.TestCase):
                     hbkd.stateful_seed(self.R, kt, 3 * n, CONTEXT, INSTANCE)
 
     def test_other_key_types(self):
-        """Only the exact names are SLH-DSA's: a near miss is an ordinary key type"""
+        """Only the exact names are SLH-DSA's: a near miss with a `/` is an ordinary key type, one without is none"""
         for other in (KEY_TYPE, "slh-dsa-sha2-128s", "SLH-DSA-SHA2-128S", "SLH-DSA-SHA2-128", "SLH-DSA-SHA2-128s/x"):
             with self.subTest(other):
                 self.assertNotIn(other, hbkd.SLH_DSA_N)
                 with self.assertRaises(ValueError):
                     hbkd.slh_dsa_seeds(self.R, other)
-                self.assertEqual(len(hbkd.stateless_seed(self.R, other, 32)), 32)
+                if "/" in other:
+                    self.assertEqual(len(hbkd.stateless_seed(self.R, other, 32)), 32)
+                else:
+                    self.assertFalse(hbkd.is_key_type(other))
+                    with self.assertRaises(ValueError):
+                        hbkd.stateless_seed(self.R, other, 32)
         for bad in (None, b"SLH-DSA-SHA2-128s", ["SLH-DSA-SHA2-128s"]):
             with self.assertRaises(ValueError):
                 hbkd.slh_dsa_seeds(self.R, bad)
@@ -276,8 +283,8 @@ class Hkdf(unittest.TestCase):
                 for account in (0, 1, 1 << 31, TOP):
                     cases = [(hbkd.stateless_seed(r, KEY_TYPE, length, account),
                               hbkd.info(hbkd.STATELESS, account, length, KEY_TYPE.encode())),
-                             (hbkd.stateful_seed(r, "x", length, CONTEXT, INSTANCE, account),
-                              hbkd.info(hbkd.STATEFUL, account, length, b"x", CONTEXT + INSTANCE)),
+                             (hbkd.stateful_seed(r, "x/", length, CONTEXT, INSTANCE, account),
+                              hbkd.info(hbkd.STATEFUL, account, length, b"x/", CONTEXT + INSTANCE)),
                              (hbkd.app_secret(r, "\xe9", length, account),
                               hbkd.info(hbkd.APPLICATION, account, length, "\xe9".encode()))]
                     for got, info in cases:
@@ -429,9 +436,9 @@ class WinterlockRoot(unittest.TestCase):
             hbkd.winterlock_root(bytes(31))
 
     def test_b10_regression(self):
-        """Winterlock only, not the ERC's: the first phrase's account-0 stateless seed through Winterlock's leanSphincs
-        key at b = 10. Its public key is root || P, 16 bytes each, EIP-8288's layout"""
-        key = leansphincs.Key(h(ERC[0][4]), 10)
+        """Winterlock only, not the ERC's: a fixed seed through Winterlock's leanSphincs key at b = 10. Its public key
+        is root || P, 16 bytes each, EIP-8288's layout"""
+        key = leansphincs.Key(h(WINTERLOCK_B10_SEED), 10)
         self.assertEqual(key.public_key, h(WINTERLOCK_B10_PUBLIC_KEY))
         self.assertEqual(key.public_key, key.root + key.p)
         self.assertEqual(key.b, leansphincs.DEFAULT_B)
@@ -480,14 +487,17 @@ class InputChecks(unittest.TestCase):
     def test_key_types(self):
         punctuated = "a-key-type,with_punctuation:!\"#$%&'()*+-./;<=>?@[\\]^_`{|}~"
         longest = "".join(chr(0x21 + i % 94) for i in range(255))
-        for good in ("!", "~", "x", punctuated, longest):
+        self.assertEqual(longest.find("/"), 14)
+        for good in ("a/", "~/", "x//", "a/b/c", KEY_TYPE, ONE_TIME, "erc-8499/x", punctuated, longest):
             with self.subTest(key_type=good[:20]):
                 self.assertTrue(hbkd.is_key_type(good))
                 self.assertEqual(hbkd.stateless_seed(self.R, good, 32),
                                  hbkd.hkdf_expand(self.R, bytes([1, 0, 0, 0, 0, 0, 32, len(good)]) + good.encode(), 32))
                 hbkd.stateful_seed(self.R, good, 32, CONTEXT, INSTANCE)
-        for bad in ("", " ", "leanSphincs keccak", KEY_TYPE + " ", " " + KEY_TYPE, "\n", "a\tb", "\x00", "\x1f", "\x7f",
-                    "\xe9", "\xa0", "\u3000", "k\u0301", longest + "!", "k" * 300, b"x", None, 1):
+        for bad in ("", " ", "a/b c", KEY_TYPE + " ", " " + KEY_TYPE, "a/\n", "a/\tb", "a/\x00", "a/\x1f", "a/\x7f",
+                    "a/\xe9", "a/\xa0", "a/\u3000", "a/k\u0301", longest + "!", "k/" * 150, b"x/", None, 1,
+                    # no definer: no `/`, or `/` first
+                    "!", "x", "xmss", "leanSphincs-keccak", "/", "/x", "//", "/example.org/x"):
             with self.subTest(key_type=bad):
                 self.assertFalse(hbkd.is_key_type(bad))
                 with self.assertRaises(ValueError):
@@ -496,10 +506,14 @@ class InputChecks(unittest.TestCase):
                     hbkd.stateful_seed(self.R, bad, 32, CONTEXT, INSTANCE)
 
     def test_key_types_match_the_reference_predicate(self):
-        """The ERC's reference code: all("!" <= c <= "~" for c in key_type), 1 to 255 bytes: printable ASCII without
-        the space"""
+        """The ERC's reference code: all("!" <= c <= "~" for c in key_type), 1 to 255 bytes, and key_type in SLH_DSA_N
+        or key_type.find("/") > 0: printable ASCII without the space, a definer's name and `/`"""
         for c in map(chr, range(0x3000)):
-            self.assertEqual(hbkd.is_key_type(c), c.isascii() and c.isprintable() and c != " ", hex(ord(c)))
+            want = c.isascii() and c.isprintable() and c != " "
+            self.assertEqual(hbkd.is_key_type("a/" + c), want, hex(ord(c)))
+            self.assertEqual(hbkd.is_key_type(c + "/"), want and c != "/", hex(ord(c)))
+            self.assertFalse(hbkd.is_key_type(c))
+            self.assertFalse(hbkd.is_key_type("/" + c))
 
     def test_fixed_lengths(self):
         """a 64-byte root, a 32-byte context and instance"""
@@ -544,7 +558,7 @@ class InputChecks(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     hbkd.info(*bad)
         self.assertEqual(hbkd.info(3, 1 << 31, 16320, b"a"), bytes([3, 0x80, 0, 0, 0, 0x3F, 0xC0, 1]) + b"a")
-        self.assertEqual(hbkd.info(1, TOP, 65, KEY_TYPE.encode())[:8], bytes([1, 255, 255, 255, 255, 0, 65, 39]))
+        self.assertEqual(hbkd.info(1, TOP, 65, KEY_TYPE.encode())[:8], bytes([1, 255, 255, 255, 255, 0, 65, 24]))
 
     def test_inputs_separate(self):
         r = self.R

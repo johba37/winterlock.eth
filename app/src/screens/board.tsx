@@ -290,7 +290,11 @@ export function BoardStart() {
         <Panel title={st.state === 'blank' ? 'A new or erased board' : st.state === 'locked' ? 'Unlock the board' : st.state === 'damaged' ? 'The board’s storage is damaged' : 'A board that is set up'} testid="board-state" tone={st.state === 'damaged' ? 'warn' : 'plain'}>
           {st.state === 'blank' && <p>Set it up to make a new member key, or recover your member key on it from your 24 words.</p>}
           {st.state === 'locked' && <p data-testid="enter-pin">Enter your PIN on the board: left and right change the digit, both held take it.</p>}
-          {st.state === 'damaged' && <p>It signs nothing. Erase it from its menu (hold both buttons), then recover it from your 24 words.</p>}
+          {st.state === 'damaged' && (
+            <p>
+              It signs nothing. Erase it from its menu (hold both buttons), then recover it from your 24 words. If the board says “Older firmware”, it was set up before 0.1.3, whose keys this version doesn’t use: forget it here first, then recover it as a new board, which gives it a new owner.
+            </p>
+          )}
           {st.state === 'unlocked' && st.owner && <Addr label="Its owner address" value={st.owner} full />}
           <ErrorLine error={act.error} />
           {act.busy ? (
@@ -492,7 +496,8 @@ export function BoardInfo() {
                     step('Follow the board: enter your 24 words on it, then a new PIN twice')
                     const c = link.need()
                     const id = await c.recover({ signal })
-                    if (id.memberKey.toLowerCase() !== rec.memberKey.toLowerCase()) throw new Error(`Those words give another member (owner ${id.owner}), not yours.`)
+                    if (id.memberKey.toLowerCase() !== rec.memberKey.toLowerCase())
+                      throw new Error(`Those words give another member (owner ${id.owner}), not yours. After “Older firmware” that is expected: forget the board here, and add it again.`)
                   })
                   await link.refresh()
                 }}

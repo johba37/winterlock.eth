@@ -642,7 +642,7 @@ dependencies = [
 
 [[package]]
 name = "winterlock-board"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "embedded-graphics",
  "embedded-storage",
@@ -653,7 +653,7 @@ dependencies = [
 
 [[package]]
 name = "winterlock-board-wasm"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "embedded-storage",
  "wasm-bindgen",

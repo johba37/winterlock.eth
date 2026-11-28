@@ -10,14 +10,20 @@
 //!   root             HKDF-Extract("HBKD/v1", BIP-39 seed of the 24 words, no passphrase): made
 //!                    at setup, recovery and unlock (PBKDF2, 2,048 rounds), kept for the session
 //!   member key       leanSphincs-keccak, b = 10: the root's stateless key of type
-//!                    leanSphincs-keccak/wambsgans-keccak/b10, account 0
-//!   tree secret seed the root's stateful key of type winterlock-wots-d6-keccak/tree-h<height>;
+//!                    winterlock.eth/leanSPHINCS-keccak/b10, account 0
+//!   tree secret seed the root's stateful key of type winterlock.eth/wots-d6-keccak/tree-h<height>;
 //!                    context: the tree's place (chain, owner, Safe, device 0, generation, start),
 //!                    instance: the tree's random salt
 //!   gas key          the root's application secret "winterlock.eth/gas"
 //! ```
 //!
 //! The board is the member's only device, device 0, so its trees come from the phrase's root.
+//!
+//! Since 0.1.3 (2026-11-27) the key types start with Winterlock's name, as ERC-8499 now requires;
+//! before, they were `leanSphincs-keccak/wambsgans-keccak/b10` and
+//! `winterlock-wots-d6-keccak/tree-h<height>`, so the same seed gave another member key, owner and
+//! trees. A board set up before shows that once its PIN is in (board.rs, `EARLIER_KEYS`) and signs
+//! nothing until it is erased; recovering from its 24 words then gives it this firmware's keys.
 //!
 //! The PIN's check value is here too, since it is the only other hash of a secret the board keeps.
 

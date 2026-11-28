@@ -464,6 +464,73 @@ fn erase_from_the_menu() {
     assert_eq!(words.len(), 24);
 }
 
+/// A board that a firmware before 0.1.3 set up: the same seed, but its member key (and trees) from
+/// the key types before they named Winterlock. Once the PIN is in, the board says so, signs
+/// nothing, and erases when asked; the same words then recover it with this firmware's keys.
+#[test]
+fn keys_of_an_earlier_firmware_are_refused() {
+    use winterlock_board::keys;
+    use winterlock_board::store::{How, Store};
+    let seed = [0x3C; 32];
+    let root = erc8499::phrase_root(&seed).unwrap();
+    let mut old_seed = [0u8; 32];
+    winterlock_core::hbkd::stateless_seed_into(&root, "leanSphincs-keccak/wambsgans-keccak/b10", 0, &mut old_seed).unwrap();
+    let old = leansphincs::Key::new(&old_seed, 10).unwrap();
+    assert_ne!(old.public_key(), member_key(&seed).public_key());
+    let old_owner = owner::owner_address(&old.public_key()).unwrap();
+    let flash = Shared::new();
+    {
+        let (mut store, _) = Store::open(flash.clone()).unwrap();
+        let salt = [0x11; 32];
+        store.setup(&seed, How::Setup, &old.public_key(), old.kept_leaves(), &salt, &keys::pin_check(&salt, PIN), &old_owner).unwrap();
+    }
+    let l = ledger();
+    let mut b = boot(flash.clone(), l.clone());
+    assert_eq!(title(&b), "Enter PIN");
+    enter_pin(&mut b, PIN);
+    assert_eq!(title(&b), "Older firmware");
+    let lines = ["Made by firmware", "before 0.1.3, with", "other keys.", "It signs nothing."];
+    assert_eq!(text(&b)[1..5], lines);
+    assert!(lines.iter().all(|x| x.len() <= winterlock_board::ui::COLS));
+    // the app sees a damaged board, and requests are refused with the reason
+    request(&mut b, ty::STATUS, 70, &[]);
+    let st = &answer(&b, 70).unwrap().payload;
+    assert_eq!(st[2 + st[1] as usize], 3);
+    request(&mut b, ty::ENROL, 71, &enrol_payload(CHAIN, &SAFE, 0));
+    let (code, why) = parse_error(&answer(&b, 71).unwrap().payload);
+    assert_eq!(code, Code::Damaged as u8);
+    assert!(why.contains("before 0.1.3"), "{why}");
+    // other buttons keep the screen; holding both asks, and erases
+    b.button(Right);
+    assert_eq!(title(&b), "Older firmware");
+    b.button(Both);
+    assert_eq!(title(&b), "Erase board?");
+    b.button(Left);
+    assert_eq!(title(&b), "Older firmware");
+    b.button(Both);
+    b.button(Both);
+    assert_eq!(title(&b), "Erased");
+    assert_eq!(b.store.phase(), Phase::Blank);
+    // the same words recover it, now with this firmware's member key
+    let words: Vec<String> = phrase::to_phrase(&seed).iter().map(|w| w.to_string()).collect();
+    b.button(Right);
+    request(&mut b, ty::RECOVER, 72, &[]);
+    assert_eq!(title(&b), "Recover");
+    b.button(Right);
+    for w in &words {
+        type_word(&mut b, w);
+    }
+    assert_eq!(title(&b), "Choose a PIN");
+    b.button(Right);
+    enter_pin(&mut b, PIN);
+    enter_pin(&mut b, PIN);
+    let id = parse_identity(&answer(&b, 72).unwrap().payload);
+    assert_eq!(id.member_key, member_key(&seed).public_key());
+    // and it unlocks after a restart
+    let mut b = boot(Shared::from(flash.snapshot()), l);
+    unlock(&mut b, PIN);
+}
+
 #[test]
 fn requests_a_board_refuses() {
     let l = ledger();

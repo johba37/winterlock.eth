@@ -373,6 +373,8 @@ fn main() {
     s.take("erased-at-start", &cut);
     let damaged = damaged_board();
     s.take("damaged", &damaged);
+    // a board that a firmware before 0.1.3 set up, once its PIN is in
+    s.take("older-firmware", &older_firmware_board());
 
     write_all(&out, &s.list);
     println!("{} screens in {}", s.list.len(), out.display());
@@ -407,6 +409,27 @@ fn damaged_board() -> B {
     log.scan(|_, _| {}).unwrap();
     log.append(0x77, &[b"?"]).unwrap();
     Board::new(log.flash, P { rng: 3, shown: Vec::new() }, "0.1.0").unwrap()
+}
+
+/// A board set up by a firmware before 0.1.3: its member key from the key type before
+/// winterlock.eth/ (keys.rs), unlocked with its PIN.
+fn older_firmware_board() -> B {
+    use winterlock_board::keys;
+    use winterlock_board::store::{How, Store};
+    use winterlock_core::derive::erc8499;
+    let seed = [0x3C; 32];
+    let root = erc8499::phrase_root(&seed).unwrap();
+    let mut ks = [0u8; 32];
+    winterlock_core::hbkd::stateless_seed_into(&root, "leanSphincs-keccak/wambsgans-keccak/b10", 0, &mut ks).unwrap();
+    let old = winterlock_core::leansphincs::Key::new(&ks, 10).unwrap();
+    let owner = winterlock_core::owner::owner_address(&old.public_key()).unwrap();
+    let (mut store, _) = Store::open(SimFlash::new(64)).unwrap();
+    let salt = [0x11; 32];
+    store.setup(&seed, How::Setup, &old.public_key(), old.kept_leaves(), &salt, &keys::pin_check(&salt, &[1, 2, 3, 4]), &owner).unwrap();
+    let mut b = Board::new(store.with_flash(|f| f.reboot()), P { rng: 4, shown: Vec::new() }, "0.1.3").unwrap();
+    pin(&mut b, &[1, 2, 3, 4]);
+    assert_eq!(b.screen().title, "Older firmware");
+    b
 }
 
 trait FlashCopy {

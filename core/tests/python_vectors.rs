@@ -733,7 +733,7 @@ fn erc8499_tree_secret_seeds() {
         let root = erc8499::device_root(&arr(&c["device_random"]));
         assert_eq!(root, arr::<64>(&c["root"]));
         let height = uint(&c["height"]) as u32;
-        let mut kt = [0u8; 34];
+        let mut kt = [0u8; erc8499::TREE_KEY_TYPE_MAX];
         assert_eq!(erc8499::tree_key_type(height, &mut kt).unwrap(), str_(&c["key_type"]));
         assert_eq!(erc8499::tree_context(&at), arr::<32>(&c["context"]));
         assert_eq!(erc8499::tree_secret_seed(&root, &at, height, &arr(&c["salt"])).unwrap(), arr::<32>(&c["sk_seed"]));
