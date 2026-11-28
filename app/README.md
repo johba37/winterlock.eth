@@ -112,12 +112,12 @@ npm run build       # WebAssembly, type check, then dist/
 
 ## Published
 
-**`https://app.winterlock.eth.limo`** serves the build of commit `4cd616f` (Safe's app as the dapp: the nested Safe's transaction shown for Confirm, Execute and a new transaction; for the board's Execute step, firmware 0.1.2), IPFS hash `bafybeidtidafeilfclkwq2lihow7aip57hk267e3umyktwei66sccc6vpq`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth". The builds before it: `d33a6ce` (the first with a board), `bafybeih7lsvgq4iiurfnantpers4heu3vdfvucf7vqlhzkw62mrh4vmfwe`; `17118b8` (keys by ERC-8499, no board), `bafybeidntcolypa5x65b6kogxrsv5jqqain7ggrhmeb3apnk2v77x5ddi4`; `494703c` (WalletConnect, keys from before ERC-8499), `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`, which the app links to for devices it set up; `a20d51c` (no WalletConnect), `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`.
+**`https://app.winterlock.eth.limo`** serves the build of commit `102d703` (key types under `winterlock.eth/`, ERC-8499's naming rule; for a board, firmware 0.1.3), IPFS hash `bafybeig64qtfsk425yfqmaxogls2bmwfzhpukdehlareacx6spufnaiyla`. The name resolves through a record on winterlock.eth's resolver, not through a subname. The reason is in docs/decisions.md, "2026-11-07: the app published at app.winterlock.eth". The builds before it: `4cd616f` (Safe's app as the dapp: the nested Safe's transaction shown for Confirm, Execute and a new transaction; for the board's Execute step, firmware 0.1.2), `bafybeidtidafeilfclkwq2lihow7aip57hk267e3umyktwei66sccc6vpq`, which the app links to for devices it set up; `d33a6ce` (the first with a board), `bafybeih7lsvgq4iiurfnantpers4heu3vdfvucf7vqlhzkw62mrh4vmfwe`; `17118b8` (keys by ERC-8499, no board), `bafybeidntcolypa5x65b6kogxrsv5jqqain7ggrhmeb3apnk2v77x5ddi4`; `494703c` (WalletConnect, keys from before ERC-8499), `bafybeieyirqeaqtufndkvf2a7rcz2lxfhjbj7py6icoy22jfwt6smexuja`, which the app links to for devices it set up; `a20d51c` (no WalletConnect), `bafybeiga42jsit5a4tzyp6cd75lwhbgoe5et6inocbaqxlzypfcjgs6gsi`.
 
 To check that the hash comes from this code, build that commit in any folder and hash `dist/` with [kubo](https://docs.ipfs.tech/install/command-line/). The build holds WalletConnect's project ID, which isn't in the repository: it is the 32-character hex string in the published `assets/index-*.js` (`const …="<the ID>"`, just before WalletConnect's state).
 
 ```sh
-git worktree add <a folder> 4cd616f && cd <a folder>/app && npm ci
+git worktree add <a folder> 102d703 && cd <a folder>/app && npm ci
 VITE_WALLETCONNECT_PROJECT_ID=<the ID> npm run build
 ipfs add -r -n -Q --cid-version=1 dist
 ```
